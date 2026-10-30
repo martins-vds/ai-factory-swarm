@@ -1,6 +1,6 @@
 # ADR-0015: Context budget and tool-output hygiene
 
-- Status: Accepted (tooling choices to be confirmed by spike M1-d)
+- Status: Accepted (Copilot coding agent hook behavior to be confirmed by spike M1-d)
 - Date: 2026-10-30
 
 ## Context
@@ -32,14 +32,22 @@ reports, stack traces, mutation reports, directory listings, diffs.
 - Recall only the few lessons-learned cards relevant to the ticket.
 
 ### 4. Tool output stays on disk; the agent sees a summary
-Enforced in layers, from deterministic to optional:
+Enforced in three layers, from deterministic to enforcing:
 
 | Layer | What | Where it works |
 |-------|------|----------------|
-| **a. `afs-run` wrapper** (harness tool) | Runs any command; writes full stdout/stderr to `.migration/runs/<ticket>/<timestamp>-<name>.log` (gitignored); prints only a compact summary: exit code, duration, line count, failing tests / first errors (parsed from JUnit XML, LCOV, etc. where available, else last N lines), and the log path. The agent greps the log when it needs more. Gate evidence links to these logs. | Everywhere (local and remote), any language |
-| **b. Filter engine: RTK** ([rtk-ai/rtk](https://github.com/rtk-ai/rtk), MIT) | A single-binary CLI proxy with compact filters for 100+ common commands (git, test runners, linters, docker, …), generic `rtk test` / `rtk err` wrappers, and an install mode that hooks the agent's shell so commands are rewritten transparently. Used by `afs-run` where it has a filter, or directly. Only shell commands go through it; built-in file read/search tools do not. | Local and remote (installed in setup steps) — to be verified |
-| **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` in the coding agent and the CLI. A `preToolUse` hook **denies** unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with a message telling the agent to use `afs-run`. Deny-with-guidance works whether or not a hook can rewrite commands. A `sessionEnd` hook checks that a handoff or a PR exists. | Copilot coding agent, Copilot CLI (Claude Code has equivalent hooks for local use) |
-| **d. Context compression proxy: Headroom** (Apache-2.0) | Sits between the agent and the model API, compressing tool outputs and other content, with originals retrievable on demand. Optional, **local only**: the Copilot coding agent's model traffic is hosted by GitHub, so a proxy cannot be inserted there. Lossless modes only for implementers. | Local agents, if evaluation shows a benefit |
+| **a. `afs-run` wrapper** (harness tool) | Thin wrapper every agent uses to run commands. Routes through RTK (layer b) when it has a filter for the command, else through `rtk test` / `rtk err`; points RTK's full-output store at `.migration/runs/<ticket>/` (gitignored) so the raw log is a file that gate evidence can link to; prints the compact result plus the log path. | Everywhere (local and remote), any language |
+| **b. Filter engine: RTK** ([rtk-ai/rtk](https://github.com/rtk-ai/rtk)) | Single-binary CLI proxy with compact filters for 100+ commands. **Maven and Gradle are supported** (`rtk mvn`, `./mvnw`, `mvnd`, `rtk gradlew`/`gradle`): Surefire/Failsafe passing blocks are dropped and only failing tests are kept with framework stack frames stripped; the project's own fixtures assert ≥90% savings for `mvn test` and ≥85% for `mvn install`. Raw output stays recoverable (`[full output: rtk recall <hash>]`, or files in tee mode). Only shell commands go through it; built-in file read/search tools do not. | Local and remote (binary installed in setup steps) |
+| **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` (coding agent and CLI). `rtk init --copilot` writes `.github/hooks/rtk-rewrite.json`, a `preToolUse` hook that **rewrites** commands transparently in VS Code and **denies with a suggested `rtk` command** in the Copilot CLI (whose hook API cannot rewrite). The harness adds its own `preToolUse` rules that deny unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with guidance to use `afs-run`, and a `sessionEnd` hook that checks a handoff or PR exists. Deny-with-guidance works whether or not rewriting is available. | Copilot CLI, VS Code, Copilot coding agent (to be confirmed: RTK documents VS Code and the CLI only) |
+
+**RTK facts** (verified from source at `6c2313a`, v0.49.0, 2026-10-30):
+- License: the CLI crate is Apache-2.0, but the default build links `rtk-engine`, which is BUSL-1.1
+  with a grant allowing free production use; it does not allow offering it to third parties as a paid
+  or hosted product. If AI Factory Swarm is ever offered as a hosted service, build RTK with
+  `--no-default-features` (the Apache-2.0 hook core) or get a license.
+- RTK also installs `.github/copilot-instructions.md` guidance telling agents to prefix commands with
+  `rtk`; the harness merges that into its own instructions instead of letting it overwrite them.
+- Context compression proxies (e.g. Headroom) are **out of scope** for this project.
 
 ### 5. Subagents as context firewalls
 Heavy reading or searching (exploring a module, chasing a failure across files) goes to a short-lived
@@ -53,11 +61,11 @@ essentials and close by repeating the acceptance checklist.
 ### 7. Detect and measure
 - Warning signs: the same failure twice (existing stop rule), edits outside the ticket's files,
   re-reading the same files, drift from acceptance criteria.
-- Per-ticket metrics: tokens, restarts, gate failures, output bytes kept out of context (`afs-run`
-  and RTK both report this). Fed back into ticket sizing.
+- Per-ticket metrics: tokens, restarts, gate failures, output bytes kept out of context (`rtk gain`
+  reports this). Fed back into ticket sizing.
 
 ## Consequences
 - Full output is never lost: it is on disk and linked as evidence, so gates stay auditable.
-- `afs-run` is a small harness tool to build in M2; RTK and Headroom are evaluated in spike M1-d
-  before being adopted.
+- `afs-run` is a thin harness tool over RTK, built in M2; spike M1-d measures RTK on pilot output and
+  confirms hook behavior in the Copilot coding agent.
 - Budgets and limits are operator-set profile values, tuned during the pilot (M5/M6).
