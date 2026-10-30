@@ -1,5 +1,8 @@
 # Glossary
 
+**afs-run** — Harness wrapper that runs a command, keeps its full output on disk, and gives the agent
+only a compact summary. See ADR-0015.
+
 **Built-in skill menu** — Language-agnostic skills shipped with the harness and installed into every
 target: planning, domain and design, architecture, refactoring, build, review, debugging, research and
 the code graph. See ADR-0012.
@@ -46,6 +49,9 @@ verification rung, evidence and approvals. One file per capability in `.migratio
 running legacy application before cutover.
 
 **Frontier** — Open, unblocked, unclaimed tickets: the work that can be picked up now.
+
+**Handoff** — A ticket comment an agent writes before ending at its context soft limit: what is done,
+what remains, decisions, failing commands with log paths, next step. A fresh agent resumes from it.
 
 **Harness** — This repository: the generic role agents, skills, templates and bootstrap that run a
 migration.

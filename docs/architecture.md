@@ -77,6 +77,7 @@ humans, and approved for cutover.
 | 12 | Built-in skill menu + required-capability checklist; gaps are resolved by the operator before migration starts | [0012](adr/0012-skill-menu-and-capability-gaps.md) |
 | 13 | A best-effort CRAP risk map of the source guides characterization, planning and refactoring; it never blocks | [0013](adr/0013-source-risk-map.md) |
 | 14 | UI: functional fidelity is mandatory; visual direction (keep or modernize) is decided on the map | [0014](adr/0014-ui-functional-fidelity-visual-direction-by-decision.md) |
+| 15 | Context budget per agent, checkpoint-and-restart, and tool output kept on disk behind wrappers and hooks | [0015](adr/0015-context-budget-and-output-hygiene.md) |
 
 ---
 
@@ -122,6 +123,7 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 ├── .github/agents/               # role agents, pinned copy from harness
 ├── .agents/skills/               # skill menu + stack skills resolved by the profile, pinned
 ├── .migration/
+│   ├── runs/                     # full command logs from afs-run (gitignored; linked as evidence)
 │   ├── profile.yaml              # the migration profile (§7)
 │   ├── source.lock               # source repo URL + pinned SHA
 │   ├── capabilities.yaml         # required-capability checklist and how each is met (§6)
@@ -605,6 +607,13 @@ into the graph on demand.
 
 Remote workers get a read-only checkout of the source at the pinned SHA in their setup steps.
 
+**Context management** ([ADR-0015](adr/0015-context-budget-and-output-hygiene.md)). No agent runs a long
+session: one ticket per fresh session, tickets sized to an operator-set working budget, and a
+checkpoint-and-restart handoff at a soft limit. Tool output stays on disk: commands run through the
+`afs-run` wrapper (full log to `.migration/runs/`, compact summary to the agent), with RTK as the filter
+engine where it has a filter, Copilot `preToolUse` hooks that deny unbounded commands with guidance, and
+Headroom as an optional local compression proxy.
+
 **Concurrency rules.**
 - Parallelize only tickets with no dependency edge and no shared files.
 - One PR per ticket; per-capability ledger files keep parallel PRs from conflicting.
@@ -686,3 +695,4 @@ that pins the chosen behavior.
 | Mutation testing is slow | Changed code per PR; full runs only at slice acceptance |
 | Vendored skills drift from upstream | Pinned commits; harness release notes record upgrades |
 | Copilot coding agent limits (plan, quotas, environment) | Local dispatch is always available; mix is operator-set |
+| Context rot in long-running agents | One ticket per fresh session, working budget, checkpoint-and-restart, output hygiene (ADR-0015) |
