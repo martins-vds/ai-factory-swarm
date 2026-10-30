@@ -46,6 +46,11 @@ Enforced in three layers, from deterministic to enforcing:
   product. AI Factory Swarm is a free, public project and does not redistribute RTK (setup steps
   install it from RTK's own releases), so this is fine. If anyone ever offers the swarm as a paid or
   hosted service, they must build RTK with `--no-default-features` (Apache-2.0 only) or license it.
+- **Decision: pin `rtk-oss`.** Every RTK release ships `rtk-oss`, the Apache-2.0 edition (same `rtk`
+  binary, built without the BUSL engine). The harness installs that edition, which removes the
+  licensing question; switch only if a measured feature gap appears.
+- Spike M1-4 (RTK 1.1.0): 74–90% smaller pytest output with failures still diagnosable, 80% for
+  `git status`, ~50% for `git log` and Maven failures, and `rtk recall` restored full output.
 
 ### 4a. Copilot instructions: two marked blocks, one file
 `rtk init --copilot` does not overwrite `.github/copilot-instructions.md`: it inserts or updates only

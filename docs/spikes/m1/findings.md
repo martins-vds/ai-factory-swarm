@@ -76,9 +76,10 @@ source is frozen (ADR-0009), but it should be budgeted.
 `com.oracle.wlserver:wlfullclient:12.2.1` (proprietary WebLogic client, not in Maven Central);
 `toolkit-ejb` fails on an unreadable POM (internal parent/Nexus). So there is no source coverage.
 - ADR-0013 is confirmed: the risk map must not depend on a build.
-- New for ADR-0005: **characterization cannot assume the legacy app builds** in a public runner. The
-  Characterizer needs a running legacy environment (ops-provided), or access to the organization's
-  repository manager. This is a bootstrap capability to check up front.
+- New for ADR-0005: **characterization cannot assume the legacy app builds or runs.** Sometimes only
+  the source exists, so characterization is chosen by tier (running environment / runnable in
+  isolation / source-only specs). Note the missing WebLogic client is `provided` scope — needed to
+  compile, not shipped — which suggests tier B (compile against public API artifacts) is feasible.
 
 **Target gate on a Python stub** (mutmut 3.8.1, coverage 7.17):
 
@@ -122,12 +123,13 @@ BUSL question entirely.
 
 ---
 
-## Proposed decision updates
+## Decision updates (applied)
 
 | ADR | Change |
 |---|---|
 | 0009 | Add the Analyst enrichment step (tags + config → ledger kinds and screen/data chains); pin Understand Anything with the frontmatter patch; record the cost and time per file as a budgeting input. |
-| 0005 | Characterization needs a running legacy environment or access to the organization's repository manager; add it to the bootstrap capability checklist. |
+| 0005 | Revised: characterization by **tier** — A running environment, B runnable in isolation (public API artifacts / stand-ins), C source-only specs (`spec-derived`); tier recorded by bootstrap. ADR-0006 gains the no-environment fallback. |
 | 0013 | Exclusion globs for vendored, minified and generated code in the profile. |
 | 0015 | Pin RTK's Apache-2.0 edition (`rtk-oss`). |
-| 0008 / roadmap | Spike 1 showed `GITHUB_TOKEN` + `copilot-requests: write` works for SDK-driven agents in Actions: a second remote-dispatch path besides assigning issues to the coding agent. |
+| 0012 | The capability checklist records the characterization tier and what blocks the build. |
+| 0008 | Spike 1 showed `GITHUB_TOKEN` + `copilot-requests: write` works for SDK-driven agents in Actions: a second remote-dispatch path besides assigning issues to the coding agent. |

@@ -26,6 +26,9 @@ CRAP analysis or mutation testing for a less common language, may have no availa
 - Each capability is met from the menu, then via `find-skills`. **An unmet capability is an operator
   ticket that blocks Phase 2.** The operator finds a skill, writes one (e.g. with `skill-creator`),
   or records an approved waiver. Bootstrap is deliberately not fully automated.
+- The checklist also records the **characterization tier** (ADR-0005): whether a running legacy
+  environment exists, whether the source can be built (and what proprietary dependencies block it), and
+  therefore which tier applies.
 - Results are recorded in the target's `.migration/capabilities.yaml`.
 
 ## Consequences

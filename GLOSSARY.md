@@ -14,6 +14,10 @@ The unit of the fidelity ledger.
 **Capability gap** — A required capability (e.g. mutation testing for the target stack) with no skill
 or tool available. Becomes an operator ticket that blocks migration until resolved.
 
+**Characterization tier** — How behavior is captured, chosen in bootstrap from what is available:
+A (running legacy environment), B (source runnable in isolation), C (source only: specs derived from
+the code). See ADR-0005.
+
 **Characterization test** — A test that records what the source currently does (inputs → observable
 outputs) without judging whether it is correct, then replays those cases against the target.
 
@@ -73,6 +77,9 @@ needs a human tester's sign-off before cutover.
 
 **Risk map** — A best-effort CRAP ranking of the source that guides characterization, planning and
 refactoring. Never blocks. See ADR-0013.
+
+**Spec-derived** — Ledger verification for behavior derived by reading the source (tier C) and encoded
+as target tests; weaker than characterization and reviewed by a human.
 
 **Slice** — A vertical, end-to-end path through every layer, anchored on an observable entry point,
 that can be tested on its own. Broken into slice tickets sized for one agent session.

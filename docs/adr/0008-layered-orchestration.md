@@ -22,6 +22,11 @@ GitHub Copilot custom agents (`.github/agents/*.agent.md`).
 - All state lives in the tracker and `.migration/`; every operation is idempotent and resumable from
   the ticket alone.
 
+- **Second remote path (spike M1-1):** a GitHub Actions job can run a role agent through the Copilot
+  SDK using the workflow's own `GITHUB_TOKEN` with `copilot-requests: write` — no personal token. Use it
+  for batch-style roles (Analyst, Auditor, Characterizer runs); use issue assignment for ticket-driven
+  roles that deliver PRs.
+
 ## Consequences
 - No agent needs the whole migration in context.
 - Behavior cannot change mid-migration through an org-level edit; harness upgrades are explicit PRs.

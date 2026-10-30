@@ -24,6 +24,11 @@ be difficult to automate, but not impossible, and human attention is expensive.
 - Release as a **single cutover**. The legacy application stays available until cutover is accepted;
   that is the rollback path.
 
+- **When no legacy environment exists** (characterization tier B or C, ADR-0005), there is nothing to
+  run side by side. Automated checks run against the characterization tests and derived specs; the
+  per-slice human check and final UAT compare the target against those specs with a domain expert,
+  and the ledger records the weaker evidence.
+
 ## Consequences
 - No interop bridges between old and new code are needed.
 - The two applications' data diverge during side-by-side periods; comparisons start from the same

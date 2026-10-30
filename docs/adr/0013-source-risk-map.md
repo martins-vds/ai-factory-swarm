@@ -24,6 +24,10 @@ CRAP tooling may fail on it.
     (`improve-codebase-architecture`, `codebase-design`, `domain-modeling`, refactoring skills)
     instead of translating them.
 
+- **Exclusions.** Vendored, minified and generated code is excluded (globs in the migration profile);
+  in spike M1-3 minified jQuery otherwise took the top three spots. With exclusions, the pilot's
+  10,845 methods scanned in 6 s, 699 (6.4%) above CRAP 30 with no coverage.
+
 ## Consequences
 - Risk becomes visible early and shapes the plan.
 - The source is never changed; all refactoring happens in the target.
