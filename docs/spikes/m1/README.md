@@ -104,25 +104,32 @@ score on the stub.
 
 ## Spike 4 (M1-d) — Can we keep tool output out of agents' context?
 
-**Questions:** how much do RTK's filters shrink real pilot output (Maven build/test, pytest, git)? Does
-a Copilot `preToolUse` hook reliably deny unbounded commands and steer the agent to the wrapper? Does
-Headroom help a local agent without hurting accuracy?
+**Questions:** how much does RTK shrink real pilot output (Maven build/test, pytest, git) while keeping
+failures diagnosable? How does RTK's Copilot `preToolUse` hook behave in the **Copilot coding agent**
+(RTK documents transparent rewrite in VS Code and deny-with-suggestion in the Copilot CLI; the coding
+agent is not documented)?
 
 ```bash
-# RTK (single binary; see https://github.com/rtk-ai/rtk for install options)
-rtk --version
-rtk test mvn -q test          # in a pilot module that builds; compare with the raw output size
-rtk err mvn -q package
+# Local: install RTK (https://github.com/rtk-ai/rtk — brew, install.sh, or cargo)
+rtk --version                 # expect 0.49.x or later
+rtk mvn -q test               # in a pilot module that builds; compare with plain `mvn -q test`
+rtk mvn package
 rtk pytest                    # on the Python stub from spike 3
 rtk gain                      # tokens saved
-
-# Copilot hook (in ai-factory-pilot-target, on a branch): add .github/hooks/afs-output.json with a
-# preToolUse hook that denies e.g. `mvn test` / `pytest` / `cat` of files > 200 lines unless wrapped,
-# returning a reason that says "use afs-run". Then give the probe agent a task that tempts a raw run.
+rtk recall <hash>             # check that the full output comes back from the hint
 ```
 
-**Record:** raw vs filtered sizes per command; whether failures stay fully diagnosable from the summary
-plus the saved log; whether the hook was honored (and whether it can rewrite, or only deny); Headroom
-results if tried.
+**Copilot coding agent** (in ai-factory-pilot-target, on a branch):
+1. Run `rtk init --copilot` in the repo: it writes `.github/hooks/rtk-rewrite.json` and a block in
+   `.github/copilot-instructions.md`. Review both before committing.
+2. Add an RTK install step to `.github/workflows/copilot-setup-steps.yml` (download the Linux release
+   binary) so `rtk` is on the agent's PATH.
+3. Merge to the default branch (hooks and setup steps only apply from there), then assign an issue
+   that requires running `mvn test` on the source.
+4. In the session log, check whether the command was rewritten to `rtk mvn …` or denied with a
+   suggestion, and whether the agent then ran the `rtk` form.
 
-**Decision it informs:** ADR-0015 (which layers become mandatory).
+**Record:** raw vs filtered sizes per command; whether failures stay fully diagnosable from the summary
+plus the recalled log; the coding agent's hook behavior (rewrite / deny-with-suggestion / ignored).
+
+**Decision it informs:** ADR-0015 (how `afs-run` and the hooks are wired).
