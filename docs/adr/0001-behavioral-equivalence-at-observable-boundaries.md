@@ -14,7 +14,8 @@ architecture, dependency injection, clean code, design patterns), which rules ou
 Choose (c). Equivalence is judged at the **equivalence boundary**: API requests and responses, UI
 screens, flows and states, persisted data, published messages, produced files, external-system
 calls, scheduled-job effects, error responses and authorization decisions. Behind the boundary the
-target is free to differ completely.
+target is free to differ completely. For the UI, what users can do is inside the boundary; how it looks
+is decided separately (ADR-0014).
 
 ## Consequences
 - Verification must observe behavior at the boundary (characterization tests, side-by-side runs);

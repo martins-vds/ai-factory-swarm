@@ -44,6 +44,10 @@ Every agent carries this contract in context at all times:
 - **Behind the boundary**, the target is idiomatic for the new stack and follows modern design:
   domain-driven design, clean architecture, dependency injection, clean code and appropriate design
   patterns. Structural similarity to the source is *not* a goal.
+- **The UI is always rewritten in the target's front-end stack.** What users can *do* (screens,
+  fields, flows, validations, states, permissions) is inside the boundary and must match. How it
+  *looks* (visual design, design system) is a human decision on the decision map: keep the current
+  look or modernize it ([ADR-0014](adr/0014-ui-functional-fidelity-visual-direction-by-decision.md)).
 - **Quirks and bugs** discovered in the source are never silently preserved and never silently
   fixed. They are raised to a human **at the moment of discovery** ([ADR-0007](adr/0007-quirks-escalate-immediately.md)).
 - **Lose nothing silently.** Every capability of the source is migrated or explicitly documented as
@@ -72,6 +76,7 @@ humans, and approved for cutover.
 | 11 | CRAP and mutation testing are mandatory quality gates on the target | [0011](adr/0011-crap-and-mutation-gates.md) |
 | 12 | Built-in skill menu + required-capability checklist; gaps are resolved by the operator before migration starts | [0012](adr/0012-skill-menu-and-capability-gaps.md) |
 | 13 | A best-effort CRAP risk map of the source guides characterization, planning and refactoring; it never blocks | [0013](adr/0013-source-risk-map.md) |
+| 14 | UI: functional fidelity is mandatory; visual direction (keep or modernize) is decided on the map | [0014](adr/0014-ui-functional-fidelity-visual-direction-by-decision.md) |
 
 ---
 
@@ -145,7 +150,7 @@ Roles evolve from PR #6's seven agents. New roles are marked ★.
 | **Planner** | L1 | Proposes vertical slices from the graph, ledger and risk map, with dependency edges and sizing; includes data-migration slices. | Draft slice plan |
 | ★ **Slice Coordinator** | L1 | Owns one slice end to end: sequences its tickets on the frontier, dispatches workers, runs slice acceptance, keeps the ledger in sync. | Tracker comments, evidence |
 | **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. | Target code (one PR per ticket) |
-| **Specialist Migrator** | L2 | Profile-defined specialists: **data migration** (§11), UI, messaging, etc. PR #6's DB Migrator becomes the data specialist. | Target code, data pipeline |
+| **Specialist Migrator** | L2 | Profile-defined specialists: **data migration** (§11), **UI** (rebuilds screens in the target front end following the chosen UI direction, with `ui-ux-pro-max`), messaging, etc. PR #6's DB Migrator becomes the data specialist. | Target code, data pipeline |
 | **Verifier** | L2 | Fresh context, no builder reasoning. Runs the per-PR gates (§10.3), including CRAP and mutation on changed code; adds tests where coverage or mutation score is short. Reports, never fixes production code. | Tests, evidence |
 | **Auditor** | L1 / L0 | Read-only, first-principles. Per slice: capability coverage and differential checks. Final: full bidirectional audit and the A–G report. Ignores progress labels. | Evidence report |
 
@@ -188,8 +193,8 @@ flowchart TB
 ```
 
 ### Phase 0 — Intake (Program Orchestrator)
-Record the source repo URL and **pinned SHA**, target repo, target stack and version, tracker, data
-stores, and who takes production snapshots (usually the operations team). Write
+Record the source repo URL and **pinned SHA**, target repo, target stack and version — **back end and
+front end** — tracker, data stores, and who takes production snapshots (usually the operations team). Write
 `.migration/source.lock`.
 
 ### Phase 1 — Bootstrap (Bootstrapper)
@@ -230,8 +235,10 @@ Mandatory, before any migration ([ADR-0005](adr/0005-characterization-first.md))
 
 ### Phase 4 — Chart & plan (Program Orchestrator + Planner)
 1. **Chart the decision map** with `wayfinder` (human-triggered): target architecture and bounded
-   contexts, library and idiom mappings, data model and migration strategy, cross-cutting concerns.
-   Decisions land as ADRs and glossary entries in the target repo.
+   contexts, library and idiom mappings, data model and migration strategy, cross-cutting concerns,
+   and the **UI direction**: keep the current look or modernize it, and if modernizing, the design
+   system. The UI direction is a `wayfinder:prototype` ticket that uses `ui-ux-pro-max` to produce
+   options for a human to choose from. Decisions land as ADRs and glossary entries in the target repo.
 2. **Draft slices.** Vertical paths through every layer, anchored on an observable entry point and
    testable end to end against their characterization tests. Dependencies come from graph edges;
    shared foundations (domain model, persistence, auth) come first. **Data-migration slices** are
@@ -304,7 +311,9 @@ skill set used by PR #6; skills marked *(candidate)* are evaluated in milestone 
 | Runtime & environments | `docker-expert` *(hackathon)* | sickn33/antigravity-awesome-skills |
 | | `multi-stage-dockerfile` *(hackathon)* | github/awesome-copilot |
 | | `docker-compose-orchestration` *(hackathon)* | manutej/luxor-claude-marketplace |
+| UI design | `ui-ux-pro-max` (design systems, UX and accessibility rules, per-stack guidance; needs Python 3 for its search scripts) *(hackathon)* | nextlevelbuilder/ui-ux-pro-max-skill |
 | UI end-to-end | `agent-browser` (web UIs) *(hackathon)* | vercel-labs/agent-browser |
+| Data | `db-seed` (realistic, FK-ordered, idempotent seed data; SQL Server and Oracle today, extend with more engine references as needed) *(hackathon)* | code-migration-hackathon (local) |
 | Documentation | `documentation-writer` (Diátaxis) *(hackathon)* | github/awesome-copilot |
 | Memory | `lessons-learned` *(hackathon)* | code-migration-hackathon (local) |
 | Capability gaps | `find-skills` *(hackathon)* | vercel-labs/skills |
@@ -317,7 +326,14 @@ skill set used by PR #6; skills marked *(candidate)* are evaluated in milestone 
 The harness **migration contract** is generalized from PR #6's `migrating-java-to-django` references
 (methodology, validation metrics, graph comparison, final verification), with the Java/Django specifics
 moved into the reference stack pack. The Docker skills support the characterization harness, the second
-legacy instance and the side-by-side environments.
+legacy instance and the side-by-side environments. `db-seed` generates data for characterization and
+test environments when no production snapshot is available, and for target test databases; supporting
+a new engine (e.g. PostgreSQL) means adding an engine reference to it, handled as a capability gap.
+
+The four Superpowers skills were checked against upstream (`obra/superpowers` `2ce8aa1`, MIT): none
+references another skill, so each works on its own; other Superpowers skills reference *them*, which
+does not matter here. Pin the **upstream** versions, not the older hackathon copies (the hackathon
+`using-git-worktrees` still defaults to a `~/.config/superpowers/` path).
 
 **Not taken from the hackathon set, and why:**
 
@@ -326,9 +342,8 @@ legacy instance and the side-by-side environments.
 | `brainstorming`, `writing-plans`, `executing-plans`, `subagent-driven-development`, `finishing-a-development-branch`, `using-superpowers`, all `speckit-superb-*` | Competing planning/execution spine; Matt Pocock's skills are the spine (ADR-0003) |
 | `test-driven-development`, `systematic-debugging`, `requesting-code-review` | Duplicates of `tdd`, `diagnosing-bugs`, `code-review` |
 | `create-architectural-decision-record` | `domain-modeling` already writes ADRs to `docs/adr/` |
-| `ui-ux-pro-max` | UI redesign conflicts with UI fidelity; add through the profile only when a redesign is approved |
 | `pdf`, `docx`, `xlsx` | Anthropic proprietary license: cannot be redistributed into target repos; use them only where the agent platform already provides them |
-| `java-docs`, `java-junit`, `django-*`, `pytest-coverage`, `python-performance-optimization`, Oracle/PostgreSQL skills, `db-seed` | Language- or stack-specific: belong in stack packs, selected by the profile |
+| `java-docs`, `java-junit`, `django-*`, `pytest-coverage`, `python-performance-optimization`, Oracle/PostgreSQL skills | Language- or stack-specific: belong in stack packs, selected by the profile |
 | `migrating-java-to-django` | Stack-specific; its references become the harness migration contract |
 
 ### 6.2 Required-capability checklist
@@ -530,6 +545,8 @@ workstream ([ADR-0010](adr/0010-data-migration-workstream.md)):
   data, linked by blocking edges.
 - **Production copy:** the operations team provides a snapshot; the pipeline turns it into the
   target's copy for side-by-side checks. Every refresh doubles as a cutover rehearsal.
+- **Seed data:** where no snapshot is available (e.g. early characterization or test environments),
+  `db-seed` generates realistic, foreign-key-ordered seed data.
 - **Masking:** nice to have. If a masking step is available it runs on the snapshot before the
   pipeline (`profile.data.masking`).
 

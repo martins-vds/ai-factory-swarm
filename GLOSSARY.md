@@ -74,6 +74,10 @@ that can be tested on its own. Broken into slice tickets sized for one agent ses
 **Slice acceptance** — Closing a slice: end-to-end characterization, differential checks, full
 mutation run, capability coverage, and a human side-by-side check.
 
+**UI direction** — The Phase 4 decision on the target UI's look: keep the current look, or modernize
+it with a chosen design system. What users can do in the UI must match the source either way. See
+ADR-0014.
+
 **Source** — The legacy application's repository; read-only, frozen and pinned to a commit SHA.
 
 **Target** — The new application's repository; also holds all migration state and the pinned agents.

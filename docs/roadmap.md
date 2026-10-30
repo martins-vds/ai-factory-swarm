@@ -6,7 +6,7 @@ the app PR #6 was built for, migrating Java → Python/Django.
 
 | Milestone | Scope | Done when |
 |-----------|-------|-----------|
-| **M0 · Design** | Architecture, ADRs 0001–0013, glossary, this roadmap | Merged to `main` ✅ |
+| **M0 · Design** | Architecture, ADRs 0001–0014, glossary, this roadmap | Merged to `main` ✅ |
 | **M1 · Spikes** | (a) Run Understand Anything (`/understand`, `/understand-domain`) on the pilot source; confirm the node/edge types the ledger needs appear (endpoints, screens, tables, flows, `tested_by`) and measure time and cost. (b) Assign a test issue to the Copilot coding agent with a custom agent and a read-only source checkout in setup steps. (c) Run CRAP and PIT mutation testing on the pilot source and a Python target stub. | Findings recorded in `docs/spikes/`; architecture amended if anything contradicts it |
 | **M2 · Harness skeleton** | Repo layout; JSON Schemas for `profile.yaml`, `capabilities.yaml` and ledger entries; evaluate and pin the built-in skill menu (mattpocock/skills, hackathon-sourced skills, ciembor/agent-rules-books candidates), confirm each license allows redistribution, and resolve overlaps (e.g. `architecture-patterns` vs ciembor's architecture rules); vendor `afs-` copies of user-invoked skills | Schemas validate sample files in CI; menu pinned |
 | **M3 · Role agents** | The ten role agents as `.agent.md` files, generalized from PR #6, plus harness skills (migration contract, ledger/evidence writers, quirk ticket, lessons learned) | Agent files reviewed; each has a return contract |
