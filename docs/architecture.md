@@ -609,10 +609,11 @@ Remote workers get a read-only checkout of the source at the pinned SHA in their
 
 **Context management** ([ADR-0015](adr/0015-context-budget-and-output-hygiene.md)). No agent runs a long
 session: one ticket per fresh session, tickets sized to an operator-set working budget, and a
-checkpoint-and-restart handoff at a soft limit. Tool output stays on disk: commands run through the
-`afs-run` wrapper over RTK (full log to `.migration/runs/`, compact summary to the agent; RTK filters
-Maven, Gradle and 100+ other commands), and Copilot `preToolUse` hooks that rewrite or deny unbounded
-commands with guidance.
+checkpoint-and-restart handoff at a soft limit. Tool output stays out of context: shell commands go through RTK
+(compact output for Maven, Gradle and 100+ other commands, full output recoverable), gate runs go
+through the `afs-run` wrapper (RTK plus a raw log in `.migration/runs/` for evidence), and Copilot
+`preToolUse` hooks rewrite or deny unbounded commands with guidance. RTK and the harness each keep
+their own marked block in `.github/copilot-instructions.md`.
 
 **Concurrency rules.**
 - Parallelize only tickets with no dependency edge and no shared files.

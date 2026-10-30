@@ -1,7 +1,7 @@
 # Glossary
 
-**afs-run** — Harness wrapper that runs a command, keeps its full output on disk, and gives the agent
-only a compact summary. See ADR-0015.
+**afs-run** — Harness wrapper for gate runs: runs the command through RTK, saves the raw log under
+`.migration/runs/` for evidence, and gives the agent only the compact result. See ADR-0015.
 
 **Built-in skill menu** — Language-agnostic skills shipped with the harness and installed into every
 target: planning, domain and design, architecture, refactoring, build, review, debugging, research and

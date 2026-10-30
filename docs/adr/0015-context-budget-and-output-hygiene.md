@@ -36,17 +36,32 @@ Enforced in three layers, from deterministic to enforcing:
 
 | Layer | What | Where it works |
 |-------|------|----------------|
-| **a. `afs-run` wrapper** (harness tool) | Thin wrapper every agent uses to run commands. Routes through RTK (layer b) when it has a filter for the command, else through `rtk test` / `rtk err`; points RTK's full-output store at `.migration/runs/<ticket>/` (gitignored) so the raw log is a file that gate evidence can link to; prints the compact result plus the log path. | Everywhere (local and remote), any language |
+| **a. RTK for every shell command, `afs-run` for gate runs** | Agents prefix shell commands with `rtk` (enforced by layer c). Gate runs (build, tests, CRAP, mutation) go through the harness's thin `afs-run` wrapper, which calls RTK and also saves the raw log to `.migration/runs/<ticket>/` (gitignored) so gate evidence can link to a file; it prints RTK's compact result plus the log path. | Everywhere (local and remote), any language |
 | **b. Filter engine: RTK** ([rtk-ai/rtk](https://github.com/rtk-ai/rtk)) | Single-binary CLI proxy with compact filters for 100+ commands. **Maven and Gradle are supported** (`rtk mvn`, `./mvnw`, `mvnd`, `rtk gradlew`/`gradle`): Surefire/Failsafe passing blocks are dropped and only failing tests are kept with framework stack frames stripped; the project's own fixtures assert ≥90% savings for `mvn test` and ≥85% for `mvn install`. Raw output stays recoverable (`[full output: rtk recall <hash>]`, or files in tee mode). Only shell commands go through it; built-in file read/search tools do not. | Local and remote (binary installed in setup steps) |
 | **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` (coding agent and CLI). `rtk init --copilot` writes `.github/hooks/rtk-rewrite.json`, a `preToolUse` hook that **rewrites** commands transparently in VS Code and **denies with a suggested `rtk` command** in the Copilot CLI (whose hook API cannot rewrite). The harness adds its own `preToolUse` rules that deny unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with guidance to use `afs-run`, and a `sessionEnd` hook that checks a handoff or PR exists. Deny-with-guidance works whether or not rewriting is available. | Copilot CLI, VS Code, Copilot coding agent (to be confirmed: RTK documents VS Code and the CLI only) |
 
 **RTK facts** (verified from source at `6c2313a`, v0.49.0, 2026-10-30):
-- License: the CLI crate is Apache-2.0, but the default build links `rtk-engine`, which is BUSL-1.1
-  with a grant allowing free production use; it does not allow offering it to third parties as a paid
-  or hosted product. If AI Factory Swarm is ever offered as a hosted service, build RTK with
-  `--no-default-features` (the Apache-2.0 hook core) or get a license.
-- RTK also installs `.github/copilot-instructions.md` guidance telling agents to prefix commands with
-  `rtk`; the harness merges that into its own instructions instead of letting it overwrite them.
+- License: the CLI crate is Apache-2.0, but the default build links `rtk-engine` (BUSL-1.1) under a
+  grant that allows free production use and forbids offering it to third parties as a paid or hosted
+  product. AI Factory Swarm is a free, public project and does not redistribute RTK (setup steps
+  install it from RTK's own releases), so this is fine. If anyone ever offers the swarm as a paid or
+  hosted service, they must build RTK with `--no-default-features` (Apache-2.0 only) or license it.
+
+### 4a. Copilot instructions: two marked blocks, one file
+`rtk init --copilot` does not overwrite `.github/copilot-instructions.md`: it inserts or updates only
+its own block between `<!-- rtk-instructions v2 -->` and `<!-- /rtk-instructions -->`, leaves the rest
+of the file untouched, and does nothing if the block is current. The harness does the same:
+- Bootstrap writes the harness's block between `<!-- afs-instructions vN -->` and
+  `<!-- /afs-instructions -->`, then runs the **pinned** `rtk init --copilot`. Neither touches the
+  other's block, and any team content outside both blocks is preserved.
+- The harness block comes first and says how the two fit together: use `rtk` for shell commands as
+  RTK's block says; use `afs-run` for gate runs; if anything conflicts, the harness block wins.
+- The harness block stays short (it is loaded into every session); role-specific guidance lives in
+  the `.github/agents/*.agent.md` files.
+- CI guards against drift: `rtk init --copilot --dry-run` and the harness generator in check mode
+  must both report no changes, and the RTK version is pinned in the migration profile. Upgrading RTK
+  is an explicit PR that re-runs both.
+
 - Context compression proxies (e.g. Headroom) are **out of scope** for this project.
 
 ### 5. Subagents as context firewalls
