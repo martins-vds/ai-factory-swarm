@@ -2,13 +2,14 @@
 
 Runs on GitHub-hosted runners in [ai-factory-pilot-target](https://github.com/martins-vds/ai-factory-pilot-target)
 (branch `spikes/m1-run`, workflow `spikes-m1.yml`), 2026-10-30. Raw results are committed on that branch
-under `spike-results/` (run 4 for spikes 1 and 3, run 5 for spike 4). Source: code-migration-hackathon
+under `spike-results/` (run 4 for spikes 1 and 3, run 5 for spike 4). Spike 2 ran as Copilot coding
+agent sessions on issues #1 and #3 (reports in PRs #2 and #4). Source: code-migration-hackathon
 `c2df760`, folder `java/`.
 
 | Spike | Status | Headline |
 |-------|--------|----------|
 | 1 · Graph | ✅ ran | Works via the Copilot SDK with the Actions token, after a one-line skill fix. Business flows are excellent; screens and tables appear as tags, not typed nodes. |
-| 2 · Remote agent | ⏳ pending | Needs an issue assigned to Copilot with the `afs-spike-probe` agent |
+| 2 · Remote agent | ✅ ran | Pinned, read-only source works in the Copilot coding agent; RTK's hook rewrites commands there transparently. The probe also surfaced a real quirk. |
 | 3 · CRAP / mutation | ✅ ran | Source risk map in 6 s with no build. Legacy build cannot run outside the org. Mutation testing catches what coverage hides. |
 | 4 · RTK | ✅ ran | 50–90% smaller output, failures stay diagnosable, full output recoverable. Apache-only edition available. |
 
@@ -58,6 +59,38 @@ source is frozen (ADR-0009), but it should be budgeted.
   build the screen → bean → service → entity chain from imports plus config. `check_graph.py` should
   learn to read tags.
 - Pin Understand Anything and apply the frontmatter patch in the harness.
+
+## Spike 2 — Remote worker with a read-only, pinned source
+
+**Setup.** Issue assigned to the Copilot coding agent via the REST API (`copilot-swe-agent[bot]`; the API
+did not let us pick the custom agent, so the issue pointed the default agent at the probe agent file).
+`copilot-setup-steps.yml` checks the source out into `.source/` at the pinned SHA with a read-only token,
+disables its push URL, makes it read-only, and installs `rtk-oss`.
+
+| Check | Result |
+|---|---|
+| Source at the pinned SHA (`c2df760`) | ✅ PASS |
+| Source readable (page and bean config inspected) | ✅ readable — and see the quirk below |
+| Filesystem write blocked (`touch .source/PROBE` → Permission denied) | ✅ PASS |
+| Push blocked (push URL disabled) | ✅ PASS |
+| `.source/` never committed (ignored, absent from history) | ✅ PASS |
+| **RTK hook in the coding agent** | ✅ **transparent rewrite**: plain `git status` / `git log -n 5` ran as `rtk git status` / `rtk git log -n 5` with compact output |
+
+**Findings.**
+- **Setup secrets must be in the `copilot` environment.** The first session started before the token
+  existed; the checkout step failed and the session continued without the source (setup failures do not
+  stop the agent). The harness should make the agent verify its setup before working.
+- **Hooks come from the agent's branch, not `main`.** A session continuing an older PR branch did not see a
+  hook added to `main` later. New tickets branch from `main`, so this only affects long-lived PRs.
+- **RTK's hook file works as written** in the coding agent (PascalCase `PreToolUse`, `command` field) — the
+  format mismatch with GitHub's documented `preToolUse`/`bash` schema is not a problem in practice. Note that
+  `rtk init`'s instruction block was *not* installed, so the rewrite came from the hook alone.
+- **Agent environment:** no `gh` login, the git remote is a local proxy (the platform creates the PR and
+  comments for the agent), no `rg`. Context use for the probe: ~15–25% (agent's own estimate).
+- **A real quirk, found unprompted.** `admin/currency.jspx` resets four beans when the tab is clicked; one,
+  `searchCurrencyTableModel`, is declared nowhere in the codebase (likely a leftover from a removed search
+  feature). Under ADR-0007 a migrator may not silently drop it — it is exactly the kind of item that becomes
+  a quirk ticket for a human.
 
 ## Spike 3 — CRAP risk map and mutation testing
 
@@ -116,7 +149,7 @@ BUSL engine), **`rtk-oss` (Apache-2.0 edition: same binary name, built without t
 - **`rtk init --copilot` writes exactly two things:** `.github/hooks/rtk-rewrite.json` (one `PreToolUse`
   entry running `rtk hook copilot`) and a marked block in `.github/copilot-instructions.md`. This matches
   ADR-0015 §4a.
-- **Open:** whether the Copilot **coding agent** honors that hook (rewrite or deny), which spike 2 will show.
+- **Coding agent: confirmed** (spike 2) — the hook rewrites commands transparently there too.
 
 **Implication.** Pin `rtk-oss` for the public harness unless a measured feature gap appears. That avoids the
 BUSL question entirely.
@@ -130,6 +163,6 @@ BUSL question entirely.
 | 0009 | Add the Analyst enrichment step (tags + config → ledger kinds and screen/data chains); pin Understand Anything with the frontmatter patch; record the cost and time per file as a budgeting input. |
 | 0005 | Revised: characterization by **tier** — A running environment, B runnable in isolation (public API artifacts / stand-ins), C source-only specs (`spec-derived`); tier recorded by bootstrap. ADR-0006 gains the no-environment fallback. |
 | 0013 | Exclusion globs for vendored, minified and generated code in the profile. |
-| 0015 | Pin RTK's Apache-2.0 edition (`rtk-oss`). |
+| 0015 | Pin RTK's Apache-2.0 edition (`rtk-oss`); the hook is confirmed to rewrite transparently in the Copilot coding agent. |
 | 0012 | The capability checklist records the characterization tier and what blocks the build. |
-| 0008 | Spike 1 showed `GITHUB_TOKEN` + `copilot-requests: write` works for SDK-driven agents in Actions: a second remote-dispatch path besides assigning issues to the coding agent. |
+| 0008 | Setup secrets live in the `copilot` environment; agents verify their setup before working. Spike 1 showed `GITHUB_TOKEN` + `copilot-requests: write` works for SDK-driven agents in Actions: a second remote-dispatch path besides assigning issues to the coding agent. |

@@ -30,6 +30,9 @@ GitHub Copilot custom agents (`.github/agents/*.agent.md`).
 ## Consequences
 - No agent needs the whole migration in context.
 - Behavior cannot change mid-migration through an org-level edit; harness upgrades are explicit PRs.
-- Remote workers need a read-only checkout of the source at the pinned SHA in their setup steps.
+- Remote workers need a read-only checkout of the source at the pinned SHA in their setup steps (confirmed
+  in spike M1-2). Its token lives in the repo's `copilot` environment; a failed setup step does not stop
+  the agent, so every role agent first verifies its setup (source present, pinned, read-only) and stops
+  if it is not.
 - Concurrency (number and local/remote mix of workers) is an operator-set profile value.
 - Remote dispatch depends on the team's Copilot plan and quotas; local dispatch is always available.
