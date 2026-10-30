@@ -10,7 +10,7 @@ fidelity contract.
 
 ## Decision
 When any agent discovers a quirk, it raises a **question ticket** on the decision map **at the moment
-of discovery**, with evidence, impact and options (template in architecture §11). The ticket is
+of discovery**, with evidence, impact and options (template in architecture §14). The ticket is
 assigned to a human and blocks only the tickets that depend on the answer. Any human may answer; the
 recipient decides whether to consult a domain expert. Agents never answer their own question.
 

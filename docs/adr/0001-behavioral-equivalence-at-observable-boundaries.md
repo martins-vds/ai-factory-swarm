@@ -20,5 +20,5 @@ target is free to differ completely.
 - Verification must observe behavior at the boundary (characterization tests, side-by-side runs);
   structural similarity proves nothing.
 - Graph comparison changes from a node-for-node diff to a **capability-coverage** check
-  (architecture §8.2).
+  (architecture §10.5).
 - Target architecture decisions become first-class ADRs in the target repo and are checked by gate 3.
