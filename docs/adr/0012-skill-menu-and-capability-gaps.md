@@ -14,6 +14,12 @@ CRAP analysis or mutation testing for a less common language, may have no availa
   build, review and debugging, research, and the code graph (architecture §6.1). Refactoring skills
   (Fowler refactoring, design patterns, clean code, working effectively with legacy code) are part of
   the menu, alongside `improve-codebase-architecture`, `codebase-design` and `domain-modeling`.
+- The menu also takes the language-agnostic skills from the code-migration-hackathon skill set
+  (architecture, verification, review, orchestration, containers, browser E2E, documentation,
+  lessons learned, skill discovery and creation). Skills that compete with the spine, duplicate a menu
+  skill, or are language-specific are excluded; the full list and reasons are in architecture §6.1.
+- Only skills whose licenses allow redistribution are vendored into target repos. Proprietary skills
+  (e.g. Anthropic's `pdf`, `docx`, `xlsx`) are used only where the agent platform already provides them.
 - Bootstrap runs a **required-capability checklist** (architecture §6.2) for the source and target
   stacks: build/run, characterization harness, tests, coverage, complexity, CRAP, mutation testing,
   lint/format, stack idioms, data migration, UI end-to-end.

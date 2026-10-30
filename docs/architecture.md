@@ -283,22 +283,53 @@ Phase 8.
 
 ### 6.1 Built-in skill menu
 Language-agnostic skills shipped with the harness and installed into every target
-([ADR-0012](adr/0012-skill-menu-and-capability-gaps.md)). Pinned by commit.
+([ADR-0012](adr/0012-skill-menu-and-capability-gaps.md)). Pinned by commit. Skills marked *(hackathon)*
+come from the [code-migration-hackathon](https://github.com/martins-vds/code-migration-hackathon)
+skill set used by PR #6; skills marked *(candidate)* are evaluated in milestone M2
+([roadmap](roadmap.md)) before they are pinned.
 
 | Category | Skills | Source |
 |----------|--------|--------|
 | Planning & tracking | `wayfinder`, `to-tickets`, `to-spec`, `grilling`, `setup-matt-pocock-skills` | mattpocock/skills |
 | Domain & design | `domain-modeling`, `codebase-design`, `improve-codebase-architecture` | mattpocock/skills |
-| Architecture principles | `clean-architecture`, `domain-driven-design`, `patterns-of-enterprise-application-architecture` | ciembor/agent-rules-books |
-| **Refactoring** | `refactoring` (Fowler), `refactoring-guru` (design patterns), `clean-code`, `working-effectively-with-legacy-code` (seams, characterization) | ciembor/agent-rules-books |
-| Build | `tdd`, `implement` | mattpocock/skills |
+| Architecture | `architecture-patterns` (clean, hexagonal, DDD) *(hackathon)* | wshobson/agents |
+| | `architecture-blueprint-generator` (narrative blueprint of the source) *(hackathon)* | github/awesome-copilot |
+| | `clean-architecture`, `domain-driven-design`, `patterns-of-enterprise-application-architecture` *(candidate)* | ciembor/agent-rules-books |
+| **Refactoring** | `refactoring` (Fowler), `refactoring-guru` (design patterns), `clean-code`, `working-effectively-with-legacy-code` (seams, characterization) *(candidate)* | ciembor/agent-rules-books |
+| Build & verify | `tdd`, `implement` | mattpocock/skills |
+| | `verification-before-completion` (evidence before claims) *(hackathon)* | obra/superpowers |
 | Review & debugging | `code-review`, `pr`, `diagnosing-bugs` | mattpocock/skills |
+| | `receiving-code-review` (responding to review feedback with rigor) *(hackathon)* | obra/superpowers |
+| Orchestration | `dispatching-parallel-agents`, `using-git-worktrees` (isolation for parallel local workers) *(hackathon)* | obra/superpowers |
+| Runtime & environments | `docker-expert` *(hackathon)* | sickn33/antigravity-awesome-skills |
+| | `multi-stage-dockerfile` *(hackathon)* | github/awesome-copilot |
+| | `docker-compose-orchestration` *(hackathon)* | manutej/luxor-claude-marketplace |
+| UI end-to-end | `agent-browser` (web UIs) *(hackathon)* | vercel-labs/agent-browser |
+| Documentation | `documentation-writer` (Diátaxis) *(hackathon)* | github/awesome-copilot |
+| Memory | `lessons-learned` *(hackathon)* | code-migration-hackathon (local) |
+| Capability gaps | `find-skills` *(hackathon)* | vercel-labs/skills |
+| | `skill-creator` (Apache-2.0) *(hackathon)* | anthropics/skills |
+| | `self-learning` (research a technology and bundle it as a skill) *(hackathon)* | code-migration-hackathon (local) |
 | Research | `research` | mattpocock/skills |
 | Code graph | `understand`, `understand-domain`, `understand-chat`, `understand-explain`, `understand-diff` | Understand Anything |
-| Harness | migration contract, ledger and evidence writers, quirk-ticket, lessons-learned | this repo |
+| Harness | migration contract, ledger and evidence writers, quirk ticket | this repo |
 
-The ciembor skills are candidates to evaluate in milestone M2 ([roadmap](roadmap.md)) before they are
-pinned.
+The harness **migration contract** is generalized from PR #6's `migrating-java-to-django` references
+(methodology, validation metrics, graph comparison, final verification), with the Java/Django specifics
+moved into the reference stack pack. The Docker skills support the characterization harness, the second
+legacy instance and the side-by-side environments.
+
+**Not taken from the hackathon set, and why:**
+
+| Skills | Reason |
+|--------|--------|
+| `brainstorming`, `writing-plans`, `executing-plans`, `subagent-driven-development`, `finishing-a-development-branch`, `using-superpowers`, all `speckit-superb-*` | Competing planning/execution spine; Matt Pocock's skills are the spine (ADR-0003) |
+| `test-driven-development`, `systematic-debugging`, `requesting-code-review` | Duplicates of `tdd`, `diagnosing-bugs`, `code-review` |
+| `create-architectural-decision-record` | `domain-modeling` already writes ADRs to `docs/adr/` |
+| `ui-ux-pro-max` | UI redesign conflicts with UI fidelity; add through the profile only when a redesign is approved |
+| `pdf`, `docx`, `xlsx` | Anthropic proprietary license: cannot be redistributed into target repos; use them only where the agent platform already provides them |
+| `java-docs`, `java-junit`, `django-*`, `pytest-coverage`, `python-performance-optimization`, Oracle/PostgreSQL skills, `db-seed` | Language- or stack-specific: belong in stack packs, selected by the profile |
+| `migrating-java-to-django` | Stack-specific; its references become the harness migration contract |
 
 ### 6.2 Required-capability checklist
 Capabilities every migration needs, per stack. Bootstrap fills `.migration/capabilities.yaml` with
@@ -348,7 +379,6 @@ skills:                              # stack-specific skills; the built-in menu 
     async: [django-celery]
   specialists:
     data: [reviewing-oracle-to-postgres-migration, migrating-oracle-to-postgres-stored-procedures]
-    ui: [agent-browser]
 gates:                               # commands per gate (§10.3)
   build: ["python -m compileall src", "python manage.py check"]
   idiom: ["ruff check", "ruff format --check"]
