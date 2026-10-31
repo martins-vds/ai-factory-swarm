@@ -36,7 +36,7 @@ Enforced in three layers, from deterministic to enforcing:
 
 | Layer | What | Where it works |
 |-------|------|----------------|
-| **a. RTK for every shell command, `afs-run` for gate runs** | Agents prefix shell commands with `rtk` (enforced by layer c). Gate runs (build, tests, CRAP, mutation) go through the harness's thin `afs-run` wrapper, which calls RTK and also saves the raw log to `.migration/runs/<ticket>/` (gitignored) so gate evidence can link to a file; it prints RTK's compact result plus the log path. | Everywhere (local and remote), any language |
+| **a. RTK for every shell command, `afs-run` for gate runs** | Agents prefix shell commands with `rtk` (enforced by layer c). Gate runs (build, tests, CRAP, mutation) go through the harness's `afs-run` wrapper, which runs the command **once**, saves the raw log byte-for-byte to `.migration/runs/<ticket>/` (gitignored) as gate evidence, appends a record to `runs.jsonl`, and prints a compact, failure-focused summary plus the log path. (Revised in M2: it does not route through RTK, which would mean running gate commands twice or losing the exact log.) | Everywhere (local and remote), any language |
 | **b. Filter engine: RTK** ([rtk-ai/rtk](https://github.com/rtk-ai/rtk)) | Single-binary CLI proxy with compact filters for 100+ commands. **Maven and Gradle are supported** (`rtk mvn`, `./mvnw`, `mvnd`, `rtk gradlew`/`gradle`): Surefire/Failsafe passing blocks are dropped and only failing tests are kept with framework stack frames stripped; the project's own fixtures assert ≥90% savings for `mvn test` and ≥85% for `mvn install`. Raw output stays recoverable (`[full output: rtk recall <hash>]`, or files in tee mode). Only shell commands go through it; built-in file read/search tools do not. | Local and remote (binary installed in setup steps) |
 | **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` (coding agent and CLI). `rtk init --copilot` writes `.github/hooks/rtk-rewrite.json`, a `preToolUse` hook that **rewrites** commands transparently in VS Code and **denies with a suggested `rtk` command** in the Copilot CLI (whose hook API cannot rewrite). The harness adds its own `preToolUse` rules that deny unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with guidance to use `afs-run`, and a `sessionEnd` hook that checks a handoff or PR exists. Deny-with-guidance works whether or not rewriting is available. | Copilot CLI, VS Code, Copilot coding agent (confirmed in spike M1-2: transparent rewrite) |
 
@@ -86,6 +86,6 @@ essentials and close by repeating the acceptance checklist.
 
 ## Consequences
 - Full output is never lost: it is on disk and linked as evidence, so gates stay auditable.
-- `afs-run` is a thin harness tool over RTK, built in M2; spike M1-d measures RTK on pilot output and
-  confirms hook behavior in the Copilot coding agent.
+- `afs-run` is a small, dependency-free harness tool (`tools/afs-run`, built in M2); RTK covers everyday
+  shell commands through the hook (confirmed in the Copilot coding agent in spike M1-2).
 - Budgets and limits are operator-set profile values, tuned during the pilot (M5/M6).

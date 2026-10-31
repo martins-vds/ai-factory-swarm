@@ -1,0 +1,60 @@
+# Sample migration profile: the AI Factory Swarm pilot (Java EE → Python/Django).
+# Validated against schemas/profile.schema.json. Copied and edited by bootstrap into each target repo.
+harness_version: 0.2.0
+source:
+  repo: martins-vds/code-migration-hackathon
+  sha: c2df760
+  path: java/
+  stacks: [java-8, ejb-3, jpa-eclipselink, jsf-adf-faces, weblogic-12, oracle-db]
+  encoding: windows-1252            # spike M1-5
+target:
+  repo: martins-vds/ai-factory-pilot-target
+  stacks:
+    backend: [python-3.13, django-5]
+    frontend: [django-templates]
+    data: [postgresql-17]
+  architecture:
+    style: clean-architecture
+    adrs: []
+characterization:
+  tier: B
+  reason: No running legacy environment; the build needs a proprietary WebLogic client, but the code compiles in isolation against public artifacts plus stand-ins (spike M1-5).
+graph:
+  tool: understand-anything
+  commit: 4e6d3299017a7432da15957874992837a315c5b4
+  patches: [understand-anything/argument-hint.patch]
+risk_map:
+  exclude: ["*.min.js", "*/webapp/js/*", "*/generated/*"]
+skills:
+  source:
+    read: [java-docs]
+    characterize: [java-junit]
+  target:
+    patterns: [django-patterns]
+    security: [django-security]
+    async: [django-celery]
+  specialists:
+    data: [reviewing-oracle-to-postgres-migration, migrating-oracle-to-postgres-stored-procedures]
+gates:
+  build: ["python -m compileall -q src", "python manage.py check"]
+  idiom: ["ruff check", "ruff format --check"]
+  tests: ["pytest -q"]
+  crap: ["lizard --csv src > .migration/runs/lizard.csv", "python tools/crap.py .migration/runs/lizard.csv --lcov coverage.lcov --max 30"]
+  mutation_changed: ["mutmut run --paths-to-mutate {changed}"]
+  mutation_full: ["mutmut run"]
+thresholds:
+  crap_max_per_method: 30
+  mutation_score_min: 0.8
+concurrency:
+  max_parallel_workers: 4
+  remote_workers: true
+context:
+  working_budget: 0.45
+  soft_limit: 0.6
+rtk:
+  edition: oss
+  version: 1.1.0
+data:
+  masking: false
+  snapshot_owner: operations-team
+translation_rules: .migration/translation-rules.md

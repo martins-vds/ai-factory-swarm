@@ -302,8 +302,12 @@ Phase 8.
 Language-agnostic skills shipped with the harness and installed into every target
 ([ADR-0012](adr/0012-skill-menu-and-capability-gaps.md)). Pinned by commit. Skills marked *(hackathon)*
 come from the [code-migration-hackathon](https://github.com/martins-vds/code-migration-hackathon)
-skill set used by PR #6; skills marked *(candidate)* are evaluated in milestone M2
-([roadmap](roadmap.md)) before they are pinned.
+skill set used by PR #6. **The pinned list is [`skills.lock.json`](../skills.lock.json)** (M2): every
+skill's source repo, commit, path, license and the role agents that load it, checked in CI by
+`tools/check_lock.py`. Overlaps are resolved by role — e.g. `architecture-patterns` is used to design
+the target, the ciembor rule sets to review it. The `afs-` copies of user-invoked skills are vendored
+under `skills/` by `tools/vendor_skills.py` with provenance, and patches to pinned plugins live in
+`patches/`.
 
 | Category | Skills | Source |
 |----------|--------|--------|
@@ -628,7 +632,7 @@ Remote workers get a read-only checkout of the source at the pinned SHA in their
 session: one ticket per fresh session, tickets sized to an operator-set working budget, and a
 checkpoint-and-restart handoff at a soft limit. Tool output stays out of context: shell commands go through RTK
 (compact output for Maven, Gradle and 100+ other commands, full output recoverable), gate runs go
-through the `afs-run` wrapper (RTK plus a raw log in `.migration/runs/` for evidence), and Copilot
+through the `afs-run` wrapper (run once, raw log kept in `.migration/runs/` as evidence, compact summary shown), and Copilot
 `preToolUse` hooks rewrite or deny unbounded commands with guidance. RTK and the harness each keep
 their own marked block in `.github/copilot-instructions.md`.
 

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/ledger-entry.schema.json",
+  "title": "AI Factory Swarm fidelity ledger entry",
+  "description": "One file per source capability under `.migration/ledger/` (architecture §9). The file name must equal `<id>.yaml`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "source", "boundary", "status", "verification"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
+    "kind": { "enum": ["structural", "behavioral", "ui", "integration", "data"] },
+    "title": { "type": "string" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location"],
+      "properties": {
+        "graph_node": { "type": "string" },
+        "flow": { "type": "string", "description": "Domain-graph flow this capability belongs to." },
+        "location": { "type": "string", "description": "path:line[-line] at the pinned source SHA" },
+        "risk": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "crap": { "type": "number", "minimum": 0 },
+            "complexity": { "type": "integer", "minimum": 1 },
+            "coverage": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "boundary": { "type": "string", "minLength": 1, "description": "Where the behavior is observable (ADR-0001)." },
+    "slice": { "type": "string" },
+    "tickets": { "type": "array", "items": { "$ref": "#/$defs/ref" } },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "components": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": { "enum": ["pending", "in-progress", "migrated", "deferred", "replaced", "dropped"] },
+    "verification": { "enum": ["pending", "differential", "characterized", "legacy-test", "spec-derived", "review-only"] },
+    "characterization_tier": { "enum": ["A", "B", "C"] },
+    "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "quirks": { "type": "array", "items": { "$ref": "#/$defs/ref" } },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by", "ref"],
+      "properties": {
+        "by": { "type": "string", "minLength": 1 },
+        "ref": { "$ref": "#/$defs/ref" },
+        "reason": { "type": "string" }
+      }
+    },
+    "notes": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["deferred", "replaced", "dropped"] } } },
+      "then": { "required": ["approval"] }
+    },
+    {
+      "if": { "properties": { "verification": { "const": "review-only" } } },
+      "then": { "required": ["approval"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "migrated" } } },
+      "then": {
+        "required": ["evidence", "target"],
+        "properties": {
+          "evidence": { "minItems": 1 },
+          "verification": { "not": { "const": "pending" } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "verification": { "enum": ["characterized", "spec-derived"] } } },
+      "then": { "required": ["characterization_tier"] }
+    }
+  ],
+  "$defs": {
+    "ref": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+$", "description": "Issue or PR reference, owner/repo#N" }
+  }
+}

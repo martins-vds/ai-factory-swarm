@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/profile.schema.json",
+  "title": "AI Factory Swarm migration profile",
+  "description": "`.migration/profile.yaml` in the target repo: everything stack-specific for one migration (architecture §7).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["harness_version", "source", "target", "characterization", "graph", "skills", "gates", "thresholds"],
+  "properties": {
+    "harness_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "sha", "stacks"],
+      "properties": {
+        "repo": { "$ref": "#/$defs/repo" },
+        "sha": { "$ref": "#/$defs/sha" },
+        "path": { "type": "string", "description": "Folder inside the source repo that holds the application." },
+        "stacks": { "$ref": "#/$defs/stacks" },
+        "encoding": { "type": "string", "description": "Source file encoding (spike M1-5: legacy code may not be UTF-8).", "default": "UTF-8" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "stacks"],
+      "properties": {
+        "repo": { "$ref": "#/$defs/repo" },
+        "stacks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backend"],
+          "properties": {
+            "backend": { "$ref": "#/$defs/stacks" },
+            "frontend": { "$ref": "#/$defs/stacks" },
+            "data": { "$ref": "#/$defs/stacks" }
+          }
+        },
+        "architecture": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "style": { "type": "string" },
+            "adrs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "characterization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier"],
+      "description": "Default characterization tier (ADR-0005); capabilities may override it in the ledger.",
+      "properties": {
+        "tier": { "$ref": "#/$defs/tier" },
+        "reason": { "type": "string" }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "commit"],
+      "properties": {
+        "tool": { "const": "understand-anything" },
+        "commit": { "$ref": "#/$defs/sha" },
+        "patches": { "type": "array", "items": { "type": "string" }, "description": "Files under the harness patches/ folder applied after install." },
+        "source_snapshot": { "type": "string", "default": ".migration/graphs/source/" }
+      }
+    },
+    "risk_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "Globs for vendored, minified and generated code (ADR-0013)." }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Stack-specific skills by capability. The built-in menu (skills.lock.json) is always installed.",
+      "properties": {
+        "source": { "$ref": "#/$defs/skillMap" },
+        "target": { "$ref": "#/$defs/skillMap" },
+        "specialists": { "$ref": "#/$defs/skillMap" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build", "tests", "crap", "mutation_changed", "mutation_full"],
+      "description": "Commands per gate (architecture §10.3). `{changed}` is replaced by the changed files.",
+      "properties": {
+        "build": { "$ref": "#/$defs/commands" },
+        "idiom": { "$ref": "#/$defs/commands" },
+        "tests": { "$ref": "#/$defs/commands" },
+        "crap": { "$ref": "#/$defs/commands" },
+        "mutation_changed": { "$ref": "#/$defs/commands" },
+        "mutation_full": { "$ref": "#/$defs/commands" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crap_max_per_method", "mutation_score_min"],
+      "properties": {
+        "crap_max_per_method": { "type": "number", "exclusiveMinimum": 0, "default": 30 },
+        "mutation_score_min": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.8 }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_workers": { "type": "integer", "minimum": 1 },
+        "remote_workers": { "type": "boolean" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0015 budgets, as a share of the model's context window.",
+      "properties": {
+        "working_budget": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.45 },
+        "soft_limit": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.6 }
+      }
+    },
+    "rtk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "edition": { "enum": ["oss", "default"], "default": "oss" },
+        "version": { "type": "string" }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "masking": { "type": "boolean", "default": false },
+        "snapshot_owner": { "type": "string" }
+      }
+    },
+    "translation_rules": { "type": "string" }
+  },
+  "$defs": {
+    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "tier": { "enum": ["A", "B", "C"] },
+    "stacks": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "commands": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "skillMap": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+    }
+  }
+}

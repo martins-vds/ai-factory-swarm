@@ -1,0 +1,18 @@
+# Sample ledger entries from the pilot's currency slice (spikes M1-1 and M1-5).
+id: currency.list-paging
+kind: ui
+title: Page through the currency table
+source:
+  graph_node: class:stncommons/stn-common-web/src/main/java/com/stn/common/web/base/BasePagedTableModel.java:BasePagedTableModel
+  flow: List and Page Currencies
+  location: java/stncommons/stn-common-web/src/main/java/com/stn/common/web/base/BasePagedTableModel.java:52-66
+  risk: { crap: 42, complexity: 6, coverage: 0 }
+boundary: "admin/currency.jspx pager: status text, page list, first/prev/next/last navigation"
+slice: currency-admin
+status: pending
+verification: characterized
+characterization_tier: B
+evidence:
+  - spike/tier-b/test/spike/tierb/PagingCharacterizationTest.java
+quirks: [example-org/target-app#11]
+notes: 'Empty table shows "Page 1 of 0"; a failing count query looks the same as an empty table.'

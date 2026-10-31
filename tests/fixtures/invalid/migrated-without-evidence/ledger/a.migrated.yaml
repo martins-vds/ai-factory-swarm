@@ -1,0 +1,8 @@
+id: a.migrated
+kind: behavioral
+source: { location: "x.java:1" }
+boundary: somewhere
+target: { components: [a] }
+status: migrated
+verification: characterized
+characterization_tier: B

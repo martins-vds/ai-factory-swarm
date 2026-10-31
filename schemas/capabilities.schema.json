@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/capabilities.schema.json",
+  "title": "AI Factory Swarm capability checklist",
+  "description": "`.migration/capabilities.yaml`: how each required capability is met for this migration (ADR-0012). A gap blocks Phase 2 until the operator resolves it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["harness_version", "checked_at", "characterization", "capabilities"],
+  "properties": {
+    "harness_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "checked_at": { "type": "string", "format": "date-time" },
+    "characterization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legacy_environment", "source_builds", "tier"],
+      "properties": {
+        "legacy_environment": { "enum": ["available", "unavailable", "unknown"] },
+        "source_builds": { "enum": ["yes", "no", "partial", "unknown"] },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What stops the source from building or running, e.g. proprietary dependencies."
+        },
+        "tier": { "enum": ["A", "B", "C"] },
+        "reason": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "tier": { "const": "A" } } },
+          "then": { "properties": { "legacy_environment": { "const": "available" } } }
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/capability" }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "applies_to", "status"],
+      "properties": {
+        "id": {
+          "enum": [
+            "build-run", "characterization-harness", "unit-integration-tests", "coverage", "complexity",
+            "crap", "mutation-testing", "lint-format", "stack-idioms", "data-migration", "ui-end-to-end",
+            "code-graph", "output-filtering"
+          ]
+        },
+        "applies_to": { "enum": ["source", "target", "both"] },
+        "status": { "enum": ["met", "gap", "waived", "not-applicable"] },
+        "best_effort": { "type": "boolean", "description": "True where failure must never block (e.g. source CRAP, ADR-0013)." },
+        "provided_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name"],
+            "properties": {
+              "kind": { "enum": ["skill", "tool", "stand-in", "operator"] },
+              "name": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
+        },
+        "ticket": { "type": "string", "description": "Operator ticket for a gap, e.g. org/repo#12." },
+        "waiver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "approved_by"],
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "approved_by": { "type": "string", "minLength": 1 }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        { "if": { "properties": { "status": { "const": "met" } } }, "then": { "required": ["provided_by"] } },
+        { "if": { "properties": { "status": { "const": "gap" } } }, "then": { "required": ["ticket"] } },
+        { "if": { "properties": { "status": { "const": "waived" } } }, "then": { "required": ["waiver"] } }
+      ]
+    }
+  }
+}

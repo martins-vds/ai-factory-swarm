@@ -1,0 +1,73 @@
+# Sample capability checklist for the pilot, reflecting what the M1 spikes found.
+harness_version: 0.2.0
+checked_at: "2026-10-30T23:00:00Z"
+characterization:
+  legacy_environment: unavailable
+  source_builds: "no"
+  blockers:
+    - "com.oracle.wlserver:wlfullclient:12.2.1 (proprietary, provided scope) not in Maven Central"
+    - "toolkit-ejb parent POM resolves only from the organization's internal Nexus"
+  tier: B
+  reason: "Spike M1-5 compiled 312 classes in isolation against public artifacts plus 3 ADF stand-ins."
+capabilities:
+  - id: code-graph
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: understand-anything, version: "2.9.8" }
+  - id: build-run
+    applies_to: source
+    status: met
+    notes: Tier B only — compile what tests reach with javac -sourcepath; the full build cannot run.
+    provided_by:
+      - { kind: tool, name: javac-sourcepath-harness }
+      - { kind: stand-in, name: oracle-adf-faces-stubs }
+  - id: characterization-harness
+    applies_to: source
+    status: met
+    provided_by:
+      - { kind: tool, name: junit-jupiter, version: "1.10.3" }
+      - { kind: tool, name: mockito-core, version: "4.11.0" }
+  - id: complexity
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: lizard, version: "1.24.3" }
+  - id: crap
+    applies_to: source
+    status: met
+    best_effort: true
+    provided_by:
+      - { kind: tool, name: crap.py }
+  - id: coverage
+    applies_to: source
+    status: waived
+    waiver:
+      reason: The legacy build cannot run outside the organization; the source risk map uses complexity only (ADR-0013).
+      approved_by: martins-vds
+  - id: unit-integration-tests
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: pytest }
+  - id: crap
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: lizard }
+      - { kind: tool, name: coverage.py }
+  - id: mutation-testing
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: mutmut, version: "3.8.1" }
+  - id: data-migration
+    applies_to: both
+    status: gap
+    ticket: example-org/target-app#10
+    notes: No Oracle → PostgreSQL data skill pinned yet; db-seed lacks a PostgreSQL reference.
+  - id: output-filtering
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: rtk-oss, version: "1.1.0" }

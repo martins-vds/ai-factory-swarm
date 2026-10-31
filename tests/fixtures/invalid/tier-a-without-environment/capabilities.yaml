@@ -1,0 +1,5 @@
+harness_version: 0.2.0
+checked_at: "2026-10-30T23:00:00Z"
+characterization: { legacy_environment: unavailable, source_builds: "no", tier: A }
+capabilities:
+  - { id: code-graph, applies_to: both, status: met, provided_by: [{ kind: tool, name: understand-anything }] }

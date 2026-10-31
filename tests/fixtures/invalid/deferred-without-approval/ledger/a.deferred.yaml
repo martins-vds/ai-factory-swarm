@@ -1,0 +1,6 @@
+id: a.deferred
+kind: behavioral
+source: { location: "x.java:1" }
+boundary: somewhere
+status: deferred
+verification: pending

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""afs-run — run a gate command once, keep its full output on disk, show the agent only a summary.
+
+Usage:
+  afs-run [--ticket T] [--name N] [--runs-dir DIR] [--highlights K] [--tail N] -- <command> [args...]
+
+Behavior (ADR-0015):
+  * Runs the command exactly once. stdout+stderr go to
+    <runs-dir>/<ticket>/<UTC timestamp>-<name>.log (byte-for-byte; this file is the gate evidence).
+  * Prints a compact summary: exit code, duration, size, the log path, up to K failure-looking lines
+    (with line numbers in the log), and — on failure — the last N lines.
+  * Appends one JSON record per run to <runs-dir>/<ticket>/runs.jsonl.
+  * Exits with the command's exit code, so gates fail when the command fails.
+
+Defaults: ticket = $AFS_TICKET or "adhoc"; runs-dir = $AFS_RUNS_DIR or ".migration/runs".
+Everyday shell commands go through RTK instead (rtk hook); afs-run is for gate runs, where the raw log
+must be kept exactly.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+
+FAILURE = re.compile(
+    r"(?i)(\berror\b|\berrors?:|\bfail(?:ed|ure|s)?\b|\bexception\b|traceback|\bassert(?:ion)?|"
+    r"\bpanic\b|\bfatal\b|BUILD FAILURE|<<< (?:FAILURE|ERROR)!|\bE {2,})")
+NOT_FAILURE = re.compile(
+    r"(?i)(\b0 (?:failed|failures|errors)\b|Failures: 0, Errors: 0|\bno errors\b|BUILD SUCCESS|"
+    r"-Werror|\bfailfast\b|\b0 error\(s\))")
+
+
+def slug(text, limit=40):
+    s = re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-._")
+    return (s or "run")[:limit]
+
+
+def summarize(lines, k, tail, failed):
+    out, seen = [], set()
+    for n, line in enumerate(lines, 1):
+        stripped = line.rstrip()
+        if FAILURE.search(stripped) and not NOT_FAILURE.search(stripped):
+            key = re.sub(r"\d+", "#", stripped.strip())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(f"  {n:>6}: {stripped[:240]}")
+            if len(out) >= k:
+                break
+    parts = []
+    if out:
+        parts.append("-- highlights (log line: text) --")
+        parts.extend(out)
+    if failed or not out:
+        last = [l.rstrip()[:240] for l in lines[-tail:]] if tail > 0 else []
+        if last:
+            parts.append(f"-- last {len(last)} line(s) --")
+            parts.extend("  " + l for l in last)
+    return parts
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if "--" not in argv:
+        print("usage: afs-run [options] -- <command> [args...]", file=sys.stderr)
+        return 2
+    i = argv.index("--")
+    opts, cmd = argv[:i], argv[i + 1:]
+    if not cmd:
+        print("afs-run: no command given after --", file=sys.stderr)
+        return 2
+    ap = argparse.ArgumentParser(prog="afs-run")
+    ap.add_argument("--ticket", default=os.environ.get("AFS_TICKET", "adhoc"))
+    ap.add_argument("--name", default=None)
+    ap.add_argument("--runs-dir", default=os.environ.get("AFS_RUNS_DIR", ".migration/runs"))
+    ap.add_argument("--highlights", type=int, default=20)
+    ap.add_argument("--tail", type=int, default=15)
+    a = ap.parse_args(opts)
+
+    name = slug(a.name or " ".join(cmd[:3]))
+    ticket = slug(a.ticket, 80)
+    folder = os.path.join(a.runs_dir, ticket)
+    os.makedirs(folder, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    log_path = os.path.join(folder, f"{stamp}-{name}.log")
+
+    start = time.monotonic()
+    with open(log_path, "wb") as log:
+        try:
+            code = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT)
+        except FileNotFoundError:
+            log.write(f"afs-run: command not found: {cmd[0]}\n".encode())
+            code = 127
+    seconds = round(time.monotonic() - start, 2)
+
+    with open(log_path, "rb") as fh:
+        raw = fh.read()
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+
+    record = {
+        "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "ticket": ticket, "name": name, "command": shlex.join(cmd), "exit": code,
+        "seconds": seconds, "log": log_path, "lines": len(lines), "bytes": len(raw),
+    }
+    with open(os.path.join(folder, "runs.jsonl"), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+
+    status = "ok" if code == 0 else "FAILED"
+    print(f"afs-run: {name} {status} exit={code} {seconds}s · {len(lines)} lines, {len(raw)} bytes")
+    print(f"log: {log_path}")
+    for part in summarize(lines, a.highlights, a.tail, code != 0):
+        print(part)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

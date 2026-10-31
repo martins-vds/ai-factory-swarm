@@ -1,0 +1,9 @@
+deferred-without-approval	'approval' is a required property
+migrated-without-evidence	'evidence' is a required property
+review-only-without-approval	'approval' is a required property
+characterized-without-tier	'characterization_tier' is a required property
+filename-mismatch	file name must be 'a.right-name.yaml'
+gap-without-ticket	'ticket' is a required property
+tier-a-without-environment	'available' was expected
+profile-short-sha	does not match
+profile-score-as-percent	is greater than the maximum of 1
