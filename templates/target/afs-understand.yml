@@ -59,7 +59,9 @@ jobs:
         run: |
           d="$RUNNER_TEMP/analyze"
           if [ "$SCOPE" = full ]; then
-            mkdir -p "$d" && cp -r ".source/${{{{ steps.lock.outputs.path }}}}." "$d/"
+            # git archive: the tracked files only, without the source's .git (a copied .git leaves nothing to commit)
+            p="${{{{ steps.lock.outputs.path }}}}"
+            mkdir -p "$d" && git -C .source archive HEAD -- "${{p:-.}}" | tar -x -C "$d"
           else
             python .migration/harness/tools/extract_slice.py --root .source --spec ".migration/slices/$SCOPE.yaml" --out "$d"
           fi
