@@ -121,10 +121,13 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 ├── docs/adr/                     # target-architecture decisions
 ├── docs/agents/                  # tracker + domain config (setup-matt-pocock-skills)
 ├── .github/agents/               # role agents, pinned copy from harness
-├── .agents/skills/               # skill menu + stack skills resolved by the profile, pinned
+├── .github/skills/               # skill menu + stack pack, pinned (Copilot CLI/coding-agent repo skills)
+├── .github/copilot-instructions.md  # harness block, then RTK block (ADR-0015)
+├── .github/workflows/            # copilot-setup-steps.yml, afs-harness-check.yml (generated)
 ├── .github/hooks/rtk-rewrite.json  # RTK PreToolUse hook (ADR-0015)
 ├── .migration/
-│   ├── harness/                  # pinned harness tools (afs-run, validate.py, crap.py) and schemas
+│   ├── harness/                  # pinned tools (afs-run, validate.py, crap.py, check_installed.py),
+│   │                             #   schemas, patches, installed.json (hash of every installed file)
 │   ├── runs/                     # full command logs from afs-run (gitignored; linked as evidence)
 │   ├── profile.yaml              # the migration profile (§7)
 │   ├── source.lock               # source repo URL + pinned SHA
