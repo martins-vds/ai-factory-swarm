@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 ALLOWED_LICENSES = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"}
 ROLES = {"program-orchestrator", "bootstrapper", "analyst", "characterizer", "planner", "slice-coordinator",
          "migrator", "specialist-migrator", "verifier", "auditor"}
-INSTALL = {"upstream", "vendored"}
+INSTALL = {"upstream", "vendored", "harness"}
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -57,6 +57,13 @@ def main():
         if name in names:
             errors.append(f"{kind} {name}: duplicate name")
         names.add(name)
+        bad_roles_early = None
+        if kind == "skill" and e.get("install") == "harness":
+            if not (ROOT / e.get("path", "") / "SKILL.md").exists():
+                errors.append(f"skill {name}: harness skill missing {e.get('path')}/SKILL.md")
+            if not e.get("roles") or set(e.get("roles", [])) - ROLES:
+                errors.append(f"skill {name}: roles must be non-empty and known")
+            continue
         src = sources.get(e.get("source"))
         if src is None:
             errors.append(f"{kind} {name}: unknown source '{e.get('source')}'")
@@ -88,6 +95,8 @@ def main():
         cache = {}
         for kind, e in entries:
             src = sources.get(e.get("source"))
+            if e.get("install") == "harness":
+                continue
             if e.get("status") == "needs-license":
                 warnings.append(f"{kind} {e['name']}: remote check skipped (unlicensed, possibly private source)")
                 continue

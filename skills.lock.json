@@ -1,76 +1,692 @@
 {
   "lockVersion": 1,
   "pinnedOn": "2026-10-30",
-  "notes": "Built-in skill menu (ADR-0012), pinned by commit. `install`: upstream = fetched at the pinned commit by bootstrap; vendored = adapted copy committed under skills/ (see skills/<name>/PROVENANCE.md); plugin = installed whole, then patched. `roles` lists which role agents load the skill, so agents only load what they need (ADR-0015).",
+  "notes": "Built-in skill menu (ADR-0012), pinned by commit. `install`: harness = this repo's own skill under skills/; upstream = fetched at the pinned commit by bootstrap; vendored = adapted copy committed under skills/ (see skills/<name>/PROVENANCE.md); plugin = installed whole, then patched. `roles` lists which role agents load the skill, so agents only load what they need (ADR-0015).",
   "sources": {
-    "mattpocock-skills": { "repo": "mattpocock/skills", "commit": "a496f5513d4a4cf889bc48e189e579f4b0bdf6aa", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "agent-rules-books": { "repo": "ciembor/agent-rules-books", "commit": "893a88a6fce3a80c565bf39ac65021b43a8b2990", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "superpowers": { "repo": "obra/superpowers", "commit": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "wshobson-agents": { "repo": "wshobson/agents", "commit": "7e2fb559cf4b824b27f1fec49fe88f7511066d26", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "awesome-copilot": { "repo": "github/awesome-copilot", "commit": "5269f7ea2d6c3a9bfda5ed878b6726cf509121fd", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "antigravity-awesome-skills": { "repo": "sickn33/antigravity-awesome-skills", "commit": "6844ad2b0e3724caad0c50fa974fbaf475cf80a3", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "luxor-marketplace": { "repo": "manutej/luxor-claude-marketplace", "commit": "1861cc9720d5656410415e5c19b06bef3e4609e8", "license": "MIT", "licenseEvidence": "Declared in README and plugin.json; the LICENSE file the README links to is missing from the repo" },
-    "agent-browser": { "repo": "vercel-labs/agent-browser", "commit": "28898e4cc2d3ee47c7080ab653b4ad29340cef57", "license": "Apache-2.0", "licenseEvidence": "LICENSE" },
-    "vercel-skills": { "repo": "vercel-labs/skills", "commit": "92a9a34ac3bf88e695e468b90c7bf32f163d32c8", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "anthropic-skills": { "repo": "anthropics/skills", "commit": "ca45fc496a3436251f191354091d557da31c15b5", "license": "Apache-2.0", "licenseEvidence": "skills/skill-creator/LICENSE.txt (no repo-wide license; other skills there are proprietary)" },
-    "ui-ux-pro-max": { "repo": "nextlevelbuilder/ui-ux-pro-max-skill", "commit": "9a3f14f7423037ccb8feeb4fee7482291b9c820e", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "understand-anything": { "repo": "Egonex-AI/Understand-Anything", "commit": "4e6d3299017a7432da15957874992837a315c5b4", "license": "MIT", "licenseEvidence": "LICENSE" },
-    "migration-hackathon": { "repo": "martins-vds/code-migration-hackathon", "commit": "c2df7607e3b6a997dd27eb2917bc33e4ec0f6692", "license": "UNLICENSED", "licenseEvidence": "Owner's own repo (private, no license file). Must be licensed before these skills can ship in the public harness." }
+    "mattpocock-skills": {
+      "repo": "mattpocock/skills",
+      "commit": "a496f5513d4a4cf889bc48e189e579f4b0bdf6aa",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "agent-rules-books": {
+      "repo": "ciembor/agent-rules-books",
+      "commit": "893a88a6fce3a80c565bf39ac65021b43a8b2990",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "superpowers": {
+      "repo": "obra/superpowers",
+      "commit": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "wshobson-agents": {
+      "repo": "wshobson/agents",
+      "commit": "7e2fb559cf4b824b27f1fec49fe88f7511066d26",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "awesome-copilot": {
+      "repo": "github/awesome-copilot",
+      "commit": "5269f7ea2d6c3a9bfda5ed878b6726cf509121fd",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "antigravity-awesome-skills": {
+      "repo": "sickn33/antigravity-awesome-skills",
+      "commit": "6844ad2b0e3724caad0c50fa974fbaf475cf80a3",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "luxor-marketplace": {
+      "repo": "manutej/luxor-claude-marketplace",
+      "commit": "1861cc9720d5656410415e5c19b06bef3e4609e8",
+      "license": "MIT",
+      "licenseEvidence": "Declared in README and plugin.json; the LICENSE file the README links to is missing from the repo"
+    },
+    "agent-browser": {
+      "repo": "vercel-labs/agent-browser",
+      "commit": "28898e4cc2d3ee47c7080ab653b4ad29340cef57",
+      "license": "Apache-2.0",
+      "licenseEvidence": "LICENSE"
+    },
+    "vercel-skills": {
+      "repo": "vercel-labs/skills",
+      "commit": "92a9a34ac3bf88e695e468b90c7bf32f163d32c8",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "anthropic-skills": {
+      "repo": "anthropics/skills",
+      "commit": "ca45fc496a3436251f191354091d557da31c15b5",
+      "license": "Apache-2.0",
+      "licenseEvidence": "skills/skill-creator/LICENSE.txt (no repo-wide license; other skills there are proprietary)"
+    },
+    "ui-ux-pro-max": {
+      "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "commit": "9a3f14f7423037ccb8feeb4fee7482291b9c820e",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "understand-anything": {
+      "repo": "Egonex-AI/Understand-Anything",
+      "commit": "4e6d3299017a7432da15957874992837a315c5b4",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "migration-hackathon": {
+      "repo": "martins-vds/code-migration-hackathon",
+      "commit": "c2df7607e3b6a997dd27eb2917bc33e4ec0f6692",
+      "license": "UNLICENSED",
+      "licenseEvidence": "Owner's own repo (private, no license file). Must be licensed before these skills can ship in the public harness."
+    }
   },
   "skills": [
-    { "name": "wayfinder", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/wayfinder", "install": "upstream", "roles": ["program-orchestrator"], "notes": "User-invoked; the operator triggers charting at L0 (ADR-0003)." },
-    { "name": "afs-wayfinder", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/wayfinder", "install": "vendored", "roles": ["slice-coordinator"], "notes": "Model-invocable copy for working through the map unattended." },
-    { "name": "to-tickets", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/to-tickets", "install": "upstream", "roles": ["program-orchestrator"] },
-    { "name": "afs-to-tickets", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/to-tickets", "install": "vendored", "roles": ["planner", "slice-coordinator"] },
-    { "name": "to-spec", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/to-spec", "install": "upstream", "roles": ["program-orchestrator"] },
-    { "name": "grilling", "category": "planning", "source": "mattpocock-skills", "path": "skills/productivity/grilling", "install": "upstream", "roles": ["program-orchestrator"] },
-    { "name": "setup-matt-pocock-skills", "category": "planning", "source": "mattpocock-skills", "path": "skills/engineering/setup-matt-pocock-skills", "install": "upstream", "roles": ["bootstrapper"], "notes": "User-invoked; run by the operator during bootstrap." },
-    { "name": "domain-modeling", "category": "design", "source": "mattpocock-skills", "path": "skills/engineering/domain-modeling", "install": "upstream", "roles": ["analyst", "planner", "migrator"] },
-    { "name": "codebase-design", "category": "design", "source": "mattpocock-skills", "path": "skills/engineering/codebase-design", "install": "upstream", "roles": ["planner", "migrator"] },
-    { "name": "improve-codebase-architecture", "category": "design", "source": "mattpocock-skills", "path": "skills/engineering/improve-codebase-architecture", "install": "upstream", "roles": ["program-orchestrator"], "notes": "User-invoked; used by the operator on design tickets for CRAP hot spots." },
-    { "name": "architecture-patterns", "category": "architecture", "source": "wshobson-agents", "path": "plugins/backend-development/skills/architecture-patterns", "install": "upstream", "roles": ["bootstrapper", "planner"], "notes": "Practical clean/hexagonal/DDD structure for designing the target. Overlap with the rule sets below resolved by role: design here, review there." },
-    { "name": "architecture-blueprint-generator", "category": "architecture", "source": "awesome-copilot", "path": "skills/architecture-blueprint-generator", "install": "upstream", "roles": ["analyst"] },
-    { "name": "clean-architecture", "category": "architecture", "source": "agent-rules-books", "path": "clean-architecture", "install": "upstream", "roles": ["verifier", "auditor"], "notes": "Rule set used in gate 3 review; load the .mini.md variant first." },
-    { "name": "domain-driven-design", "category": "architecture", "source": "agent-rules-books", "path": "domain-driven-design", "install": "upstream", "roles": ["verifier", "auditor"] },
-    { "name": "patterns-of-enterprise-application-architecture", "category": "architecture", "source": "agent-rules-books", "path": "patterns-of-enterprise-application-architecture", "install": "upstream", "roles": ["migrator", "verifier"], "notes": "Maps legacy enterprise patterns (Table Module, Active Record, Unit of Work…) to their target equivalents." },
-    { "name": "refactoring", "category": "refactoring", "source": "agent-rules-books", "path": "refactoring", "install": "upstream", "roles": ["migrator"] },
-    { "name": "refactoring-guru", "category": "refactoring", "source": "agent-rules-books", "path": "refactoring-guru", "install": "upstream", "roles": ["migrator"] },
-    { "name": "clean-code", "category": "refactoring", "source": "agent-rules-books", "path": "clean-code", "install": "upstream", "roles": ["migrator", "verifier"] },
-    { "name": "working-effectively-with-legacy-code", "category": "refactoring", "source": "agent-rules-books", "path": "working-effectively-with-legacy-code", "install": "upstream", "roles": ["characterizer"], "notes": "Seams and characterization tests — the basis of tier B (ADR-0005)." },
-    { "name": "tdd", "category": "build", "source": "mattpocock-skills", "path": "skills/engineering/tdd", "install": "upstream", "roles": ["migrator", "characterizer"] },
-    { "name": "afs-implement", "category": "build", "source": "mattpocock-skills", "path": "skills/engineering/implement", "install": "vendored", "roles": ["migrator"] },
-    { "name": "verification-before-completion", "category": "build", "source": "superpowers", "path": "skills/verification-before-completion", "install": "upstream", "roles": ["migrator", "verifier", "slice-coordinator"] },
-    { "name": "code-review", "category": "review", "source": "mattpocock-skills", "path": "skills/engineering/code-review", "install": "upstream", "roles": ["verifier", "auditor"] },
-    { "name": "pr", "category": "review", "source": "mattpocock-skills", "path": "skills/engineering/pr", "install": "upstream", "roles": ["migrator"] },
-    { "name": "receiving-code-review", "category": "review", "source": "superpowers", "path": "skills/receiving-code-review", "install": "upstream", "roles": ["migrator"] },
-    { "name": "diagnosing-bugs", "category": "review", "source": "mattpocock-skills", "path": "skills/engineering/diagnosing-bugs", "install": "upstream", "roles": ["migrator", "verifier"] },
-    { "name": "dispatching-parallel-agents", "category": "orchestration", "source": "superpowers", "path": "skills/dispatching-parallel-agents", "install": "upstream", "roles": ["slice-coordinator"] },
-    { "name": "using-git-worktrees", "category": "orchestration", "source": "superpowers", "path": "skills/using-git-worktrees", "install": "upstream", "roles": ["slice-coordinator"] },
-    { "name": "docker-expert", "category": "runtime", "source": "antigravity-awesome-skills", "path": "skills/docker-expert", "install": "upstream", "roles": ["bootstrapper", "characterizer"] },
-    { "name": "multi-stage-dockerfile", "category": "runtime", "source": "awesome-copilot", "path": "skills/multi-stage-dockerfile", "install": "upstream", "roles": ["bootstrapper"] },
-    { "name": "docker-compose-orchestration", "category": "runtime", "source": "luxor-marketplace", "path": "plugins/luxor-devops-suite/skills/docker-compose-orchestration", "install": "upstream", "roles": ["bootstrapper", "characterizer"] },
-    { "name": "ui-ux-pro-max", "category": "ui", "source": "ui-ux-pro-max", "path": ".claude/skills/ui-ux-pro-max", "install": "upstream", "roles": ["program-orchestrator", "specialist-migrator", "verifier"], "notes": "Needs Python 3 for its search scripts (ADR-0014)." },
-    { "name": "agent-browser", "category": "ui", "source": "agent-browser", "path": "skills/agent-browser", "install": "upstream", "roles": ["verifier", "characterizer"] },
-    { "name": "documentation-writer", "category": "documentation", "source": "awesome-copilot", "path": "skills/documentation-writer", "install": "upstream", "roles": ["auditor"] },
-    { "name": "research", "category": "research", "source": "mattpocock-skills", "path": "skills/engineering/research", "install": "upstream", "roles": ["analyst", "program-orchestrator"] },
-    { "name": "find-skills", "category": "capability-gaps", "source": "vercel-skills", "path": "skills/find-skills", "install": "upstream", "roles": ["bootstrapper"] },
-    { "name": "skill-creator", "category": "capability-gaps", "source": "anthropic-skills", "path": "skills/skill-creator", "install": "upstream", "roles": ["bootstrapper"] },
-    { "name": "lessons-learned", "category": "memory", "source": "migration-hackathon", "path": ".agents/skills/lessons-learned", "install": "upstream", "roles": ["migrator", "characterizer", "slice-coordinator"], "status": "needs-license" },
-    { "name": "self-learning", "category": "capability-gaps", "source": "migration-hackathon", "path": ".agents/skills/self-learning", "install": "upstream", "roles": ["bootstrapper"], "status": "needs-license" },
-    { "name": "db-seed", "category": "data", "source": "migration-hackathon", "path": ".agents/skills/db-seed", "install": "upstream", "roles": ["characterizer", "specialist-migrator"], "status": "needs-license", "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps." }
+    {
+      "name": "afs-migration-contract",
+      "category": "contract",
+      "path": "skills/afs-migration-contract",
+      "install": "harness",
+      "roles": [
+        "program-orchestrator",
+        "bootstrapper",
+        "analyst",
+        "characterizer",
+        "planner",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ],
+      "notes": "Fidelity contract, operating principles, stop rules; references for lifecycle, gates, characterization, capability coverage, final verification."
+    },
+    {
+      "name": "afs-setup-check",
+      "category": "contract",
+      "path": "skills/afs-setup-check",
+      "install": "harness",
+      "roles": [
+        "program-orchestrator",
+        "bootstrapper",
+        "analyst",
+        "characterizer",
+        "planner",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ],
+      "notes": "First step of every session."
+    },
+    {
+      "name": "afs-handoff",
+      "category": "contract",
+      "path": "skills/afs-handoff",
+      "install": "harness",
+      "roles": [
+        "program-orchestrator",
+        "bootstrapper",
+        "analyst",
+        "characterizer",
+        "planner",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ],
+      "notes": "Checkpoint-and-restart at the context soft limit and on stop rules (ADR-0015)."
+    },
+    {
+      "name": "afs-ledger",
+      "category": "state",
+      "path": "skills/afs-ledger",
+      "install": "harness",
+      "roles": [
+        "analyst",
+        "characterizer",
+        "planner",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
+      "name": "afs-evidence",
+      "category": "state",
+      "path": "skills/afs-evidence",
+      "install": "harness",
+      "roles": [
+        "characterizer",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
+      "name": "afs-quirk-ticket",
+      "category": "state",
+      "path": "skills/afs-quirk-ticket",
+      "install": "harness",
+      "roles": [
+        "analyst",
+        "characterizer",
+        "slice-coordinator",
+        "migrator",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
+      "name": "wayfinder",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/wayfinder",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator"
+      ],
+      "notes": "User-invoked; the operator triggers charting at L0 (ADR-0003)."
+    },
+    {
+      "name": "afs-wayfinder",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/wayfinder",
+      "install": "vendored",
+      "roles": [
+        "slice-coordinator"
+      ],
+      "notes": "Model-invocable copy for working through the map unattended."
+    },
+    {
+      "name": "to-tickets",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/to-tickets",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator"
+      ]
+    },
+    {
+      "name": "afs-to-tickets",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/to-tickets",
+      "install": "vendored",
+      "roles": [
+        "planner",
+        "slice-coordinator"
+      ]
+    },
+    {
+      "name": "to-spec",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/to-spec",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator"
+      ]
+    },
+    {
+      "name": "grilling",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/productivity/grilling",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator"
+      ]
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "category": "planning",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/setup-matt-pocock-skills",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper"
+      ],
+      "notes": "User-invoked; run by the operator during bootstrap."
+    },
+    {
+      "name": "domain-modeling",
+      "category": "design",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/domain-modeling",
+      "install": "upstream",
+      "roles": [
+        "analyst",
+        "planner",
+        "migrator"
+      ]
+    },
+    {
+      "name": "codebase-design",
+      "category": "design",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/codebase-design",
+      "install": "upstream",
+      "roles": [
+        "planner",
+        "migrator"
+      ]
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "category": "design",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/improve-codebase-architecture",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator"
+      ],
+      "notes": "User-invoked; used by the operator on design tickets for CRAP hot spots."
+    },
+    {
+      "name": "architecture-patterns",
+      "category": "architecture",
+      "source": "wshobson-agents",
+      "path": "plugins/backend-development/skills/architecture-patterns",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper",
+        "planner"
+      ],
+      "notes": "Practical clean/hexagonal/DDD structure for designing the target. Overlap with the rule sets below resolved by role: design here, review there."
+    },
+    {
+      "name": "architecture-blueprint-generator",
+      "category": "architecture",
+      "source": "awesome-copilot",
+      "path": "skills/architecture-blueprint-generator",
+      "install": "upstream",
+      "roles": [
+        "analyst"
+      ]
+    },
+    {
+      "name": "clean-architecture",
+      "category": "architecture",
+      "source": "agent-rules-books",
+      "path": "clean-architecture",
+      "install": "upstream",
+      "roles": [
+        "verifier",
+        "auditor"
+      ],
+      "notes": "Rule set used in gate 3 review; load the .mini.md variant first."
+    },
+    {
+      "name": "domain-driven-design",
+      "category": "architecture",
+      "source": "agent-rules-books",
+      "path": "domain-driven-design",
+      "install": "upstream",
+      "roles": [
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
+      "name": "patterns-of-enterprise-application-architecture",
+      "category": "architecture",
+      "source": "agent-rules-books",
+      "path": "patterns-of-enterprise-application-architecture",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "verifier",
+        "specialist-migrator"
+      ],
+      "notes": "Maps legacy enterprise patterns (Table Module, Active Record, Unit of Work…) to their target equivalents."
+    },
+    {
+      "name": "refactoring",
+      "category": "refactoring",
+      "source": "agent-rules-books",
+      "path": "refactoring",
+      "install": "upstream",
+      "roles": [
+        "migrator"
+      ]
+    },
+    {
+      "name": "refactoring-guru",
+      "category": "refactoring",
+      "source": "agent-rules-books",
+      "path": "refactoring-guru",
+      "install": "upstream",
+      "roles": [
+        "migrator"
+      ]
+    },
+    {
+      "name": "clean-code",
+      "category": "refactoring",
+      "source": "agent-rules-books",
+      "path": "clean-code",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "verifier"
+      ]
+    },
+    {
+      "name": "working-effectively-with-legacy-code",
+      "category": "refactoring",
+      "source": "agent-rules-books",
+      "path": "working-effectively-with-legacy-code",
+      "install": "upstream",
+      "roles": [
+        "characterizer"
+      ],
+      "notes": "Seams and characterization tests — the basis of tier B (ADR-0005)."
+    },
+    {
+      "name": "tdd",
+      "category": "build",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/tdd",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "characterizer",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "afs-implement",
+      "category": "build",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/implement",
+      "install": "vendored",
+      "roles": [
+        "migrator",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "verification-before-completion",
+      "category": "build",
+      "source": "superpowers",
+      "path": "skills/verification-before-completion",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "verifier",
+        "slice-coordinator",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "code-review",
+      "category": "review",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/code-review",
+      "install": "upstream",
+      "roles": [
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
+      "name": "pr",
+      "category": "review",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/pr",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "receiving-code-review",
+      "category": "review",
+      "source": "superpowers",
+      "path": "skills/receiving-code-review",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "diagnosing-bugs",
+      "category": "review",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/diagnosing-bugs",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "verifier",
+        "specialist-migrator"
+      ]
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "category": "orchestration",
+      "source": "superpowers",
+      "path": "skills/dispatching-parallel-agents",
+      "install": "upstream",
+      "roles": [
+        "slice-coordinator"
+      ]
+    },
+    {
+      "name": "using-git-worktrees",
+      "category": "orchestration",
+      "source": "superpowers",
+      "path": "skills/using-git-worktrees",
+      "install": "upstream",
+      "roles": [
+        "slice-coordinator"
+      ]
+    },
+    {
+      "name": "docker-expert",
+      "category": "runtime",
+      "source": "antigravity-awesome-skills",
+      "path": "skills/docker-expert",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper",
+        "characterizer"
+      ]
+    },
+    {
+      "name": "multi-stage-dockerfile",
+      "category": "runtime",
+      "source": "awesome-copilot",
+      "path": "skills/multi-stage-dockerfile",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper"
+      ]
+    },
+    {
+      "name": "docker-compose-orchestration",
+      "category": "runtime",
+      "source": "luxor-marketplace",
+      "path": "plugins/luxor-devops-suite/skills/docker-compose-orchestration",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper",
+        "characterizer"
+      ]
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "category": "ui",
+      "source": "ui-ux-pro-max",
+      "path": ".claude/skills/ui-ux-pro-max",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "notes": "Needs Python 3 for its search scripts (ADR-0014)."
+    },
+    {
+      "name": "agent-browser",
+      "category": "ui",
+      "source": "agent-browser",
+      "path": "skills/agent-browser",
+      "install": "upstream",
+      "roles": [
+        "verifier",
+        "characterizer"
+      ]
+    },
+    {
+      "name": "documentation-writer",
+      "category": "documentation",
+      "source": "awesome-copilot",
+      "path": "skills/documentation-writer",
+      "install": "upstream",
+      "roles": [
+        "auditor"
+      ]
+    },
+    {
+      "name": "research",
+      "category": "research",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/research",
+      "install": "upstream",
+      "roles": [
+        "analyst",
+        "program-orchestrator"
+      ]
+    },
+    {
+      "name": "find-skills",
+      "category": "capability-gaps",
+      "source": "vercel-skills",
+      "path": "skills/find-skills",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper"
+      ]
+    },
+    {
+      "name": "skill-creator",
+      "category": "capability-gaps",
+      "source": "anthropic-skills",
+      "path": "skills/skill-creator",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper"
+      ]
+    },
+    {
+      "name": "lessons-learned",
+      "category": "memory",
+      "source": "migration-hackathon",
+      "path": ".agents/skills/lessons-learned",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "characterizer",
+        "slice-coordinator",
+        "specialist-migrator"
+      ],
+      "status": "needs-license"
+    },
+    {
+      "name": "self-learning",
+      "category": "capability-gaps",
+      "source": "migration-hackathon",
+      "path": ".agents/skills/self-learning",
+      "install": "upstream",
+      "roles": [
+        "bootstrapper"
+      ],
+      "status": "needs-license"
+    },
+    {
+      "name": "db-seed",
+      "category": "data",
+      "source": "migration-hackathon",
+      "path": ".agents/skills/db-seed",
+      "install": "upstream",
+      "roles": [
+        "characterizer",
+        "specialist-migrator"
+      ],
+      "status": "needs-license",
+      "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps."
+    }
   ],
   "plugins": [
-    { "name": "understand-anything", "source": "understand-anything", "path": ".", "roles": ["analyst", "auditor", "migrator"], "patches": ["understand-anything/argument-hint.patch"], "notes": "Run through the Copilot SDK (ADR-0009). Patch makes the `understand` skill load under Copilot (spike M1-1)." }
+    {
+      "name": "understand-anything",
+      "source": "understand-anything",
+      "path": ".",
+      "roles": [
+        "analyst",
+        "auditor",
+        "migrator",
+        "verifier"
+      ],
+      "patches": [
+        "understand-anything/argument-hint.patch"
+      ],
+      "notes": "Run through the Copilot SDK (ADR-0009). Patch makes the `understand` skill load under Copilot (spike M1-1)."
+    }
   ],
   "tools": [
-    { "name": "rtk", "repo": "rtk-ai/rtk", "version": "1.1.0", "asset": "rtk-oss-x86_64-unknown-linux-musl.tar.gz", "license": "Apache-2.0", "notes": "Apache-2.0 edition (no BUSL engine), ADR-0015." }
+    {
+      "name": "rtk",
+      "repo": "rtk-ai/rtk",
+      "version": "1.1.0",
+      "asset": "rtk-oss-x86_64-unknown-linux-musl.tar.gz",
+      "license": "Apache-2.0",
+      "notes": "Apache-2.0 edition (no BUSL engine), ADR-0015."
+    }
   ],
   "excluded": [
-    { "name": "brainstorming, writing-plans, executing-plans, subagent-driven-development, finishing-a-development-branch, using-superpowers", "source": "superpowers", "reason": "Competing planning/execution spine (ADR-0003)." },
-    { "name": "speckit-superb-*", "source": "migration-hackathon", "reason": "Spec Kit bridges; competing spine (ADR-0003)." },
-    { "name": "test-driven-development, systematic-debugging, requesting-code-review", "source": "superpowers", "reason": "Duplicates of tdd, diagnosing-bugs, code-review." },
-    { "name": "create-architectural-decision-record", "source": "awesome-copilot", "reason": "domain-modeling already writes ADRs to docs/adr/." },
-    { "name": "pdf, docx, xlsx", "source": "anthropic-skills", "reason": "Proprietary license; cannot be redistributed. Use only where the agent platform provides them." },
-    { "name": "java-docs, java-junit, django-*, pytest-coverage, python-performance-optimization, Oracle/PostgreSQL skills", "source": "various", "reason": "Language- or stack-specific: selected per migration by the profile, not built in." }
+    {
+      "name": "brainstorming, writing-plans, executing-plans, subagent-driven-development, finishing-a-development-branch, using-superpowers",
+      "source": "superpowers",
+      "reason": "Competing planning/execution spine (ADR-0003)."
+    },
+    {
+      "name": "speckit-superb-*",
+      "source": "migration-hackathon",
+      "reason": "Spec Kit bridges; competing spine (ADR-0003)."
+    },
+    {
+      "name": "test-driven-development, systematic-debugging, requesting-code-review",
+      "source": "superpowers",
+      "reason": "Duplicates of tdd, diagnosing-bugs, code-review."
+    },
+    {
+      "name": "create-architectural-decision-record",
+      "source": "awesome-copilot",
+      "reason": "domain-modeling already writes ADRs to docs/adr/."
+    },
+    {
+      "name": "pdf, docx, xlsx",
+      "source": "anthropic-skills",
+      "reason": "Proprietary license; cannot be redistributed. Use only where the agent platform provides them."
+    },
+    {
+      "name": "java-docs, java-junit, django-*, pytest-coverage, python-performance-optimization, Oracle/PostgreSQL skills",
+      "source": "various",
+      "reason": "Language- or stack-specific: selected per migration by the profile, not built in."
+    }
   ]
 }

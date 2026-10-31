@@ -122,7 +122,9 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 ├── docs/agents/                  # tracker + domain config (setup-matt-pocock-skills)
 ├── .github/agents/               # role agents, pinned copy from harness
 ├── .agents/skills/               # skill menu + stack skills resolved by the profile, pinned
+├── .github/hooks/rtk-rewrite.json  # RTK PreToolUse hook (ADR-0015)
 ├── .migration/
+│   ├── harness/                  # pinned harness tools (afs-run, validate.py, crap.py) and schemas
 │   ├── runs/                     # full command logs from afs-run (gitignored; linked as evidence)
 │   ├── profile.yaml              # the migration profile (§7)
 │   ├── source.lock               # source repo URL + pinned SHA
