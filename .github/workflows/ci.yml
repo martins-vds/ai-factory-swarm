@@ -22,8 +22,10 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Validate sample migration state
         run: python tools/validate.py templates/migration
-      - name: Check skills.lock.json (offline)
-        run: python tools/check_lock.py
+      - name: Check skills.lock.json and stack packs (offline)
+        run: |
+          python tools/check_lock.py
+          for p in stacks/*.json; do python tools/check_lock.py --lock "$p" --base skills.lock.json; done
 
   upstream:
     name: Pinned upstream (paths and vendored copies)
@@ -34,6 +36,15 @@ jobs:
         with: { python-version: "3.12" }
       - name: Every pinned skill path exists at its commit
         run: python tools/check_lock.py --remote
+      - name: Every stack-pack path exists at its commit
+        run: for p in stacks/*.json; do python tools/check_lock.py --lock "$p" --base skills.lock.json --remote; done
+      - name: Bootstrap installs the pilot profile end to end (fetches every public pinned skill)
+        run: |
+          pip install -q jsonschema pyyaml
+          d=$(mktemp -d)
+          python tools/bootstrap.py --target "$d" --profile templates/migration/profile.yaml \
+            --capabilities templates/migration/capabilities.yaml --stack-pack stacks/java-to-django.json --skip-needs-license
+          (cd "$d" && python .migration/harness/tools/check_installed.py && python .migration/harness/tools/validate.py .migration)
       - name: Vendored afs- skills match their pinned upstream
         run: python tools/vendor_skills.py --check
       - name: Patches apply at their pinned commits

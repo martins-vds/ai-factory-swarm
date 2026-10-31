@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--lock", default=str(ROOT / "skills.lock.json"))
     ap.add_argument("--remote", action="store_true")
+    ap.add_argument("--base", help="built-in lock to check a stack pack against (no duplicate names)")
     a = ap.parse_args()
     lock = json.loads(pathlib.Path(a.lock).read_text(encoding="utf-8"))
     errors, warnings = [], []
@@ -52,6 +53,13 @@ def main():
 
     names = set()
     entries = [("skill", e) for e in lock.get("skills", [])] + [("plugin", e) for e in lock.get("plugins", [])]
+    known_base = set()
+    if a.base:  # a stack pack may not reuse a built-in menu name
+        base = json.loads(pathlib.Path(a.base).read_text(encoding="utf-8"))
+        known_base = {e["name"] for e in base.get("skills", []) + base.get("plugins", [])}
+    for kind, e in entries:
+        if e.get("name") in known_base:
+            errors.append(f"{kind} {e['name']}: already in the built-in menu")
     for kind, e in entries:
         name = e.get("name", "?")
         if name in names:

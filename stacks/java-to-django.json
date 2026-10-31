@@ -1,0 +1,212 @@
+{
+  "lockVersion": 1,
+  "pinnedOn": "2026-10-30",
+  "stack": "java-ee-to-python-django",
+  "notes": "Stack pack: stack-specific skills for Java EE (JSF/EJB/JPA, Oracle) \u2192 Python/Django (PostgreSQL), from code-migration-hackathon PR #6. Installed by bootstrap in addition to the built-in menu, and referenced from profile.skills.*.",
+  "sources": {
+    "awesome-copilot": {
+      "repo": "github/awesome-copilot",
+      "commit": "5269f7ea2d6c3a9bfda5ed878b6726cf509121fd",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "wshobson-agents": {
+      "repo": "wshobson/agents",
+      "commit": "7e2fb559cf4b824b27f1fec49fe88f7511066d26",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    },
+    "everything-claude-code": {
+      "repo": "affaan-m/everything-claude-code",
+      "commit": "b38be6a7f6350964d59328b52f0624e1d1d552d1",
+      "license": "MIT",
+      "licenseEvidence": "LICENSE"
+    }
+  },
+  "skills": [
+    {
+      "name": "java-docs",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/java-docs",
+      "install": "upstream",
+      "roles": [
+        "analyst",
+        "characterizer"
+      ],
+      "profile": "source.read"
+    },
+    {
+      "name": "java-junit",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/java-junit",
+      "install": "upstream",
+      "roles": [
+        "analyst",
+        "characterizer"
+      ],
+      "profile": "source.characterize"
+    },
+    {
+      "name": "django-patterns",
+      "category": "stack",
+      "source": "everything-claude-code",
+      "path": "skills/django-patterns",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "target.patterns"
+    },
+    {
+      "name": "django-security",
+      "category": "stack",
+      "source": "everything-claude-code",
+      "path": "skills/django-security",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "target.security"
+    },
+    {
+      "name": "django-tdd",
+      "category": "stack",
+      "source": "everything-claude-code",
+      "path": "skills/django-tdd",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "target.tdd"
+    },
+    {
+      "name": "django-verification",
+      "category": "stack",
+      "source": "everything-claude-code",
+      "path": "skills/django-verification",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "target.verify"
+    },
+    {
+      "name": "django-celery",
+      "category": "stack",
+      "source": "everything-claude-code",
+      "path": "skills/django-celery",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "target.async"
+    },
+    {
+      "name": "pytest-coverage",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/pytest-coverage",
+      "install": "upstream",
+      "roles": [
+        "migrator",
+        "verifier"
+      ],
+      "profile": "target.coverage"
+    },
+    {
+      "name": "python-performance-optimization",
+      "category": "stack",
+      "source": "wshobson-agents",
+      "path": "plugins/python-development/skills/python-performance-optimization",
+      "install": "upstream",
+      "roles": [
+        "verifier"
+      ],
+      "profile": "target.performance"
+    },
+    {
+      "name": "reviewing-oracle-to-postgres-migration",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/reviewing-oracle-to-postgres-migration",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    },
+    {
+      "name": "migrating-oracle-to-postgres-stored-procedures",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/migrating-oracle-to-postgres-stored-procedures",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    },
+    {
+      "name": "planning-oracle-to-postgres-migration-integration-testing",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/planning-oracle-to-postgres-migration-integration-testing",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    },
+    {
+      "name": "creating-oracle-to-postgres-migration-bug-report",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/creating-oracle-to-postgres-migration-bug-report",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    },
+    {
+      "name": "postgresql-code-review",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/postgresql-code-review",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    },
+    {
+      "name": "postgresql-optimization",
+      "category": "stack",
+      "source": "awesome-copilot",
+      "path": "skills/postgresql-optimization",
+      "install": "upstream",
+      "roles": [
+        "specialist-migrator",
+        "verifier"
+      ],
+      "profile": "specialists.data"
+    }
+  ]
+}
