@@ -44,8 +44,9 @@ your ticket.
 
 ## Rules
 - Read-only on the source. Graph first; read files only through the file-read gate (minimum lines).
-- If the graph contradicts the code, trust the code, record the discrepancy and stop if your work
-  depends on it.
+- If the graph contradicts the code, trust the code: record the discrepancy under `graph_discrepancies`
+  and continue. Stop only if the code itself cannot settle what your work depends on.
+- Quirks never block the inventory: record behavior as it is, link the quirk, keep going.
 
 ## Return contract
 ```yaml

@@ -44,9 +44,17 @@ references below hold detail — read one only when your procedure points to it.
 Stop, write a handoff, and escalate (do not keep trying) when:
 - the same failure repeats after **two** honest attempts;
 - setup is wrong — source missing, wrong SHA, writable, or tools missing (`afs-setup-check`);
-- the graph and the code disagree on something your work depends on;
+- the graph and the code disagree on something your work depends on **and the code alone cannot settle
+  it**. The code is the authority: when it is clear, record the discrepancy and continue;
 - a real limit blocks the requested approach;
 - the ticket asks for something outside the contract or the approved plan.
+
+A quirk is **not** a stop: it blocks only the work that implements its answer (Phase 5 code for the
+affected capabilities). Inventory, characterization and planning continue around it: record the
+behavior as it is and link the quirk.
+
+Every PR you open ends with your agent's **return contract** YAML, filled in — also when you stop early
+(fill what you have, `null` the rest).
 
 ## Red flags
 | Thought | Reality |
