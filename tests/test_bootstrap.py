@@ -73,7 +73,7 @@ class BootstrapTest(unittest.TestCase):
                   ".github/skills/django-patterns/LICENSE", ".github/skills/afs-wayfinder/PROVENANCE.md"]:
             self.assertTrue((self.target / f).exists(), f)
         self.assertTrue(os.access(self.target / ".migration/harness/tools/afs-run", os.X_OK))
-        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml"):
+        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml"):
             doc = yaml.safe_load((self.target / ".github/workflows" / wf).read_text())
             self.assertIn("jobs", doc)
         self.assertIn("copilot-setup-steps", yaml.safe_load(

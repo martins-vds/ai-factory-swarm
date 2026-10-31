@@ -133,7 +133,9 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 │   ├── source.lock               # source repo URL + pinned SHA
 │   ├── capabilities.yaml         # required-capability checklist and how each is met (§6)
 │   ├── ledger/                   # fidelity ledger, one file per capability (§9)
-│   ├── graphs/source/            # Understand Anything snapshot of the source at the pinned SHA
+│   ├── slices/<name>.yaml        # slice specs (seeds, depth, extras) for per-slice graph runs
+│   ├── graphs/source/<scope>/    # Understand Anything snapshot at the pinned SHA (`full` or a slice;
+│   │                             #   built by the generated afs-understand.yml workflow)
 │   ├── graphs/target/            # target graph, updated incrementally per slice
 │   ├── risk-map/                 # CRAP risk map of the source (§10.4)
 │   ├── characterization/         # harness + recorded golden behavior from the source
@@ -219,6 +221,9 @@ front end** — tracker, data stores, and who takes production snapshots (usuall
 ### Phase 2 — Understand (Analyst)
 1. Run Understand Anything `/understand` and `/understand-domain` on a local checkout of the source at
    the pinned SHA, always, regardless of size. Commit the snapshot to `.migration/graphs/source/`
+   (run by the generated `afs-understand.yml` workflow through the Copilot SDK). The whole source is
+   graphed once before slices are planned at scale; it costs premium requests in proportion to its size
+   (spike M1-1: ~61 for a 31-file slice), so a pilot may graph one slice first
    ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)).
 2. Inventory every capability into the ledger: structural (from the graph), behavioral (side effects,
    error handling, config-driven branches, edge cases), **UI** (screens, flows, forms, states,

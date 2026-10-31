@@ -14,7 +14,8 @@ and open it as the setup PR. What it writes:
   .github/skills/<name>/                                               built-in menu + stack pack, pinned
   .github/hooks/rtk-rewrite.json                                       RTK hook (RTK's own file)
   .github/copilot-instructions.md                                      harness block, then RTK block (upserted)
-  .github/workflows/copilot-setup-steps.yml, afs-harness-check.yml     generated workflows
+  .github/workflows/copilot-setup-steps.yml, afs-harness-check.yml,
+                    afs-understand.yml                                 generated workflows
   .gitignore                                                           .source/, .migration/runs/
 
 Gap capabilities whose `ticket` is `new` become operator issues on the target repo
@@ -43,7 +44,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import validate  # noqa: E402
 
-HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py"]
+HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
+                 "understand.py"]
+COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
+COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
 PYTHON_VERSION = "3.12"
 BLOCKS = {
@@ -244,9 +248,10 @@ def write_copilot_files(target, lock, version, commit):
                rtk_repo=rtk["repo"], rtk_asset=rtk["asset"], python_version=PYTHON_VERSION,
                pip_packages=PIP_PACKAGES, ua_repo=ua_src["repo"], ua_commit=ua_src["commit"],
                ua_commit_short=ua_src["commit"][:7], ua_patch_steps=ua_patch_steps,
-               project_marker="manage.py")
+               project_marker="manage.py", copilot_cli_version=COPILOT_CLI_VERSION,
+               copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
-    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml"):
+    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")

@@ -6,7 +6,17 @@ Starting from seed classes, follows `import` statements and same-package referen
 optionally a trimmed JSF faces-config containing only managed beans whose name starts with
 --bean-prefix. Writes MANIFEST.txt listing everything copied.
 
-Spike helper (M1): Java-only by design. Standard library only.
+Java-only by design (Phase 2 graph runs per slice, ADR-0009). Standard library only, plus PyYAML for
+--spec.
+
+A slice spec (`.migration/slices/<name>.yaml` in the target) holds the same options:
+  root: java                      # relative to the source checkout
+  seeds: [Currency, CurrencyTableBean]
+  depth: 2
+  extra: [toolkit-web/src/main/webapp/admin/currency.jspx]
+  faces_config: toolkit-web/src/main/webapp/WEB-INF/admin-config.xml
+  bean_prefix: currency
+With --spec, --root is the source checkout and the spec's `root` is appended to it.
 
 Example:
   python3 extract_slice.py --root java --out /tmp/currency-slice --depth 2 \
@@ -53,12 +63,25 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True, help="source root to scan")
     ap.add_argument("--out", required=True, help="output folder (must not exist)")
-    ap.add_argument("--seed", action="append", required=True, help="simple class name; repeatable")
+    ap.add_argument("--spec", help="slice spec YAML (see above); its values fill in the options below")
+    ap.add_argument("--seed", action="append", default=[], help="simple class name; repeatable")
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--extra", action="append", default=[], help="extra file (relative to root)")
     ap.add_argument("--faces-config", help="JSF faces-config to trim (relative to root)")
     ap.add_argument("--bean-prefix", help="keep managed beans whose name starts with this")
     a = ap.parse_args()
+    if a.spec:
+        import yaml
+        with open(a.spec, encoding="utf-8") as fh:
+            spec = yaml.safe_load(fh)
+        a.root = os.path.join(a.root, spec.get("root", ""))
+        a.seed += spec.get("seeds", [])
+        a.depth = spec.get("depth", a.depth)
+        a.extra += spec.get("extra", [])
+        a.faces_config = a.faces_config or spec.get("faces_config")
+        a.bean_prefix = a.bean_prefix or spec.get("bean_prefix")
+    if not a.seed:
+        ap.error("give at least one --seed (or a --spec with seeds)")
 
     if os.path.exists(a.out):
         sys.exit(f"{a.out} already exists")
