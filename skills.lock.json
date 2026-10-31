@@ -77,9 +77,10 @@
     },
     "migration-hackathon": {
       "repo": "martins-vds/code-migration-hackathon",
-      "commit": "c2df7607e3b6a997dd27eb2917bc33e4ec0f6692",
+      "commit": "ac530c35aac8f64257b0eafa4cc43b33595d8190",
       "license": "UNLICENSED",
-      "licenseEvidence": "Owner's own repo (private, no license file). Must be licensed before these skills can ship in the public harness."
+      "licenseEvidence": "No repo-wide license. The owner's three skills carry their own MIT LICENSE (PR #7); entries override the license per skill.",
+      "private": true
     }
   },
   "skills": [
@@ -603,7 +604,8 @@
         "slice-coordinator",
         "specialist-migrator"
       ],
-      "status": "needs-license"
+      "license": "MIT",
+      "licenseEvidence": ".agents/skills/lessons-learned/LICENSE"
     },
     {
       "name": "self-learning",
@@ -614,7 +616,8 @@
       "roles": [
         "bootstrapper"
       ],
-      "status": "needs-license"
+      "license": "MIT",
+      "licenseEvidence": ".agents/skills/self-learning/LICENSE"
     },
     {
       "name": "db-seed",
@@ -626,8 +629,9 @@
         "characterizer",
         "specialist-migrator"
       ],
-      "status": "needs-license",
-      "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps."
+      "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps.",
+      "license": "MIT",
+      "licenseEvidence": ".agents/skills/db-seed/LICENSE"
     }
   ],
   "plugins": [

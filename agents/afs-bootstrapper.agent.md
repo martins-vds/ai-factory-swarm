@@ -41,11 +41,13 @@ install.
 4. **Profile.** Write `.migration/profile.yaml` from the harness template: stacks, tier, graph commit and
    patches, risk-map exclusions (vendored/minified/generated code), stack skills, gate commands,
    thresholds (defaults unless the operator says otherwise), concurrency, context budgets, RTK edition.
-5. **Install.** Copy pinned role agents to `.github/agents/`, skills per `skills.lock.json` (plus stack
-   skills) to the skills folder, harness tools and schemas to `.migration/harness/`, RTK's hook
-   (`.github/hooks/`), and the instruction blocks to `.github/copilot-instructions.md` (harness block
-   first, then `rtk init --copilot`). Add `copilot-setup-steps.yml` with the read-only, pinned source
-   checkout and RTK install.
+5. **Install** with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
+   installed): `--target <clone> --profile <profile> --capabilities <checklist> --stack-pack
+   stacks/<pack>.json --create-gap-issues`. Give a new gap `ticket: new` and bootstrap opens its operator
+   issue. It installs pinned role agents to `.github/agents/`, skills (built-in menu plus stack pack) to
+   `.github/skills/`, harness tools and schemas to `.migration/harness/` with an `installed.json`
+   manifest, RTK's hook, both instruction blocks (harness first), `copilot-setup-steps.yml` and the
+   `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
 6. **Scaffold the target** per the architecture ADRs: layout, CI running the gates, lint/format, test
    runner, coverage, CRAP and mutation tooling, containers.
 7. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**.

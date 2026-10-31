@@ -81,16 +81,16 @@ pip install lizard
 
 # (a) Source risk map without tests — CRAP reduces to a complexity ranking (ADR-0013)
 lizard --csv <hackathon>/java > /tmp/lizard.csv
-python3 tools/spikes/crap.py /tmp/lizard.csv --top 30 --csv /tmp/crap-source.csv > /tmp/risk-map.md
+python3 tools/crap.py /tmp/lizard.csv --top 30 --csv /tmp/crap-source.csv > /tmp/risk-map.md
 
 # (b) With coverage, if the legacy build runs: add the JaCoCo plugin, run whatever tests exist
 #     (mvn -q jacoco:prepare-agent test jacoco:report), then:
-python3 tools/spikes/crap.py /tmp/lizard.csv --jacoco <module>/target/site/jacoco/jacoco.xml > /tmp/risk-map-cov.md
+python3 tools/crap.py /tmp/lizard.csv --jacoco <module>/target/site/jacoco/jacoco.xml > /tmp/risk-map-cov.md
 
 # (c) Target gate on a small Python stub (any Django app with a few tests)
 pip install coverage mutmut
 coverage run -m pytest && coverage lcov -o coverage.lcov
-lizard --csv src > lizard.csv && python3 tools/spikes/crap.py lizard.csv --lcov coverage.lcov --max 30
+lizard --csv src > lizard.csv && python3 tools/crap.py lizard.csv --lcov coverage.lcov --max 30
 mutmut run && mutmut results
 ```
 

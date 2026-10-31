@@ -44,12 +44,14 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 |------|------|
 | [`docs/`](docs/) | Architecture, ADRs, roadmap, spike findings |
 | [`schemas/`](schemas/) | JSON Schemas for a target's `.migration/` state: `profile`, `capabilities`, ledger entries |
-| [`templates/migration/`](templates/migration/) | Sample state from the pilot (validated in CI) |
+| [`templates/migration/`](templates/migration/) | Sample state from the pilot (validated in CI); also the pilot's bootstrap input |
+| [`templates/target/`](templates/target/), [`templates/rtk/`](templates/rtk/) | What bootstrap writes into a target: instruction block, generated workflows, RTK 1.1.0 block and hook |
+| [`stacks/`](stacks/) | Stack packs: pinned stack-specific skills (`java-to-django.json`) |
 | [`skills.lock.json`](skills.lock.json) | The pinned built-in skill menu: source, commit, path, license, roles |
 | [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`) and vendored `afs-` copies |
 | [`patches/`](patches/) | Patches applied to pinned third-party skills and plugins |
 | [`agents/`](agents/) | The ten role agents (`afs-*.agent.md`) |
-| [`tools/`](tools/) | `afs-run` (gate wrapper), `validate.py`, `check_lock.py`, `vendor_skills.py`, spike tools |
+| [`tools/`](tools/) | `bootstrap.py`, `afs-run` (gate wrapper), `validate.py`, `crap.py`, `check_installed.py`, `check_lock.py`, `vendor_skills.py`, spike tools |
 | [`tests/`](tests/) | Tests for the schemas and tools |
 
 ```bash
@@ -57,11 +59,15 @@ tools/afs-run --ticket T-12 --name tests -- pytest -q    # gate run: full log ke
 python tools/validate.py path/to/.migration              # validate a target's migration state
 python tools/check_lock.py [--remote]                    # check the pinned skill menu
 python tools/vendor_skills.py [--check]                  # refresh / drift-check the afs- copies
+
+# install the harness into a target clone (writes files; review, then open the setup PR)
+python tools/bootstrap.py --target ../target-repo --profile profile.yaml --capabilities capabilities.yaml \
+  --stack-pack stacks/java-to-django.json --create-gap-issues
 ```
 
 ## Status
 
-M0 (design), M1 (spikes) and M2 (harness skeleton) are done; M3 (role agents) is in progress — see the
+M0–M4 are done (design, spikes, harness skeleton, role agents, bootstrap); M5 (pilot slice) is next — see the
 [roadmap](docs/roadmap.md) and [spike findings](docs/spikes/m1/findings.md). The baseline is the
 Java → Django migration skill and role agents in
 [code-migration-hackathon PR #6](https://github.com/martins-vds/code-migration-hackathon/pull/6).
