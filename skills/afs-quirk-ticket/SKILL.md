@@ -37,9 +37,16 @@ a human. Body:
 3. Other
 ```
 
+### Remote workers without issue access
+If you cannot create issues from your session (e.g. a Copilot coding agent), write each ticket body
+(the template above, title as the first `# ` line) to `.migration/quirks/<short-id>.md` in your PR and
+list the paths under `quirk_tickets`. The coordinator opens them on the decision map, deletes the files
+and adds the issue to `quirks` in each affected ledger entry (the file's *Impact* section lists them).
+
 ## Then
 1. Add the ticket to `quirks` in every affected ledger entry (`afs-ledger`).
 2. Add a native blocking edge from the quirk ticket to every ticket that depends on the answer.
-3. Continue with work the quirk does not block. If your current ticket is blocked, hand off
-   (`afs-handoff`) and stop.
+3. Continue with work the quirk does not block — inventory, characterization and planning are never
+   blocked by a quirk; only implementing its answer is. If your current ticket is the implementation
+   and is blocked, hand off (`afs-handoff`) and stop.
 4. When answered: implement exactly the chosen option, pin it with a test, and reference the ticket.
