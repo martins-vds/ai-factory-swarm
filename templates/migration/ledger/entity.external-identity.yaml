@@ -1,0 +1,16 @@
+id: entity.external-identity
+kind: behavioral
+title: External identity of entities (e.g. Currency-42)
+source:
+  location: java/stncommons/stn-common-api/src/main/java/com/stn/common/model/jpa/base/BaseDomainEntity.java
+boundary: Row selection ids exchanged between screens and services
+slice: currency-admin
+tickets: [example-org/target-app#13]
+target:
+  components: [common.domain.identity]
+status: migrated
+verification: characterized
+characterization_tier: B
+evidence:
+  - spike/tier-b/test/spike/tierb/EntityIdentityCharacterizationTest.java
+  - tests/common/test_identity.py

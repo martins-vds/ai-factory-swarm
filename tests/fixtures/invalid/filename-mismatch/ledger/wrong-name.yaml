@@ -1,0 +1,6 @@
+id: a.right-name
+kind: behavioral
+source: { location: "x.java:1" }
+boundary: somewhere
+status: pending
+verification: pending

@@ -1,0 +1,6 @@
+id: a.review
+kind: ui
+source: { location: "x.jspx:1" }
+boundary: somewhere
+status: pending
+verification: review-only

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Schemas, afs-run, skill lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install jsonschema pyyaml
+      - name: Unit tests (schemas, afs-run)
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Validate sample migration state
+        run: python tools/validate.py templates/migration
+      - name: Check skills.lock.json (offline)
+        run: python tools/check_lock.py
+
+  upstream:
+    name: Pinned upstream (paths and vendored copies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Every pinned skill path exists at its commit
+        run: python tools/check_lock.py --remote
+      - name: Vendored afs- skills match their pinned upstream
+        run: python tools/vendor_skills.py --check
+      - name: Patches apply at their pinned commits
+        run: |
+          set -e
+          commit=$(python -c "import json;print(json.load(open('skills.lock.json'))['sources']['understand-anything']['commit'])")
+          d=$(mktemp -d); git -C "$d" init -q
+          git -C "$d" fetch -q --depth 1 https://github.com/Egonex-AI/Understand-Anything "$commit"
+          git -C "$d" checkout -q FETCH_HEAD
+          git -C "$d" apply --check "$GITHUB_WORKSPACE/patches/understand-anything/argument-hint.patch"
+          echo "patch applies at ${commit:0:7}"

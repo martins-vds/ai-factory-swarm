@@ -38,10 +38,32 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 - [Architecture decision records](docs/adr/)
 - [Glossary](GLOSSARY.md)
 
+## Repository layout
+
+| Path | What |
+|------|------|
+| [`docs/`](docs/) | Architecture, ADRs, roadmap, spike findings |
+| [`schemas/`](schemas/) | JSON Schemas for a target's `.migration/` state: `profile`, `capabilities`, ledger entries |
+| [`templates/migration/`](templates/migration/) | Sample state from the pilot (validated in CI) |
+| [`skills.lock.json`](skills.lock.json) | The pinned built-in skill menu: source, commit, path, license, roles |
+| [`skills/`](skills/) | Harness-owned skills, including vendored `afs-` copies (with provenance) |
+| [`patches/`](patches/) | Patches applied to pinned third-party skills and plugins |
+| [`agents/`](agents/) | Role agent templates (M3) |
+| [`tools/`](tools/) | `afs-run` (gate wrapper), `validate.py`, `check_lock.py`, `vendor_skills.py`, spike tools |
+| [`tests/`](tests/) | Tests for the schemas and tools |
+
+```bash
+tools/afs-run --ticket T-12 --name tests -- pytest -q    # gate run: full log kept, summary shown
+python tools/validate.py path/to/.migration              # validate a target's migration state
+python tools/check_lock.py [--remote]                    # check the pinned skill menu
+python tools/vendor_skills.py [--check]                  # refresh / drift-check the afs- copies
+```
+
 ## Status
 
-Design complete (M0). The baseline is the Java → Django migration skill and role agents in
-[code-migration-hackathon PR #6](https://github.com/martins-vds/code-migration-hackathon/pull/6);
-this repo generalizes that work. Planning and execution build on
-[Matt Pocock's skills](https://github.com/mattpocock/skills); the code graph comes from
-[Understand Anything](https://github.com/Lum1104/Understand-Anything).
+M0 (design) and M1 (spikes) are done; M2 (harness skeleton) is in progress — see the
+[roadmap](docs/roadmap.md) and [spike findings](docs/spikes/m1/findings.md). The baseline is the
+Java → Django migration skill and role agents in
+[code-migration-hackathon PR #6](https://github.com/martins-vds/code-migration-hackathon/pull/6).
+Planning and execution build on [Matt Pocock's skills](https://github.com/mattpocock/skills); the code
+graph comes from [Understand Anything](https://github.com/Egonex-AI/Understand-Anything).

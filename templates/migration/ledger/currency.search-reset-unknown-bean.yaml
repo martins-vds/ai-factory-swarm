@@ -1,0 +1,13 @@
+id: currency.search-reset-unknown-bean
+kind: ui
+title: Tab click resets an undeclared bean (searchCurrencyTableModel)
+source:
+  location: java/toolkit-web/src/main/webapp/admin/currency.jspx:28-29
+boundary: admin/currency.jspx Currency tab action
+status: dropped
+verification: review-only
+quirks: [example-org/target-app#12]
+approval:
+  by: martins-vds
+  ref: example-org/target-app#12
+  reason: Bean is declared nowhere; resetting it has no observable effect. Example only — a human decides this.

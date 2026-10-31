@@ -1,0 +1,5 @@
+harness_version: 0.2.0
+checked_at: "2026-10-30T23:00:00Z"
+characterization: { legacy_environment: unknown, source_builds: unknown, tier: C }
+capabilities:
+  - { id: mutation-testing, applies_to: target, status: gap }

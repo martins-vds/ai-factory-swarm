@@ -1,0 +1,6 @@
+id: a.char
+kind: behavioral
+source: { location: "x.java:1" }
+boundary: somewhere
+status: pending
+verification: characterized
