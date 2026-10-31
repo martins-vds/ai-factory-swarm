@@ -21,7 +21,7 @@ Gap capabilities whose `ticket` is `new` become operator issues on the target re
 (`--create-gap-issues`, uses the `gh api` REST calls; set AFS_GH to use another executable). Without the flag, bootstrap
 refuses to write a `new` ticket. Labels for the tracker are created with the same flag.
 
-`--skip-needs-license` leaves out skills the lock marks `needs-license` (their source may be private).
+`--skip-private-sources` leaves out skills from sources the lock marks `private` (for CI without access).
 `--offline` skips skills fetched from upstream (harness and vendored skills only); use it for local
 dry runs, never for the setup PR. Needs git, network access to GitHub, jsonschema and pyyaml.
 """
@@ -142,7 +142,7 @@ def load_inputs(profile_path, caps_path):
     return profile, caps
 
 
-def plan_skills(lock, packs, offline, skip_needs_license=False):
+def plan_skills(lock, packs, offline, skip_private=False):
     """Every skill to install: (name, origin, source dict|None, path)."""
     plan, seen = [], {}
     for origin, l in [("menu", lock)] + [(f"stack:{p['stack']}", p) for p in packs]:
@@ -152,12 +152,12 @@ def plan_skills(lock, packs, offline, skip_needs_license=False):
             seen[s["name"]] = origin
             if s["install"] == "upstream" and offline:
                 continue
-            if skip_needs_license and s.get("status") == "needs-license":
+            if skip_private and s["install"] == "upstream" and l["sources"][s["source"]].get("private"):
                 continue
             src = l["sources"][s["source"]] if s["install"] == "upstream" else None
             plan.append({"name": s["name"], "origin": origin, "install": s["install"], "source": src,
                          "source_key": s.get("source"), "path": s["path"], "roles": s.get("roles", []),
-                         "status": s.get("status")})
+                         "status": s.get("status"), "license": s.get("license")})
     return plan
 
 
@@ -179,7 +179,7 @@ def install_skills(target, plan, cache, notes):
         fm = frontmatter_name(dest / "SKILL.md")
         if fm != s["name"]:
             notes.append(f"skill {s['name']}: upstream frontmatter name is {fm!r}")
-        license_note = src["license"]
+        license_note = s.get("license") or src["license"]
         if not (dest / "LICENSE").exists() and (repo_dir / "LICENSE").exists():
             shutil.copyfile(repo_dir / "LICENSE", dest / "LICENSE")
         if s.get("status") == "needs-license":
@@ -343,7 +343,7 @@ def check_profile_skills(profile, installed, offline):
 # ---------- main ----------
 
 def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=False, offline=False,
-              skip_needs_license=False):
+              skip_private=False):
     target = pathlib.Path(target)
     if not target.is_dir():
         raise BootstrapError(f"target {target} is not a directory")
@@ -355,7 +355,7 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
                              "or give an existing ticket")
     lock = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
     packs = [json.loads(pathlib.Path(p).read_text(encoding="utf-8")) for p in pack_paths]
-    plan = plan_skills(lock, packs, offline, skip_needs_license)
+    plan = plan_skills(lock, packs, offline, skip_private)
     missing = check_profile_skills(profile, {s["name"] for s in plan}, offline)
     version, commit, dirty = harness_identity()
     notes = [f"harness has uncommitted changes; installed.json records {commit[:7]}"] if dirty else []
@@ -394,12 +394,12 @@ def main():
     ap.add_argument("--stack-pack", action="append", default=[])
     ap.add_argument("--create-gap-issues", action="store_true")
     ap.add_argument("--offline", action="store_true")
-    ap.add_argument("--skip-needs-license", action="store_true",
-                    help="leave out skills whose lock status is needs-license (e.g. their source is private)")
+    ap.add_argument("--skip-private-sources", action="store_true",
+                    help="leave out skills from sources the lock marks private (CI without access)")
     a = ap.parse_args()
     try:
         r = bootstrap(a.target, a.profile, a.capabilities, a.stack_pack, a.create_gap_issues, a.offline,
-                      a.skip_needs_license)
+                      a.skip_private_sources)
     except BootstrapError as e:
         print(f"bootstrap: {e}", file=sys.stderr)
         return 1

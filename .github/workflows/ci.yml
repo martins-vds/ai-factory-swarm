@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Every pinned skill path exists at its commit
-        run: python tools/check_lock.py --remote
+        run: python tools/check_lock.py --remote --skip-private
       - name: Every stack-pack path exists at its commit
         run: for p in stacks/*.json; do python tools/check_lock.py --lock "$p" --base skills.lock.json --remote; done
       - name: Bootstrap installs the pilot profile end to end (fetches every public pinned skill)
@@ -43,7 +43,7 @@ jobs:
           pip install -q jsonschema pyyaml
           d=$(mktemp -d)
           python tools/bootstrap.py --target "$d" --profile templates/migration/profile.yaml \
-            --capabilities templates/migration/capabilities.yaml --stack-pack stacks/java-to-django.json --skip-needs-license
+            --capabilities templates/migration/capabilities.yaml --stack-pack stacks/java-to-django.json --skip-private-sources
           (cd "$d" && python .migration/harness/tools/check_installed.py && python .migration/harness/tools/validate.py .migration)
       - name: Vendored afs- skills match their pinned upstream
         run: python tools/vendor_skills.py --check

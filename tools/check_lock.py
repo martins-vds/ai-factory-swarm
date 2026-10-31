@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--lock", default=str(ROOT / "skills.lock.json"))
     ap.add_argument("--remote", action="store_true")
+    ap.add_argument("--skip-private", action="store_true", help="with --remote: skip sources marked private (CI)")
     ap.add_argument("--base", help="built-in lock to check a stack pack against (no duplicate names)")
     a = ap.parse_args()
     lock = json.loads(pathlib.Path(a.lock).read_text(encoding="utf-8"))
@@ -81,11 +82,14 @@ def main():
             errors.append(f"{kind} {name}: roles must be non-empty and known (bad: {sorted(bad_roles)})")
         if kind == "skill" and e.get("install") not in INSTALL:
             errors.append(f"skill {name}: install must be one of {sorted(INSTALL)}")
-        if src["license"] not in ALLOWED_LICENSES:
+        lic = e.get("license", src["license"])  # a skill may carry its own license inside an unlicensed repo
+        if e.get("license") and not e.get("licenseEvidence"):
+            errors.append(f"{kind} {name}: a per-skill license needs licenseEvidence")
+        if lic not in ALLOWED_LICENSES:
             if e.get("status") == "needs-license":
-                warnings.append(f"{kind} {name}: source license '{src['license']}' — needs a license before shipping")
+                warnings.append(f"{kind} {name}: license '{lic}' — needs a license before shipping")
             else:
-                errors.append(f"{kind} {name}: license '{src['license']}' is not redistributable; mark status needs-license or remove")
+                errors.append(f"{kind} {name}: license '{lic}' is not redistributable; mark status needs-license or remove")
         if kind == "skill" and e.get("install") == "vendored":
             d = ROOT / "skills" / name
             for f in ("SKILL.md", "PROVENANCE.md", "LICENSE"):
@@ -105,9 +109,12 @@ def main():
             src = sources.get(e.get("source"))
             if e.get("install") == "harness":
                 continue
-            if e.get("status") == "needs-license":
-                warnings.append(f"{kind} {e['name']}: remote check skipped (unlicensed, possibly private source)")
+            if e.get("status") == "needs-license" or (src and src.get("private") and a.skip_private):
+                warnings.append(f"{kind} {e['name']}: remote check skipped (private or unlicensed source)")
                 continue
+            if src and e.get("licenseEvidence", "").endswith("LICENSE") and e.get("license") and \
+                    not path_exists_remote(src["repo"], src["commit"], e["licenseEvidence"], cache):
+                errors.append(f"{kind} {e['name']}: {e['licenseEvidence']} not found in {src['repo']}@{src['commit'][:7]}")
             if src and not path_exists_remote(src["repo"], src["commit"], e["path"], cache):
                 errors.append(f"{kind} {e['name']}: {e['path']} not found in {src['repo']}@{src['commit'][:7]}")
 
