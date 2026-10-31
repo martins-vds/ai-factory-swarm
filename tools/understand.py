@@ -117,6 +117,9 @@ def main():
     ap.add_argument("--timeout", type=float, default=5400)
     ap.add_argument("--token-env", default="GITHUB_TOKEN")
     a = ap.parse_args()
+    if not os.environ.get(a.token_env):
+        print(f"understand: environment variable {a.token_env} is empty", file=sys.stderr)
+        return 1
     try:
         return asyncio.run(run(a))
     except Exception:
