@@ -2,7 +2,7 @@
 
 Runs on GitHub-hosted runners in [ai-factory-pilot-target](https://github.com/martins-vds/ai-factory-pilot-target)
 (branch `spikes/m1-run`, workflow `spikes-m1.yml`), 2026-10-30. Raw results are committed on that branch
-under `spike-results/` (run 4 for spikes 1 and 3, run 5 for spike 4). Spike 2 ran as Copilot coding
+under `spike-results/` (run 4 for spikes 1 and 3, run 5 for spike 4, run 8 for spike 5). Spike 2 ran as Copilot coding
 agent sessions on issues #1 and #3 (reports in PRs #2 and #4). Source: code-migration-hackathon
 `c2df760`, folder `java/`.
 
@@ -12,6 +12,7 @@ agent sessions on issues #1 and #3 (reports in PRs #2 and #4). Source: code-migr
 | 2 · Remote agent | ✅ ran | Pinned, read-only source works in the Copilot coding agent; RTK's hook rewrites commands there transparently. The probe also surfaced a real quirk. |
 | 3 · CRAP / mutation | ✅ ran | Source risk map in 6 s with no build. Legacy build cannot run outside the org. Mutation testing catches what coverage hides. |
 | 4 · RTK | ✅ ran | 50–90% smaller output, failures stay diagnosable, full output recoverable. Apache-only edition available. |
+| 5 · Tier-B characterization | ✅ ran | The legacy code compiles and runs in isolation from source alone: 312 classes, public artifacts plus 3 stand-ins, 13 characterization tests passing. |
 
 ---
 
@@ -92,6 +93,45 @@ disables its push URL, makes it read-only, and installs `rtk-oss`.
   feature). Under ADR-0007 a migrator may not silently drop it — it is exactly the kind of item that becomes
   a quirk ticket for a human.
 
+## Spike 5 — Tier-B characterization from source alone (ADR-0005)
+
+**Question.** With no running legacy environment and a build that cannot run outside the organization, can
+the source still be compiled and executed in isolation to capture real behavior?
+
+**How.** A scratch harness in the pilot repo (`spike/tier-b/`) that never modifies the source:
+- **Compile only what tests reach:** `javac -sourcepath <read-only source trees> -implicit:class` with the
+  test classes as roots, so the many classes that import proprietary APIs are never compiled.
+- **Public artifacts only** (Maven Central): JSF (Mojarra), JPA, EJB, Servlet and EL APIs, EclipseLink,
+  Apache Trinidad (the open-source base of ADF Faces), Commons Lang 2.6, plus JUnit 5 and Mockito.
+- **Stand-ins for proprietary classes:** 3 compile-only Oracle ADF Faces classes (`QueryEvent`,
+  `DialogEvent`, `RichPopup`). No WebLogic, no internal repository manager.
+- **Seam:** the table models read the user's locale from the JSF session in their constructor; a mock
+  `FacesContext` with a plain map as session replaces the container. The source's own resource bundles
+  are used read-only.
+
+**Result (run 8).** **312 legacy classes compiled; 13 characterization tests, all passing**, covering the
+paging behavior every admin table inherits (`BasePagedTableModel`) and entity identity (`BaseDomainEntity`
+via `Currency`). Each test logs what the code did next to what reading the code predicted:
+**57 of 57 predictions matched**, plus 2 observe-only cases.
+
+**Lessons for the Characterizer (would apply to any tier-B setup):**
+- **Encoding.** The source is Windows-1252 and the build declares no encoding; compiling as UTF-8 fails.
+- **Missing public libraries surface as cascades.** One absent jar (Commons Lang) produced ~90 errors.
+- **Legacy generics can block naive harnesses.** A table model typed by `String` does not compile because
+  the legacy `selectRow(M)` and `selectRow(String)` overloads collide; use a dedicated row type.
+- **Tooling details:** the JUnit console launcher does not expand `lib/*` classpath wildcards (tests are
+  silently not found).
+
+**Quirk candidates found (for ADR-0007 tickets):**
+- An empty table shows **"Page 1 of 0"**.
+- If the row count query throws, the exception is handled and the pager shows **"Page 1 of 0"**, the same as
+  an empty table, so a database failure can look like "no data".
+
+**Implications.** Tier B is practical for this app's logic layers (entities, paging, services with fakes),
+so tier C (spec-derived) can be reserved for code that truly cannot run. In this simple code reading
+predicted behavior perfectly; the value of tier B grows with the CRAP hot spots, where reading is least
+reliable — the next characterization target should be one of them (e.g. `BaseEmployee.getPropertyValue`).
+
 ## Spike 3 — CRAP risk map and mutation testing
 
 **Source risk map (no build needed).** lizard scanned the Java source in **6 s**: 10,845 methods, **699
@@ -161,7 +201,7 @@ BUSL question entirely.
 | ADR | Change |
 |---|---|
 | 0009 | Add the Analyst enrichment step (tags + config → ledger kinds and screen/data chains); pin Understand Anything with the frontmatter patch; record the cost and time per file as a budgeting input. |
-| 0005 | Revised: characterization by **tier** — A running environment, B runnable in isolation (public API artifacts / stand-ins), C source-only specs (`spec-derived`); tier recorded by bootstrap. ADR-0006 gains the no-environment fallback. |
+| 0005 | Revised: characterization by **tier** (tier B proven on the pilot in spike 5) — A running environment, B runnable in isolation (public API artifacts / stand-ins), C source-only specs (`spec-derived`); tier recorded by bootstrap. ADR-0006 gains the no-environment fallback. |
 | 0013 | Exclusion globs for vendored, minified and generated code in the profile. |
 | 0015 | Pin RTK's Apache-2.0 edition (`rtk-oss`); the hook is confirmed to rewrite transparently in the Copilot coding agent. |
 | 0012 | The capability checklist records the characterization tier and what blocks the build. |

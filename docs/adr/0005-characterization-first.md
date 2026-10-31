@@ -30,6 +30,16 @@ legacy environment: sometimes **all we have is the source code**.
 - A capability that cannot be characterized at any tier is `review-only` and needs a human tester's
   sign-off before cutover.
 
+### Tier B recipe (proven in spike M1-5)
+On the pilot (Java EE, build blocked by a proprietary WebLogic client), 312 legacy classes compiled and
+13 characterization tests ran from source alone:
+- compile only what tests reach (`javac -sourcepath … -implicit:class`, tests as roots);
+- public artifacts for platform APIs, compile-only stand-ins for the few proprietary classes on the path;
+- seams instead of containers (e.g. a mock `FacesContext` whose session is a map);
+- the source's own resources, read-only; and its real source encoding (here Windows-1252).
+Each characterization test records observed behavior next to the behavior predicted by reading the code,
+so tiers B and C can be compared on the same capability.
+
 ## Consequences
 - A dedicated Characterizer role builds and maintains the harness for the chosen tier.
 - Bootstrap's capability checklist records the tier per migration and the reason (ADR-0012).
