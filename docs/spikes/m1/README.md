@@ -6,7 +6,7 @@ Each one ends with a short findings file in this folder: `spike-1-graph.md`, `sp
 
 **Why they run on your machine:** the cloud workspace these were prepared in cannot reach npm, PyPI or
 Maven Central, so it cannot build Understand Anything or run JaCoCo/PIT/mutmut. The scripts in
-[`tools/spikes/`](../../tools/spikes/) use only the Python standard library and were tested there.
+[`tools/`](../../tools/) (promoted from `tools/spikes/` in M4–M5) use only the Python standard library and were tested there.
 
 Source: [code-migration-hackathon](https://github.com/martins-vds/code-migration-hackathon) `main`
 @ `c2df760`, folder `java/`.
@@ -25,7 +25,7 @@ JPA entity. 29 classes (depth 2), ~3,700 lines, plus the page and a trimmed `adm
 
 ```bash
 # 1. Extract the slice (original paths preserved; MANIFEST.txt lists every file)
-python3 tools/spikes/extract_slice.py --root <hackathon>/java --out ~/spikes/currency-slice --depth 2 \
+python3 tools/extract_slice.py --root <hackathon>/java --out ~/spikes/currency-slice --depth 2 \
   --seed Currency --seed CurrencyTableModel --seed CurrencyTableBean --seed CurrencyBean --seed CurrencyFormBean \
   --extra toolkit-web/src/main/webapp/admin/currency.jspx \
   --faces-config toolkit-web/src/main/webapp/WEB-INF/admin-config.xml --bean-prefix currency
@@ -37,7 +37,7 @@ cd ~/spikes/currency-slice && git init -q && git add -A && git commit -qm "curre
 #    Note wall-clock time and, if visible, tokens/cost.
 
 # 3. Check the result
-python3 tools/spikes/check_graph.py ~/spikes/currency-slice/.ua/knowledge-graph.json \
+python3 tools/check_graph.py ~/spikes/currency-slice/.ua/knowledge-graph.json \
   --domain ~/spikes/currency-slice/.ua/domain-graph.json \
   --anchor currency.jspx --anchor CurrencyTableBean --anchor CurrencyFormBean > docs/spikes/m1/spike-1-graph.md
 ```

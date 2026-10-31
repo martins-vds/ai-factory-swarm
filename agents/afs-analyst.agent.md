@@ -26,9 +26,11 @@ your ticket.
 - `afs-quirk-ticket` — anything that looks wrong.
 
 ## Procedure
-1. **Graphs.** Run `/understand` and `/understand-domain` on the source at the pinned SHA (patched plugin
-   per the profile). Commit both JSON files to `.migration/graphs/source/`. Never rebuild them later
-   unless the graph is shown to be wrong.
+1. **Graphs.** The source graphs are built by the `afs-understand.yml` workflow (`/understand` and
+   `/understand-domain` through the Copilot SDK, patched plugin per the profile) and merged to
+   `.migration/graphs/source/<scope>/` before your ticket starts. If your scope has no graph, stop and
+   hand off asking for the workflow run; do not build one in your session. Never rebuild a merged graph
+   unless it is shown to be wrong. Query it with `/understand-chat` and `/understand-explain`.
 2. **Enrich** (`afs-migration-contract` → references/capability-coverage.md): map tags and framework
    config to ledger kinds; build screen → bean → service → entity chains from imports plus config.
 3. **Inventory** every capability into the ledger (`status: pending`): structural, behavioral (side
