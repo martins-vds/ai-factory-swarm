@@ -229,7 +229,8 @@ def write_state(target, profile, profile_path, caps_doc):
     write(m / "source.lock",
           f"# Pinned, read-only migration source. Written by bootstrap; change only through a new setup PR.\n"
           f"repo: {profile['source']['repo']}\nsha: {profile['source']['sha']}\npath: {profile['source']['path']}\n")
-    shutil.copyfile(profile_path, m / "profile.yaml")
+    if not (m / "profile.yaml").exists() or not (m / "profile.yaml").samefile(profile_path):
+        shutil.copyfile(profile_path, m / "profile.yaml")
     write(m / "capabilities.yaml",
           "# Capability checklist (ADR-0012), written by bootstrap. A gap blocks Phase 2 until its ticket is resolved.\n"
           + yaml.safe_dump(caps_doc, sort_keys=False, allow_unicode=True, width=110))

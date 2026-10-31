@@ -110,6 +110,16 @@ class BootstrapTest(unittest.TestCase):
         self.assertFalse((self.target / ".github/agents/afs-stale.agent.md").exists())
         self.assertTrue((self.target / ".github/agents/team.agent.md").exists())
 
+    def test_rerun_from_the_targets_own_state(self):
+        self.run_bootstrap()
+        m = self.target / ".migration"
+        before = (m / "profile.yaml").read_text()
+        bootstrap.bootstrap(self.target, m / "profile.yaml", m / "capabilities.yaml", [PACK])
+        self.assertEqual((m / "profile.yaml").read_text(), before)
+        out = subprocess.run(["python3", ".migration/harness/tools/validate.py", ".migration"], cwd=self.target,
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
     def test_check_installed_reports_drift(self):
         self.run_bootstrap()
         (self.target / ".github/skills/afs-ledger/SKILL.md").write_text("edited")
