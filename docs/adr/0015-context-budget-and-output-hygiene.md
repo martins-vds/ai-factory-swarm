@@ -1,6 +1,6 @@
 # ADR-0015: Context budget and tool-output hygiene
 
-- Status: Accepted (Copilot coding agent hook behavior to be confirmed by spike M1-d)
+- Status: Accepted (coding-agent hook behavior confirmed in spike M1-2: transparent rewrite)
 - Date: 2026-10-30
 
 ## Context
@@ -38,7 +38,7 @@ Enforced in three layers, from deterministic to enforcing:
 |-------|------|----------------|
 | **a. RTK for every shell command, `afs-run` for gate runs** | Agents prefix shell commands with `rtk` (enforced by layer c). Gate runs (build, tests, CRAP, mutation) go through the harness's thin `afs-run` wrapper, which calls RTK and also saves the raw log to `.migration/runs/<ticket>/` (gitignored) so gate evidence can link to a file; it prints RTK's compact result plus the log path. | Everywhere (local and remote), any language |
 | **b. Filter engine: RTK** ([rtk-ai/rtk](https://github.com/rtk-ai/rtk)) | Single-binary CLI proxy with compact filters for 100+ commands. **Maven and Gradle are supported** (`rtk mvn`, `./mvnw`, `mvnd`, `rtk gradlew`/`gradle`): Surefire/Failsafe passing blocks are dropped and only failing tests are kept with framework stack frames stripped; the project's own fixtures assert ≥90% savings for `mvn test` and ≥85% for `mvn install`. Raw output stays recoverable (`[full output: rtk recall <hash>]`, or files in tee mode). Only shell commands go through it; built-in file read/search tools do not. | Local and remote (binary installed in setup steps) |
-| **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` (coding agent and CLI). `rtk init --copilot` writes `.github/hooks/rtk-rewrite.json`, a `preToolUse` hook that **rewrites** commands transparently in VS Code and **denies with a suggested `rtk` command** in the Copilot CLI (whose hook API cannot rewrite). The harness adds its own `preToolUse` rules that deny unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with guidance to use `afs-run`, and a `sessionEnd` hook that checks a handoff or PR exists. Deny-with-guidance works whether or not rewriting is available. | Copilot CLI, VS Code, Copilot coding agent (to be confirmed: RTK documents VS Code and the CLI only) |
+| **c. Hooks: enforcement** | Copilot agents load hooks from `.github/hooks/*.json` (coding agent and CLI). `rtk init --copilot` writes `.github/hooks/rtk-rewrite.json`, a `preToolUse` hook that **rewrites** commands transparently in VS Code and **denies with a suggested `rtk` command** in the Copilot CLI (whose hook API cannot rewrite). The harness adds its own `preToolUse` rules that deny unbounded commands (raw full test/build runs, `cat` of large files, recursive listings) with guidance to use `afs-run`, and a `sessionEnd` hook that checks a handoff or PR exists. Deny-with-guidance works whether or not rewriting is available. | Copilot CLI, VS Code, Copilot coding agent (confirmed in spike M1-2: transparent rewrite) |
 
 **RTK facts** (verified from source at `6c2313a`, v0.49.0, 2026-10-30):
 - License: the CLI crate is Apache-2.0, but the default build links `rtk-engine` (BUSL-1.1) under a
@@ -46,6 +46,11 @@ Enforced in three layers, from deterministic to enforcing:
   product. AI Factory Swarm is a free, public project and does not redistribute RTK (setup steps
   install it from RTK's own releases), so this is fine. If anyone ever offers the swarm as a paid or
   hosted service, they must build RTK with `--no-default-features` (Apache-2.0 only) or license it.
+- **Decision: pin `rtk-oss`.** Every RTK release ships `rtk-oss`, the Apache-2.0 edition (same `rtk`
+  binary, built without the BUSL engine). The harness installs that edition, which removes the
+  licensing question; switch only if a measured feature gap appears.
+- Spike M1-4 (RTK 1.1.0): 74–90% smaller pytest output with failures still diagnosable, 80% for
+  `git status`, ~50% for `git log` and Maven failures, and `rtk recall` restored full output.
 
 ### 4a. Copilot instructions: two marked blocks, one file
 `rtk init --copilot` does not overwrite `.github/copilot-instructions.md`: it inserts or updates only

@@ -67,7 +67,7 @@ humans, and approved for cutover.
 | 2 | Three repositories: harness, source (read-only, frozen, pinned), target | [0002](adr/0002-three-repository-topology.md) |
 | 3 | Matt Pocock's skills are the spine; user-invoked skills stay human-triggered at L0, vendored copies at L1/L2 | [0003](adr/0003-mattpocock-skills-as-spine.md) |
 | 4 | Two-level tracking (decision map + slice tickets) in the target repo; Azure DevOps via MCP | [0004](adr/0004-two-level-tracking-in-target-repo.md) |
-| 5 | Characterization tests are mandatory before migration; "review-only" is the human-signed fallback | [0005](adr/0005-characterization-first.md) |
+| 5 | Characterization is mandatory before migration, at the best available tier (running environment, runnable in isolation, or source-only specs); "review-only" is the human-signed fallback | [0005](adr/0005-characterization-first.md) |
 | 6 | Automated differential checks first; human side-by-side check per slice; final UAT; single cutover | [0006](adr/0006-side-by-side-then-cutover.md) |
 | 7 | Quirks escalate immediately as blocking question tickets assigned to a human | [0007](adr/0007-quirks-escalate-immediately.md) |
 | 8 | Layered orchestration; local subagents or the Copilot coding agent; agents live only in the target repo | [0008](adr/0008-layered-orchestration.md) |
@@ -227,11 +227,17 @@ front end** — tracker, data stores, and who takes production snapshots (usuall
 Mandatory, before any migration ([ADR-0005](adr/0005-characterization-first.md)):
 1. **Inventory legacy tests.** Record the behavior each one asserts as ledger evidence. That behavior
    must reappear as a test in the target, in the target's idiom.
-2. **Characterize at the equivalence boundary.** Drive the source through its external interfaces
-   (HTTP, UI, CLI, queue, batch input, DB state) and record inputs → observable outputs: normal,
-   empty/null/zero and boundary cases. Spend most effort where the risk map is hottest.
-3. **Re-run the risk map** with coverage collected while characterization ran, where the stack
-   allows. Complex code the characterization never reached is the top characterization gap.
+2. **Characterize at the best available tier** (chosen in bootstrap; normal, empty/null/zero and
+   boundary cases; most effort where the risk map is hottest):
+   - **A · running environment:** drive the source through its external interfaces (HTTP, UI, CLI,
+     queue, batch input, DB state) and record inputs → observable outputs.
+   - **B · runnable in isolation:** compile against public API artifacts or stand-ins for proprietary
+     dependencies and characterize at seams (services with fakes, entity logic, validators,
+     calculations) in a scratch project that only reads the source.
+   - **C · source only:** derive behavioral specs from the code — worked examples citing file and
+     line — as the target's acceptance tests; every ambiguity becomes a quirk ticket.
+3. **Re-run the risk map** with coverage collected while characterization ran (tiers A and B).
+   Complex code the characterization never reached is the top characterization gap.
 4. **Fallback.** A capability that cannot reasonably be characterized is marked `review-only` and
    needs a human tester's sign-off.
 
@@ -280,7 +286,9 @@ Phase 8.
 
 ### Phase 8 — Final UAT and cutover ([ADR-0006](adr/0006-side-by-side-then-cutover.md))
 1. Run the data-migration pipeline on a fresh production snapshot (a dress rehearsal of cutover).
-2. Test users exercise the whole target side by side with the running legacy application.
+2. Test users exercise the whole target side by side with the running legacy application. Without a
+   legacy environment (tiers B/C), they verify it against the characterization tests and derived specs
+   with a domain expert.
 3. Every `review-only` capability gets a human-tester sign-off.
 4. Discrepancies loop back through Phase 4/5.
 5. **Human gate:** cutover approval. The legacy application stays available until cutover is
@@ -355,7 +363,8 @@ how each is met; any unmet item is an operator ticket that blocks Phase 2.
 | Capability | Needed for | Example tools (vary by stack) |
 |------------|-----------|-------------------------------|
 | Build / run | source and target | Maven, dotnet, pip/uv, npm |
-| Characterization harness | source | HTTP recorders, UI drivers, DB snapshots, approval-test libraries |
+| Characterization tier | source | Is a legacy environment running (tier A)? Does the source build in isolation, and which proprietary dependencies block it (tier B)? Otherwise tier C |
+| Characterization harness | source | HTTP recorders, UI drivers, DB snapshots, approval-test libraries; public API artifacts or stand-ins for tier B |
 | Unit / integration tests | target | JUnit, xUnit, pytest, Jest |
 | Coverage | source (best effort), target | JaCoCo, coverlet, coverage.py, c8 |
 | Complexity | source (best effort), target | lizard, radon, language linters |
@@ -436,6 +445,12 @@ How it is used:
 | Per slice | `/understand` on the target (incremental: only changed files re-analyzed) | `.migration/graphs/target/` |
 | Per PR | `/understand-diff` | Blast radius of the change |
 
+**Enrichment (spike M1-1).** For some stacks (e.g. Java EE) screens, entities and services arrive as
+tags and summaries on `file`/`class` nodes, with few `calls` edges. The Analyst maps tags and framework
+config to ledger kinds and builds screen → bean → service → entity chains from imports plus config;
+the domain graph's flows are the primary slice anchors. The harness pins Understand Anything with a
+one-line patch so its `understand` skill loads under Copilot. Agents run it through the Copilot SDK.
+
 Because the source is frozen, the source graph is built **once** and committed; its cost is paid
 once and its LLM-generated content does not drift. Understand Anything writes its data next to the
 analyzed code, so it runs on a local, never-pushed checkout of the source and the result is copied
@@ -461,7 +476,7 @@ tickets: [org/new-app#142]
 target:
   components: [billing.application.charge_invoice, billing.domain.Money]
 status: migrated            # pending | in-progress | migrated | deferred | replaced | dropped
-verification: characterized # differential | characterized | legacy-test | review-only
+verification: characterized # differential | characterized | legacy-test | spec-derived | review-only
 evidence:
   - .migration/characterization/billing/charge_rounding.json
   - tests/billing/test_charge_invoice.py::test_half_even_rounding
@@ -485,9 +500,11 @@ Strongest to weakest; each capability records the rung it reached.
    data; outputs compared (automated in Phase 6; by people in the slice check and final UAT).
 2. **Characterization tests** — recorded source behavior replayed against the target.
 3. **Transcribed legacy tests** — behavior the legacy suite asserted, re-expressed in the target.
-4. **Graph capability coverage** — every source capability maps to target components and at least
+4. **Spec-derived** — behavior derived from reading the source (tier C), encoded as target tests;
+   requires human review.
+5. **Graph capability coverage** — every source capability maps to target components and at least
    one passing test.
-5. **Review only** — human review and exploratory testing; requires sign-off.
+6. **Review only** — human review and exploratory testing; requires sign-off.
 
 ### 10.2 Automated differential checks
 Before any human looks at a slice, as much as possible is automated:
@@ -689,6 +706,7 @@ that pins the chosen behavior.
 
 | Risk | Mitigation |
 |------|------------|
+| No running legacy environment, and the source does not build outside the organization (seen in the pilot) | Characterization tiers B/C (ADR-0005); weaker evidence recorded and reviewed by humans |
 | Understand Anything cannot parse a legacy language (e.g. COBOL, VB6) | Spike per new source language; Graphify is the fallback as a **swap**, not an addition (ADR-0009) |
 | Full source graph is slow/expensive on very large codebases | One-time cost (frozen source); budget it in Phase 2 |
 | Second legacy instance not available for write comparisons | Fall back to read-only replay + characterization + human check (§10.2) |

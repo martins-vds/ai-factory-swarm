@@ -29,6 +29,20 @@ needs. Running both behind an adapter would be expensive to build and maintain.
   SHA, and commit the snapshot to the target's `.migration/graphs/source/`.
 - Update target graphs incrementally per slice into `.migration/graphs/target/`.
 
+### Amendment after spike M1-1 (2026-10-30)
+- **Run through the Copilot SDK** in Actions with `GITHUB_TOKEN` and `copilot-requests: write`.
+- **Skill patch.** Under Copilot, the main `understand` skill does not load because its `argument-hint`
+  frontmatter is a YAML list; the harness pins Understand Anything and rewrites that line as a string
+  (to be reported upstream).
+- **Enrichment step.** For Java EE the graph carries screens, entities and services as **tags and
+  summaries** on `file`/`class` nodes (0 `screen`/`table`/`service` nodes, 2 `calls` edges). The Analyst
+  derives ledger kinds from tags and config (`jpa-entity` → data, `view`/`ui` → UI, `service` → service
+  boundary, framework config such as JSF managed beans → screen↔bean wiring) and builds screen → bean →
+  service → entity chains from imports plus config. The domain graph's flows (with UI entry points) are
+  the primary slice anchors.
+- **Budget.** The 31-file pilot slice took 61 premium requests and ~5 minutes; whole-codebase cost is
+  estimated linearly from file count and approved by the operator before Phase 2.
+
 ## Consequences
 - The source graph's LLM cost is paid once, and its content does not drift (the source is frozen).
 - The ledger and slice plan draw directly on endpoints, screens, tables, flows and `tested_by` edges.
