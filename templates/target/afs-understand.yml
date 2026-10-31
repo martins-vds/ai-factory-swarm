@@ -38,7 +38,7 @@ jobs:
         with:
           repository: ${{{{ steps.lock.outputs.repo }}}}
           ref: ${{{{ steps.lock.outputs.sha }}}}
-          token: ${{{{ secrets.SOURCE_READ_TOKEN }}}}
+          token: ${{{{ secrets.SOURCE_READ_TOKEN || github.token }}}}   # public sources need no secret
           path: .source
           persist-credentials: false
       - uses: actions/setup-node@v4

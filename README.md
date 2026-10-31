@@ -46,6 +46,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 | [`schemas/`](schemas/) | JSON Schemas for a target's `.migration/` state: `profile`, `capabilities`, ledger entries |
 | [`templates/migration/`](templates/migration/) | Sample state from the pilot (validated in CI); also the pilot's bootstrap input |
 | [`templates/target/`](templates/target/), [`templates/rtk/`](templates/rtk/) | What bootstrap writes into a target: instruction block, generated workflows, RTK 1.1.0 block and hook |
+| [`examples/`](examples/) | Bootstrap inputs for real pilots (`cargotracker/`: the public M5 pilot) |
 | [`stacks/`](stacks/) | Stack packs: pinned stack-specific skills (`java-to-django.json`) |
 | [`skills.lock.json`](skills.lock.json) | The pinned built-in skill menu: source, commit, path, license, roles |
 | [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`) and vendored `afs-` copies |

@@ -1,8 +1,11 @@
 # Roadmap
 
-Delivery plan for the harness described in [architecture.md](architecture.md). The pilot codebase is
-the Java application in [code-migration-hackathon](https://github.com/martins-vds/code-migration-hackathon),
-the app PR #6 was built for, migrating Java → Python/Django.
+Delivery plan for the harness described in [architecture.md](architecture.md). M0–M4 used the Java
+application in [code-migration-hackathon](https://github.com/martins-vds/code-migration-hackathon)
+(private). From M5 the pilot is public: [Eclipse Cargo Tracker](https://github.com/eclipse-ee4j/cargotracker)
+(`javaee7` branch, Java EE 7, MIT) → Python/Django, with inputs in
+[`examples/cargotracker/`](../examples/cargotracker/). The first M5 run on the private pilot is summarized
+in its findings: quirks never block inventory; remote workers need the quirk-file fallback.
 
 | Milestone | Scope | Done when |
 |-----------|-------|-----------|

@@ -1,0 +1,64 @@
+# Migration profile for the public pilot: Eclipse Cargo Tracker (Java EE 7) → Python/Django.
+# Bootstrap input; validated against schemas/profile.schema.json.
+harness_version: 0.2.0
+source:
+  repo: eclipse-ee4j/cargotracker
+  sha: f3beacf78de4f6d34edc4971ac87e38a5c6fe59d   # branch javaee7, 2021-01-02, MIT
+  path: ""
+  stacks: [java-8, java-ee-7, jsf-2.2, primefaces-8, cdi-1.1, ejb-3.2, jpa-2.1-eclipselink, jax-rs-2-jersey, jms-2, jbatch-1.0, payara-4, derby]
+  encoding: UTF-8
+target:
+  repo: martins-vds/ai-factory-pilot-target
+  stacks:
+    backend: [python-3.13, django-5]
+    frontend: [django-templates]
+    data: [postgresql-17]
+  architecture:
+    adrs: []
+characterization:
+  tier: B
+  reason: >-
+    Provisional. The source builds from public Maven Central artifacts and targets Payara 4 with embedded
+    Derby, so tier A (a running legacy app in a container) is likely; the Bootstrapper verifies A vs B
+    in its first ticket and updates this.
+graph:
+  tool: understand-anything
+  commit: 4e6d3299017a7432da15957874992837a315c5b4
+  patches: [understand-anything/argument-hint.patch]
+risk_map:
+  exclude: ["*.min.js", "*/webapp/resources/*", "*/soapui/*"]
+skills:
+  source:
+    read: [java-docs]
+    characterize: [java-junit]
+  target:
+    patterns: [django-patterns]
+    security: [django-security]
+    tdd: [django-tdd]
+    verify: [django-verification]
+    coverage: [pytest-coverage]
+  specialists:
+    data: [postgresql-code-review, postgresql-optimization]
+gates:
+  build: ["python -m compileall -q src", "python manage.py check"]
+  idiom: ["ruff check", "ruff format --check"]
+  tests: ["pytest -q"]
+  crap: ["lizard --csv src > .migration/runs/lizard.csv", "python .migration/harness/tools/crap.py .migration/runs/lizard.csv --lcov coverage.lcov --max 30"]
+  mutation_changed: ["mutmut run --paths-to-mutate {changed}"]
+  mutation_full: ["mutmut run"]
+thresholds:
+  crap_max_per_method: 30
+  mutation_score_min: 0.8
+concurrency:
+  max_parallel_workers: 4
+  remote_workers: true
+context:
+  working_budget: 0.45
+  soft_limit: 0.6
+rtk:
+  edition: oss
+  version: 1.1.0
+data:
+  masking: false
+  snapshot_owner: "n/a: the source seeds sample data at startup (SampleDataGenerator)"
+translation_rules: .migration/translation-rules.md

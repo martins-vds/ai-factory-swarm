@@ -26,14 +26,14 @@ jobs:
           echo "repo=$(awk '/^repo:/{{print $2}}' .migration/source.lock)" >> "$GITHUB_OUTPUT"
           echo "sha=$(awk '/^sha:/{{print $2}}' .migration/source.lock)" >> "$GITHUB_OUTPUT"
 
-      # SOURCE_READ_TOKEN: fine-grained PAT with Contents: Read-only on the source repo ONLY.
+      # SOURCE_READ_TOKEN (private sources only): fine-grained PAT with Contents: Read-only on the source repo ONLY.
       # Store it as a secret in this repo's `copilot` environment (Settings → Environments → copilot).
       - name: Check out source (read-only, pinned)
         uses: actions/checkout@v5
         with:
           repository: ${{{{ steps.lock.outputs.repo }}}}
           ref: ${{{{ steps.lock.outputs.sha }}}}
-          token: ${{{{ secrets.SOURCE_READ_TOKEN }}}}
+          token: ${{{{ secrets.SOURCE_READ_TOKEN || github.token }}}}   # public sources need no secret
           path: .source
           persist-credentials: false
 
