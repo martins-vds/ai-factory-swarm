@@ -21,7 +21,9 @@ jobs:
       - name: Unit tests (schemas, afs-run)
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Validate sample migration state
-        run: python tools/validate.py templates/migration
+        run: |
+          python tools/validate.py templates/migration
+          for d in examples/*/; do python tools/validate.py "$d"; done
       - name: Check skills.lock.json and stack packs (offline)
         run: |
           python tools/check_lock.py

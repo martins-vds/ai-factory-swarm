@@ -228,7 +228,7 @@ def write_state(target, profile, profile_path, caps_doc):
     m = target / ".migration"
     write(m / "source.lock",
           f"# Pinned, read-only migration source. Written by bootstrap; change only through a new setup PR.\n"
-          f"repo: {profile['source']['repo']}\nsha: {profile['source']['sha']}\npath: {profile['source']['path']}\n")
+          f"repo: {profile['source']['repo']}\nsha: {profile['source']['sha']}\npath: {profile['source'].get('path', '')}\n")
     if not (m / "profile.yaml").exists() or not (m / "profile.yaml").samefile(profile_path):
         shutil.copyfile(profile_path, m / "profile.yaml")
     write(m / "capabilities.yaml",

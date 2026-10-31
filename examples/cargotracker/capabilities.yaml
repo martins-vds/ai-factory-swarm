@@ -1,0 +1,89 @@
+# Capability checklist for the Cargo Tracker pilot (bootstrap input). Tier is provisional until the
+# Bootstrapper's first ticket verifies whether the legacy app runs (tier A).
+harness_version: 0.2.0
+checked_at: "2026-10-31T16:00:00Z"
+characterization:
+  legacy_environment: unknown
+  source_builds: unknown
+  tier: B
+  reason: Public Maven Central dependencies only; Payara 4 + embedded Derby. To verify (A vs B) in the Bootstrapper's first ticket.
+capabilities:
+  - id: code-graph
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: understand-anything, version: "2.9.8" }
+  - id: build-run
+    applies_to: source
+    status: met
+    notes: Maven build from Maven Central; runtime Payara 4.1 (cargo-maven2-plugin / container). Verify in the first ticket.
+    provided_by:
+      - { kind: tool, name: maven }
+  - id: characterization-harness
+    applies_to: source
+    status: met
+    notes: The source ships JUnit 4 + Arquillian tests (11 files) — inventory them as legacy-test evidence.
+    provided_by:
+      - { kind: skill, name: java-junit }
+      - { kind: tool, name: junit }
+  - id: complexity
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: lizard }
+  - id: crap
+    applies_to: source
+    status: met
+    best_effort: true
+    provided_by:
+      - { kind: tool, name: crap.py }
+  - id: coverage
+    applies_to: source
+    status: met
+    best_effort: true
+    provided_by:
+      - { kind: tool, name: jacoco }
+  - id: unit-integration-tests
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: pytest }
+      - { kind: skill, name: django-tdd }
+  - id: crap
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: lizard }
+      - { kind: tool, name: coverage.py }
+  - id: mutation-testing
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: mutmut }
+  - id: lint-format
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: tool, name: ruff }
+  - id: stack-idioms
+    applies_to: target
+    status: met
+    provided_by:
+      - { kind: skill, name: django-patterns }
+  - id: ui-end-to-end
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: skill, name: agent-browser }
+  - id: data-migration
+    applies_to: both
+    status: gap
+    ticket: new
+    notes: >-
+      Source data lives in embedded Derby, seeded at startup by SampleDataGenerator. No Derby → PostgreSQL
+      data skill is pinned; decide whether to migrate the seeded data or regenerate it as target fixtures.
+  - id: output-filtering
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: rtk-oss, version: "1.1.0" }
