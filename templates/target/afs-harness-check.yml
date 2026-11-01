@@ -40,6 +40,21 @@ jobs:
   gates:
     name: Gates (build, idiom, tests)
     runs-on: ubuntu-latest
+    # PostgreSQL for target tests (profile target.stacks.data); harmless when the target doesn't use it.
+    services:
+      postgres:
+        image: postgres:17
+        env: {{ POSTGRES_DB: app, POSTGRES_USER: app, POSTGRES_PASSWORD: app }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      DATABASE_URL: postgres://app:app@localhost:5432/app
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -51,7 +66,10 @@ jobs:
             exit 0
           fi
           pip install -q {pip_packages}
-          if [ -f requirements.txt ]; then pip install -q -r requirements.txt; fi
+          # Gate tools (pytest, ruff, …) usually live in the dev requirements.
+          for f in requirements-dev.txt requirements.txt; do
+            if [ -f "$f" ]; then pip install -q -r "$f"; break; fi
+          done
           python - <<'PY'
           import subprocess, sys, yaml
           gates = yaml.safe_load(open(".migration/profile.yaml"))["gates"]
@@ -59,7 +77,13 @@ jobs:
           for gate in ("build", "idiom", "tests"):
               for i, cmd in enumerate(gates.get(gate, [])):
                   r = subprocess.run([".migration/harness/tools/afs-run", "--ticket", "ci", "--name", f"{{gate}}-{{i}}",
-                                      "--", "bash", "-c", cmd])
+                                      "--", "bash", "-c", cmd], capture_output=True, text=True)
+                  print(r.stdout, end=""); print(r.stderr, end="", file=sys.stderr)
+                  if r.returncode:
+                      # Annotations are readable through the checks API even when job logs are not.
+                      tail = (r.stdout + r.stderr).strip().splitlines()[-25:]
+                      msg = "%0A".join(l.replace("%", "%25").replace("\r", "") for l in tail)
+                      print(f"::error title=Gate {{gate}}-{{i}} failed ({{cmd}})::{{msg}}")
                   rc = rc or r.returncode
           sys.exit(rc)
           PY
