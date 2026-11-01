@@ -69,7 +69,9 @@ session is a **committed file on your branch**, in the same PR as the work:
 name, e.g. `afs-migrator`), `ticket` (e.g. `TC-03`), `issue` (`owner/repo#N` of the ticket), then every
 key of your agent's return contract, filled in — also when you stop early (fill what you have, `null` the
 rest). It is validated against `.migration/harness/schemas/return.schema.json`; CI fails an agent PR
-without one. The PR description is a human summary that links to it. The orchestrator turns quirk
+without one. The PR description is a human summary of the change that **links** to the return file, handoff and
+journal; it never pastes their contents, because a later session can update the files but not the
+description, so a pasted copy goes stale (CI warns when it finds one). The orchestrator turns quirk
 drafts into issues, links them and removes the drafts.
 
 ## Red flags

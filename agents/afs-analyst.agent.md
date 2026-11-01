@@ -50,7 +50,8 @@ your ticket.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
+(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
+the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 graphs: {knowledge: <path>, domain: <path>, nodes: <n>, edges: <n>, flows: <n>}
 ledger: {entries: <n>, by_kind: {structural: <n>, behavioral: <n>, ui: <n>, integration: <n>, data: <n>}}
