@@ -48,3 +48,11 @@ can run*.)
 | 13 | `lessons-learned` maintains a shared `docs/lessons/_index.md` | Parallel agent PRs will conflict on the index | Owner's skill: cards only per PR; regenerate the index on `main` (L0 or CI) |
 | 14 | Agents missed inputs that were present (the Planner reported the graphs absent) | Wrong open questions; wasted review | Tickets name exact paths (done since #19). Consider an `afs-setup-check` step that lists the inputs the ticket names and fails if one is missing |
 | 15 | The graph workflow can't open its PR unless "Allow GitHub Actions to create pull requests" is on | L0 opens it by hand | Repo setting |
+
+## Found later in M5
+
+| # | Gap | Seen in | Fix |
+|---|---|---|---|
+| 16 | Parallel tickets each got prescribed paths that collided with an open PR's module: the package `cargo/interfaces/tracking/` would have shadowed TC-09's `tracking.py`. A textual merge succeeds, but the page silently breaks | pilot TC-09 to TC-12 (#57) | Dispatch rule in the Orchestrator and Slice Coordinator: check prescribed and created paths against `main` and the open PRs. No shared files, no module/package name clashes. Update the other branches and re-run CI after each merge |
+| 17 | Parallel agents all logged their setup probe to one shared journal file | TC-06, TC-07 | The setup check writes to the ticket's own journal (ai-factory-swarm#20) |
+| 18 | Resumed Copilot sessions had no `origin/main` (shallow checkout) and no mutmut | TC-09 resume | Setup steps use full history and install the target's dev requirements (ai-factory-swarm#21) |

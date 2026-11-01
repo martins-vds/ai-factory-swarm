@@ -43,6 +43,11 @@ slice.
    ledger reconciled, evidence report written. Then request the human side-by-side check.
 
 ## Rules
+- **Parallel dispatch, path check:** before dispatching tickets that run at the same time, compare
+  every path you prescribe (and every path the tickets will obviously create) with what is on `main`
+  and in the other open PRs. No two tickets may own the same file, and no new module or package
+  may share a dotted name with an existing one (a package `x/` shadows a module `x.py`). After
+  merging one of them, bring the others up to date with `main` and re-run CI before merging.
 - Never accept a bare "done". Re-read the evidence (or re-run a gate through `afs-run`).
 - Hold ticket ids and paths in context, not code or logs.
 - Same ticket fails twice after honest attempts → escalate to the Program Orchestrator.

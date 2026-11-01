@@ -45,6 +45,11 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
    Then coordinate final UAT and present cutover readiness to the operator.
 
 ## Rules
+- **Parallel dispatch, path check:** before dispatching tickets that run at the same time, compare
+  every path you prescribe (and every path the tickets will obviously create) with what is on `main`
+  and in the other open PRs. No two tickets may own the same file, and no new module or package
+  may share a dotted name with an existing one (a package `x/` shadows a module `x.py`). After
+  merging one of them, bring the others up to date with `main` and re-run CI before merging.
 - Every human gate stays human: setup PR, capability gaps, slice plan, PR merges, quirks, deferrals,
   slice checks, UAT, cutover. You prepare; humans decide.
 - Pass artifacts (ticket ids, paths), never conversation, to the agents you dispatch.
