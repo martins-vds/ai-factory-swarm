@@ -45,7 +45,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
-                 "understand.py"]
+                 "understand.py", "check_return_contract.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
