@@ -9,7 +9,9 @@ Applies to agent PRs only: head branch `copilot/…` or a bot/Copilot author. Ot
 An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.yaml` (diff against
 --base). When the PR body says `Fixes #N` / `Closes #N` / `Resolves #N`, one of those files must have
 `issue: <owner>/<repo>#N`. The file's content is validated against schemas/return.schema.json by
-`validate.py` in the same workflow. Needs git and PyYAML.
+`validate.py` in the same workflow. A return contract pasted into the PR description (instead of
+linked) produces a warning, not a failure, because later sessions cannot edit the description.
+Needs git and PyYAML.
 """
 import argparse
 import json
@@ -28,6 +30,18 @@ CLOSES = re.compile(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)")
 def is_agent_pr(pr):
     author = (pr.get("user") or {}).get("login", "")
     return pr["head"]["ref"].startswith("copilot/") or author in AGENT_AUTHORS or author.endswith("[bot]")
+
+
+def pasted_contract(body):
+    """True if the PR body pastes a return file (a yaml block with role/ticket/issue) instead of linking it."""
+    for block in re.findall(r"```ya?ml\s*\n(.*?)```", body or "", re.S):
+        try:
+            doc = yaml.safe_load(block)
+        except yaml.YAMLError:
+            continue
+        if isinstance(doc, dict) and "ticket" in doc and ("role" in doc or "gates" in doc):
+            return True
+    return False
 
 
 def changed_return_files(base, root="."):
@@ -73,6 +87,11 @@ def main():
         print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
     ok, msg = check(pr.get("body") or "", changed_return_files(a.base))
+    if pasted_contract(pr.get("body") or ""):
+        # A warning, not a failure: a follow-up session cannot edit the description to fix it.
+        print("::warning title=Return contract pasted into the PR description::Link to "
+              ".migration/returns/<ticket>.<role>.yaml instead of pasting it; the pasted copy goes stale when "
+              "the file changes.")
     if ok:
         print(msg)
         return 0

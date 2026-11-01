@@ -71,6 +71,11 @@ class ReturnFileTest(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn("#23", msg)
 
+    def test_pasted_contract_is_detected(self):
+        self.assertTrue(crc.pasted_contract("Done.\n\n```yaml\n" + RETURN + "```\n"))
+        self.assertFalse(crc.pasted_contract("Return file: `.migration/returns/TC-02.afs-migrator.yaml`"))
+        self.assertFalse(crc.pasted_contract("```yaml\nfoo: 1\n```"))
+
     def test_only_agent_prs_are_checked(self):
         self.assertFalse(crc.is_agent_pr({"head": {"ref": "harness/x"}, "user": {"login": "martins-vds"}}))
         self.assertTrue(crc.is_agent_pr({"head": {"ref": "copilot/tc-03"}, "user": {"login": "Copilot"}}))

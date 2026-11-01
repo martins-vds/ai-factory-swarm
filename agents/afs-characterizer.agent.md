@@ -50,7 +50,8 @@ evidence), the ledger, the risk map, the read-only source.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
+(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
+the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 tier_used: {A: <n capabilities>, B: <n>, C: <n>}
 suite: {path: <path>, cases: <n>, passing: <n>, run_log: .migration/evidence/runs/<ticket>.md}

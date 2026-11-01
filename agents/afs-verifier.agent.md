@@ -43,7 +43,8 @@ file, its ticket and the ledger entries it touches, the profile (gates, threshol
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
+(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
+the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 pr: <link>
 verdict: <pass | changes-required | blocked>

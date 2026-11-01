@@ -20,7 +20,7 @@ one that keeps going.
    broken on a shared branch).
 2. Append this section to `.migration/handoffs/<ticket>.md` (create it if missing), commit and push.
    If your session can also comment on the ticket, post a one-line pointer to the file; the file is the
-   record either way:
+   record either way. Never paste the handoff into the PR description or a comment:
 ```markdown
 ## Handoff — <role> · <UTC timestamp>
 **State:** <in progress | blocked | needs human>  ·  **Branch / PR:** <link>  ·  **Last commit:** <sha>
