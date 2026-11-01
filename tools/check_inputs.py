@@ -6,7 +6,8 @@ Usage: pipe the ticket body in, from the repo root:
   python .migration/harness/tools/check_inputs.py --text "$(gh issue view 22 --json body -q .body)"
 
 Takes every `backticked` token that looks like a repo path (contains a "/" or starts with "."; no spaces,
-no URL, no placeholder such as <ticket>) and checks it exists, as a file, folder or glob. Paths under
+no URL, no placeholder such as <ticket>) and checks it exists, as a file, folder, glob, or the prefix of an existing name (`docs/adr/0001`
+matches `docs/adr/0001-some-decision.md`). Paths under
 `.source/` are checked in the source checkout. Exit 1 if any is missing, listing them, so the agent
 stops and hands off instead of concluding an input "is not present" without looking. Standard library only.
 """
@@ -39,8 +40,9 @@ def candidates(text):
 
 
 def exists(path):
+    """A file, folder or glob; or a prefix of one (tickets often say `docs/adr/0001` for `0001-*.md`)."""
     path = path.rstrip("/")
-    return os.path.exists(path) or bool(glob.glob(path))
+    return os.path.exists(path) or bool(glob.glob(path)) or bool(glob.glob(glob.escape(path) + "*"))
 
 
 def main():
