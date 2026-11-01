@@ -77,7 +77,7 @@
     },
     "migration-hackathon": {
       "repo": "martins-vds/code-migration-hackathon",
-      "commit": "ac530c35aac8f64257b0eafa4cc43b33595d8190",
+      "commit": "4de661a9a830aaef70ff55e879c0cc540599cad8",
       "license": "UNLICENSED",
       "licenseEvidence": "No repo-wide license. The owner's three skills carry their own MIT LICENSE (PR #7); entries override the license per skill.",
       "private": true
