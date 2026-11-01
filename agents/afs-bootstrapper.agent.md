@@ -50,7 +50,8 @@ install.
    `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
 6. **Scaffold the target** per the architecture ADRs: layout, CI running the gates, lint/format, test
    runner, coverage, CRAP and mutation tooling, containers.
-7. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**.
+7. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**,
+   with the operator checklist from `docs/operator-setup.md` (bootstrap prints it) as unchecked boxes.
 
 ## Rules
 - Never mark a capability `met` without naming what provides it; never `waived` without a human.

@@ -1,4 +1,4 @@
-<!-- afs-instructions v1 -->
+<!-- afs-instructions v2 -->
 # AI Factory Swarm — migration rules
 
 This repository is the **target** of a code migration run by AI Factory Swarm. These rules apply to
@@ -16,4 +16,8 @@ every session; role-specific guidance lives in `.github/agents/afs-*.agent.md`.
   summary. If this block and the RTK block disagree, this block wins.
 - **Harness files are pinned:** do not edit `.github/agents/afs-*`, `.github/skills/`,
   `.github/hooks/rtk-rewrite.json` or `.migration/harness/`; `check_installed.py` fails CI on drift.
+- **New skills** you generate (e.g. with `self-learning` or `skill-creator`) go to
+  `.migration/skills-proposed/<name>/`, never `.github/skills/`. A human promotes them through the harness.
+- **Durable outputs are committed files** (return file, handoff, quirk drafts, run journal): see
+  `afs-migration-contract` → Durable outputs.
 <!-- /afs-instructions -->

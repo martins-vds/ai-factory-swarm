@@ -19,11 +19,17 @@ git check-ignore -q .source && echo "ignored"            # .source must never be
 # 2. Migration state valid (when .migration/ has content)
 python .migration/harness/tools/validate.py .migration
 
-# 3. Tools
+# 3. Every input your ticket names exists (paste the ticket body; --ignore paths it asks you to create)
+python .migration/harness/tools/check_inputs.py <<'TICKET'
+<ticket body>
+TICKET
+
+# 4. Tools
 .migration/harness/tools/afs-run --ticket setup-check --name probe -- true
 rtk --version
 ```
-Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1.
+Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. Never conclude an
+input "is not present" without check 3: a missing named input is a stop, not an open question.
 
 ## Outcome
 - **All pass:** state "setup OK" with the pinned SHA in one line, then continue.

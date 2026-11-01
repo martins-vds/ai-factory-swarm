@@ -92,7 +92,7 @@ class BootstrapTest(unittest.TestCase):
         ci.write_text("# Team notes\nKeep this.\n")
         self.run_bootstrap()
         first = ci.read_text()
-        self.assertTrue(first.startswith("<!-- afs-instructions v1 -->"))
+        self.assertTrue(first.startswith("<!-- afs-instructions v"))
         self.assertIn("# Team notes\nKeep this.\n", first)
         self.assertLess(first.index("Keep this."), first.index("<!-- rtk-instructions v2 -->"))
         self.assertTrue(first.endswith("<!-- /rtk-instructions -->\n"))

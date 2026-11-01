@@ -27,7 +27,18 @@ can run*.)
 | 8 | The Verifier is told to check "someone else's PR", but a remote session always starts its own branch | agent text | Dispatch it with `base_branch` set to the PR's head branch; its PR targets that branch |
 | 9 | Graph reports showed a commit id that "differs from the pinned source" (the workflow's throwaway commit), and the Analyst reported it as a discrepancy | pilot #11 | `graph-check.md` starts with the pinned source and explains that commit id |
 
-## Open, not fixed here
+## Follow-up (2026-11-01)
+
+| # | Status |
+|---|---|
+| 10 | **Fixed.** `tools/afs-mutation` computes the changed paths (or `--all`), runs mutmut 2.x from a fresh cache, scores it from `mutmut junitxml` (untested mutants count as survivors) and fails below `thresholds.mutation_score_min`. The profiles call it, and the generated CI gates job runs `mutation_changed` against the PR base |
+| 11 | Accepted as an operator setting; now listed in `docs/operator-setup.md` |
+| 12 | **Fixed upstream** in code-migration-hackathon#8 (awaiting the owner's merge): `self-learning` is host-agnostic and saves where the repo says. The AFS instruction block now says new skills go to `.migration/skills-proposed/` |
+| 13 | **Fixed upstream** in code-migration-hackathon#8: no shared index; card IDs are `<YYYYMMDD>-<slug>-<4 hex>` |
+| 14 | **Fixed.** `tools/check_inputs.py` checks every path the ticket names; it is step 3 of `afs-setup-check` |
+| 15 | **Made explicit.** `docs/operator-setup.md` holds the operator checklist, and bootstrap prints it |
+
+## Open, not fixed here (as of the first review)
 
 | # | Gap | Impact | Proposal |
 |---|---|---|---|

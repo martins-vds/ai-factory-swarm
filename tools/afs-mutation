@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""afs-mutation — the mutation gate: run mutmut on the changed (or given) code and enforce the score.
+
+Usage (run it through afs-run so the run lands in the journal):
+  afs-mutation [--changed-since REF | --all | --paths P1,P2] [--threshold X] [--src src]
+               [--exclude GLOB ...] [--profile .migration/profile.yaml]
+
+* Paths: Python files changed since REF (default $AFS_BASE or origin/main, then main), under --src,
+  minus excludes (migrations, settings, wsgi/asgi, tests, __init__ files with no code). --all mutates
+  the whole --src tree; --paths takes an explicit comma list.
+* Runs `mutmut run --paths-to-mutate <paths>` from a fresh cache (mutmut 2.x; it reads the runner and
+  tests_dir from the target's own config), then `mutmut junitxml` and computes
+  score = killed / (killed + survived + untested). Untested mutants count as survived.
+* Threshold: --threshold, else profile.thresholds.mutation_score_min, else 0.8.
+* Exit 0 when score >= threshold or there is no changed code to mutate; 1 below the threshold; 2 on
+  a usage or tool error. Prints one summary line and the surviving mutants' locations.
+"""
+import argparse
+import fnmatch
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+DEFAULT_EXCLUDE = ["*/migrations/*", "*/settings.py", "*/settings/*", "*/wsgi.py", "*/asgi.py",
+                   "*/tests/*", "*/test_*.py", "*_test.py", "*/conftest.py"]
+
+
+def changed_files(since, src):
+    for ref in ([since] if since else []) + [os.environ.get("AFS_BASE", ""), "origin/main", "main"]:
+        if not ref:
+            continue
+        r = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{ref}...HEAD", "--", src],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return ref, [p for p in r.stdout.split() if p.endswith(".py")]
+    raise SystemExit("afs-mutation: no base ref found (tried --changed-since, $AFS_BASE, origin/main, main)")
+
+
+def keep(path, excludes):
+    p = "/" + path.replace(os.sep, "/")
+    if any(fnmatch.fnmatch(p, pat) or fnmatch.fnmatch(path, pat) for pat in excludes):
+        return False
+    if path.endswith("__init__.py"):
+        text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore") if os.path.exists(path) else ""
+        return bool(re.search(r"^\s*(def|class|if|for|while|return)\b", text, re.M))
+    return True
+
+
+def score_from_junit(xml_text):
+    """killed, survived, skipped from `mutmut junitxml` output (failure/error = survived)."""
+    root = ET.fromstring(xml_text)
+    cases = root.iter("testcase")
+    killed = survived = skipped = 0
+    locations = []
+    for case in cases:
+        if case.find("skipped") is not None:
+            skipped += 1
+        elif case.find("failure") is not None or case.find("error") is not None:
+            survived += 1
+            locations.append(f"{case.get('file') or case.get('classname') or '?'}:{case.get('line') or '?'} "
+                             f"{case.get('name') or ''}".strip())
+        else:
+            killed += 1
+    return killed, survived, skipped, locations
+
+
+def threshold_from(args):
+    if args.threshold is not None:
+        return args.threshold
+    try:
+        import yaml
+        prof = yaml.safe_load(pathlib.Path(args.profile).read_text(encoding="utf-8"))
+        return float(prof["thresholds"]["mutation_score_min"])
+    except Exception:
+        return 0.8
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--changed-since", default=None)
+    g.add_argument("--all", action="store_true")
+    g.add_argument("--paths")
+    ap.add_argument("--threshold", type=float)
+    ap.add_argument("--src", default="src")
+    ap.add_argument("--exclude", action="append", default=[])
+    ap.add_argument("--profile", default=".migration/profile.yaml")
+    a = ap.parse_args()
+    excludes = DEFAULT_EXCLUDE + a.exclude
+    threshold = threshold_from(a)
+
+    if a.paths:
+        base, paths = "explicit", [p for p in a.paths.split(",") if p]
+    elif a.all:
+        base = "all"
+        paths = [str(p) for p in pathlib.Path(a.src).rglob("*.py")]
+    else:
+        base, paths = changed_files(a.changed_since, a.src)
+    paths = sorted(p for p in paths if keep(p, excludes))
+    if not paths:
+        print(f"afs-mutation: no mutable code changed ({base}); nothing to do")
+        return 0
+
+    if shutil.which("mutmut") is None:
+        print("afs-mutation: mutmut is not installed", file=sys.stderr)
+        return 2
+    out = subprocess.run(["mutmut", "version"], capture_output=True, text=True).stdout.strip()
+    m = re.search(r"(\d+)\.\d+", out)          # e.g. "mutmut version 2.5.1"
+    version = m.group(0) if m else out
+    if m and m.group(1) != "2":
+        print(f"afs-mutation: mutmut {version} not supported (needs 2.x)", file=sys.stderr)
+        return 2
+    for cache in (".mutmut-cache",):
+        if os.path.exists(cache):
+            os.remove(cache)
+    run = subprocess.run(["mutmut", "run", "--paths-to-mutate", ",".join(paths)], capture_output=True, text=True)
+    # mutmut 2.x exits non-zero whenever mutants survive; the score below decides the gate.
+    tail = (run.stdout + run.stderr).strip().splitlines()[-3:]
+    xml = subprocess.run(["mutmut", "junitxml", "--untested-policy", "failure", "--suspicious-policy", "ignore"],
+                         capture_output=True, text=True)
+    if xml.returncode != 0 or "<testsuite" not in xml.stdout:
+        print("afs-mutation: mutmut produced no results:\n" + "\n".join(tail) + xml.stderr[-500:], file=sys.stderr)
+        return 2
+    killed, survived, skipped, locations = score_from_junit(xml.stdout)
+    total = killed + survived
+    score = killed / total if total else 1.0
+    ok = score >= threshold
+    print(f"afs-mutation: {'ok' if ok else 'FAILED'} score={score:.3f} threshold={threshold} "
+          f"killed={killed} survived={survived} skipped={skipped} files={len(paths)} base={base}")
+    for loc in locations[:30]:
+        print(f"  survived: {loc}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
