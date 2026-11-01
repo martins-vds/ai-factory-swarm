@@ -48,6 +48,8 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 6. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
 
 ## Rules
+- Mutation per ticket = `gates.mutation_changed` only (files you changed, via `afs-mutation`). Never run
+  `gates.mutation_full`: it runs once at slice acceptance.
 - Exactly your ticket. Discovered work → new ticket via your coordinator.
 - A quirk blocks only what depends on it: raise it, then continue with the rest or hand off.
 - Two honest failed attempts on the same failure → stop, hand off, escalate.

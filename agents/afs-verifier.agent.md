@@ -31,7 +31,8 @@ file, its ticket and the ledger entries it touches, the profile (gates, threshol
 - `afs-quirk-ticket` — source behavior that looks wrong.
 
 ## Procedure
-1. **Re-run all gates** through `afs-run`; compare with the PR's claimed evidence.
+1. **Re-run all gates** through `afs-run`; compare with the PR's claimed evidence. Mutation =
+   `gates.mutation_changed` only; `gates.mutation_full` runs once at slice acceptance.
 2. **Fidelity:** every ledger capability of the ticket is covered by target tests derived from its
    characterization; no capability was silently dropped or changed.
 3. **Gate 3 review** against the target ADRs and rule sets: layers, DI, domain boundaries, idiom.

@@ -10,7 +10,7 @@ from this session.
 | 2 · Behavior | Characterization and transcribed legacy tests pass at the boundary? (`gates.tests`) | every PR |
 | 3 · Idiom & architecture | Idiomatic for the target (`gates.idiom`); conforms to target ADRs — layers, DI, domain boundaries (review with `clean-architecture`, `domain-driven-design`, `code-review`) | every PR |
 | 4 · CRAP | No method above `thresholds.crap_max_per_method` (`gates.crap`) | every PR |
-| 5 · Mutation | Mutation score on changed code ≥ `thresholds.mutation_score_min` (`gates.mutation_changed`, run by `afs-mutation`, which computes the changed paths and fails below the threshold; CI runs it too); full run (`gates.mutation_full`) at slice acceptance | every PR / slice |
+| 5 · Mutation | Mutation score on the **files a PR changes** ≥ `thresholds.mutation_score_min` (`gates.mutation_changed`, run by `afs-mutation`: changed files only, each mutant runs its context's tests, shards run in parallel; CI runs it too). The full run (`gates.mutation_full`) happens **once, at slice acceptance**, never per ticket | every PR / slice |
 | 6 · Regression | Full suite green; earlier slices unaffected | every PR (CI) |
 | 7 · Capability coverage | Every capability in scope has a target counterpart and passing evidence ([capability-coverage.md](capability-coverage.md)) | slice acceptance, final |
 
