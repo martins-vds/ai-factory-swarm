@@ -33,6 +33,18 @@ class CheckInputsTest(unittest.TestCase):
             pathlib.Path(t, "docs/adr/0001-x.md").write_text("x")
             self.assertEqual(run().returncode, 0)
 
+    def test_a_named_prefix_matches_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, "docs/adr"))
+            pathlib.Path(t, "docs/adr/0001-ddd-layers.md").write_text("x")
+            cwd = os.getcwd()
+            os.chdir(t)
+            try:
+                self.assertTrue(check_inputs.exists("docs/adr/0001"))
+                self.assertFalse(check_inputs.exists("docs/adr/0004"))
+            finally:
+                os.chdir(cwd)
+
 
 if __name__ == "__main__":
     unittest.main()
