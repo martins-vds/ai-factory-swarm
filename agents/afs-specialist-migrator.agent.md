@@ -42,6 +42,8 @@ ledger → PR), plus what your specialty requires:
   test against real or containerized brokers where possible.
 
 ## Rules
+- Mutation per ticket = `gates.mutation_changed` only (files you changed, via `afs-mutation`). Never run
+  `gates.mutation_full`: it runs once at slice acceptance.
 As for `afs-migrator`. Visual differences that follow the chosen UI direction are not defects; any
 change in what users can do is a quirk or decision ticket.
 

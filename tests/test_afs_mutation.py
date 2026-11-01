@@ -35,6 +35,46 @@ class AfsMutationTest(unittest.TestCase):
         self.assertFalse(m.keep("tests/test_x.py", ex))
         self.assertTrue(m.keep("src/cargotracker/voyage/domain/voyage.py", ex))
 
+    def test_context_tests_and_shards(self):
+        with tempfile.TemporaryDirectory() as t:
+            cwd = pathlib.Path.cwd()
+            import os
+            os.chdir(t)
+            try:
+                pathlib.Path("tests/cargo").mkdir(parents=True)
+                self.assertEqual(m.context_tests("src/app/cargo/domain/x.py", "src"), "tests/cargo")
+                self.assertIsNone(m.context_tests("src/app/voyage/domain/x.py", "src"))
+                self.assertIsNone(m.context_tests("src/calc.py", "src"))
+                self.assertIn("tests/cargo", m.runner_for(["src/app/cargo/a.py"], "src", "auto"))
+                self.assertNotIn("tests/", m.runner_for(["src/app/cargo/a.py", "src/calc.py"], "src", "auto"))
+            finally:
+                os.chdir(cwd)
+        groups = m.shards(["a.py", "b.py", "c.py"], 2)
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(sorted(sum(groups, [])), ["a.py", "b.py", "c.py"])
+        self.assertEqual(len(m.shards(["a.py"], 4)), 1)
+
+    @unittest.skipUnless(shutil.which("mutmut"), "mutmut not installed")
+    def test_parallel_run_matches_serial(self):
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            (t / "src").mkdir()
+            (t / "src/calc.py").write_text("def add(a, b):\n    return a + b\n")
+            (t / "src/more.py").write_text("def mul(a, b):\n    return a * b\n")
+            (t / "tests").mkdir()
+            (t / "tests/test_calc.py").write_text(
+                "import sys\nsys.path.insert(0, 'src')\nfrom calc import add\nfrom more import mul\n\n\n"
+                "def test_ops():\n    assert add(2, 3) == 5\n    assert mul(2, 3) == 6\n")
+            (t / "setup.cfg").write_text("[mutmut]\ntests_dir=tests/\n")
+            out = {}
+            for jobs in ("1", "2"):
+                r = subprocess.run([sys.executable, str(ROOT / "tools/afs-mutation"), "--paths", "src/calc.py,src/more.py",
+                                    "--threshold", "0.5", "--jobs", jobs], cwd=t, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                out[jobs] = r.stdout.split("score=")[1].split()[0]
+                self.assertIn(f"jobs={jobs}", r.stdout)
+            self.assertEqual(out["1"], out["2"])
+
     @unittest.skipUnless(shutil.which("mutmut"), "mutmut not installed")
     def test_real_run_enforces_the_threshold(self):
         with tempfile.TemporaryDirectory() as t:
