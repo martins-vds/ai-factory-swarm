@@ -108,8 +108,10 @@ def main():
     if shutil.which("mutmut") is None:
         print("afs-mutation: mutmut is not installed", file=sys.stderr)
         return 2
-    version = subprocess.run(["mutmut", "version"], capture_output=True, text=True).stdout.strip()
-    if version and not version.startswith("2."):
+    out = subprocess.run(["mutmut", "version"], capture_output=True, text=True).stdout.strip()
+    m = re.search(r"(\d+)\.\d+", out)          # e.g. "mutmut version 2.5.1"
+    version = m.group(0) if m else out
+    if m and m.group(1) != "2":
         print(f"afs-mutation: mutmut {version} not supported (needs 2.x)", file=sys.stderr)
         return 2
     for cache in (".mutmut-cache",):
