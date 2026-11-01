@@ -17,8 +17,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Check out target repo
+      - name: Check out target repo (full history: afs-mutation diffs against origin/main)
         uses: actions/checkout@v5
+        with: {{ fetch-depth: 0 }}
 
       - name: Read pinned source from .migration/source.lock
         id: lock
@@ -58,8 +59,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
 
-      - name: Harness tool dependencies
-        run: pip install -q {pip_packages}
+      - name: Harness tool dependencies, plus the target's own dev requirements (pytest, mutmut, ruff, …)
+        run: |
+          pip install -q {pip_packages}
+          for f in requirements-dev.txt requirements.txt; do
+            if [ -f "$f" ]; then pip install -q -r "$f"; break; fi
+          done
 
       # Understand Anything at its pinned commit, with the harness patches (ADR-0009). Role agents load it
       # from $HOME/.afs/understand-anything.
