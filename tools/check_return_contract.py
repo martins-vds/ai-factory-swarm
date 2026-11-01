@@ -1,68 +1,66 @@
 #!/usr/bin/env python3
-"""Fail an agent PR whose description lacks its role's return contract (harness rule, migration contract).
+"""Fail an agent PR that does not commit its return file (harness rule, migration contract).
 
-Usage (in CI, on pull_request events):
-  python .migration/harness/tools/check_return_contract.py [--event $GITHUB_EVENT_PATH] [--agents .github/agents]
+Usage (in CI, on pull_request events, with full history):
+  python .migration/harness/tools/check_return_contract.py --base origin/<base branch>
+                                                           [--event $GITHUB_EVENT_PATH]
 
 Applies to agent PRs only: head branch `copilot/…` or a bot/Copilot author. Others pass untouched.
-Passes when the PR body contains a fenced ```yaml block that parses to a mapping whose top-level keys
-include every key of at least one role agent's return contract (from the `## Return contract` block in
-`.github/agents/afs-*.agent.md`). Values may be null. Prints the closest role and its missing keys.
-Needs PyYAML.
+An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.yaml` (diff against
+--base). When the PR body says `Fixes #N` / `Closes #N` / `Resolves #N`, one of those files must have
+`issue: <owner>/<repo>#N`. The file's content is validated against schemas/return.schema.json by
+`validate.py` in the same workflow. Needs git and PyYAML.
 """
 import argparse
 import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 
 import yaml
 
 AGENT_AUTHORS = {"Copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
+CLOSES = re.compile(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)")
 
 
-def contracts(agents_dir):
-    out = {}
-    for f in sorted(pathlib.Path(agents_dir).glob("afs-*.agent.md")):
-        text = f.read_text(encoding="utf-8")
-        m = re.search(r"## Return contract\s*```ya?ml\n(.*?)```", text, re.S)
-        if m:
-            keys = re.findall(r"^([a-z_]+):", m.group(1), re.M)
-            if keys:
-                out[f.name.split(".")[0]] = set(keys)
-    return out
+def is_agent_pr(pr):
+    author = (pr.get("user") or {}).get("login", "")
+    return pr["head"]["ref"].startswith("copilot/") or author in AGENT_AUTHORS or author.endswith("[bot]")
 
 
-def yaml_blocks(body):
-    for block in re.findall(r"```ya?ml\s*\n(.*?)```", body or "", re.S):
-        try:
-            doc = yaml.safe_load(block)
-        except yaml.YAMLError:
-            continue
-        if isinstance(doc, dict):
-            yield set(doc)
+def changed_return_files(base, root="."):
+    out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...HEAD", "--",
+                          ".migration/returns/"], capture_output=True, text=True, check=True).stdout
+    return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
 
 
-def check(body, roles):
-    blocks = list(yaml_blocks(body))
-    best = None
-    for keys in blocks:
-        for role, need in roles.items():
-            missing = need - keys
-            if not missing:
-                return True, f"return contract found ({role})"
-            if best is None or len(missing) < len(best[1]):
-                best = (role, missing)
-    if not blocks:
-        return False, "no ```yaml block in the PR description"
-    return False, f"closest role {best[0]}: missing keys {sorted(best[1])}"
+def check(body, files, root="."):
+    if not files:
+        return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
+                       "(your agent's return contract plus role, ticket, issue)")
+    issues = set(CLOSES.findall(body or ""))
+    if issues:
+        found = set()
+        for f in files:
+            try:
+                doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
+            if m:
+                found.add(m.group(1))
+        if not issues & found:
+            return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
+                           f"matching `issue:` (files: {', '.join(files)})")
+    return True, f"return file(s): {', '.join(files)}"
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--base", required=True, help="e.g. origin/main")
     ap.add_argument("--event", default=os.environ.get("GITHUB_EVENT_PATH"))
-    ap.add_argument("--agents", default=".github/agents")
     a = ap.parse_args()
     if not a.event or not pathlib.Path(a.event).exists():
         print("no event payload; nothing to check")
@@ -71,18 +69,14 @@ def main():
     if not pr:
         print("not a pull request event; nothing to check")
         return 0
-    author = (pr.get("user") or {}).get("login", "")
-    agent_pr = pr["head"]["ref"].startswith("copilot/") or author in AGENT_AUTHORS or author.endswith("[bot]")
-    if not agent_pr:
-        print(f"PR by {author} from {pr['head']['ref']}: not an agent PR; skipped")
+    if not is_agent_pr(pr):
+        print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
-    ok, msg = check(pr.get("body") or "", contracts(a.agents))
+    ok, msg = check(pr.get("body") or "", changed_return_files(a.base))
     if ok:
         print(msg)
         return 0
-    print(f"::error title=Return contract missing::{msg}. End the PR description with your agent's "
-          f"return contract YAML (see .github/agents/<role>.agent.md → Return contract); fill what you have, "
-          f"null the rest.")
+    print(f"::error title=Return file missing::{msg}. See afs-migration-contract → Return files.")
     return 1
 
 

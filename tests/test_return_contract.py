@@ -1,4 +1,4 @@
-"""tools/check_return_contract.py against the real role agents."""
+"""Return files: the generated schema, validate.py, and the CI check."""
 import json
 import pathlib
 import subprocess
@@ -10,40 +10,70 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import check_return_contract as crc  # noqa: E402
 
-MIGRATOR = ("Done.\n\n```yaml\nticket: TC-02\npr: null\ngates: {build: pass}\nevidence_logs: []\n"
-            "ledger_updated: [x]\nquirk_tickets: []\nnew_tickets: []\nhandoff: null\n```\n")
+RETURN = """role: afs-migrator
+ticket: TC-02
+issue: martins-vds/ai-factory-pilot-target#22
+pr: martins-vds/ai-factory-pilot-target#38
+gates: {build: 0, behavior: 0, idiom: 0, crap: 0, mutation_changed: 1.0, regression: 0}
+evidence_logs: [.migration/evidence/runs/TC-02.md]
+ledger_updated: [track-cargo.data-location]
+quirk_tickets: []
+new_tickets: []
+handoff: null
+"""
 
 
-class ReturnContractTest(unittest.TestCase):
-    def setUp(self):
-        self.roles = crc.contracts(ROOT / "agents")
+def git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
-    def test_every_role_agent_has_a_parsable_contract(self):
-        self.assertEqual(len(self.roles), len(list((ROOT / "agents").glob("afs-*.agent.md"))))
 
-    def test_complete_contract_passes(self):
-        ok, msg = crc.check(MIGRATOR, self.roles)
-        self.assertTrue(ok, msg)
-        self.assertIn("afs-migrator", msg)
+class ReturnFileTest(unittest.TestCase):
+    def test_schema_is_generated_from_the_agents(self):
+        r = subprocess.run([sys.executable, str(ROOT / "tools/gen_return_schema.py"), "--check"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
 
-    def test_missing_block_and_missing_keys_fail(self):
-        self.assertFalse(crc.check("No yaml here.", self.roles)[0])
-        ok, msg = crc.check(MIGRATOR.replace("handoff: null\n", ""), self.roles)
-        self.assertFalse(ok)
-        self.assertIn("handoff", msg)
+    def validate(self, files):
+        with tempfile.TemporaryDirectory() as t:
+            (pathlib.Path(t) / "returns").mkdir()
+            for name, text in files.items():
+                (pathlib.Path(t) / "returns" / name).write_text(text)
+            return subprocess.run([sys.executable, str(ROOT / "tools/validate.py"), t], capture_output=True, text=True)
 
-    def run_event(self, body, ref, login):
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-            json.dump({"pull_request": {"body": body, "head": {"ref": ref}, "user": {"login": login}}}, fh)
-        return subprocess.run([sys.executable, str(ROOT / "tools/check_return_contract.py"), "--event", fh.name,
-                               "--agents", str(ROOT / "agents")], capture_output=True, text=True)
+    def test_validate_accepts_a_complete_return_file(self):
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_validate_rejects_missing_keys_bad_gates_and_wrong_names(self):
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN.replace("handoff: null\n", "")})
+        self.assertIn("'handoff' is a required property", r.stderr)
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN.replace("build: 0", "build: [0]")})
+        self.assertIn("gates/build", r.stderr)
+        r = self.validate({"tc2.yaml": RETURN})
+        self.assertIn("file name must be 'TC-02.afs-migrator.yaml'", r.stderr)
+
+    def test_ci_check_wants_a_changed_return_file_for_the_closed_issue(self):
+        with tempfile.TemporaryDirectory() as t:
+            repo = pathlib.Path(t)
+            git(repo, "init", "-q", "-b", "main")
+            git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base")
+            git(repo, "checkout", "-q", "-b", "copilot/tc-02")
+            self.assertEqual(crc.changed_return_files("main", repo), [])
+            self.assertFalse(crc.check("Fixes #22", [], repo)[0])
+            (repo / ".migration/returns").mkdir(parents=True)
+            (repo / ".migration/returns/TC-02.afs-migrator.yaml").write_text(RETURN)
+            git(repo, "add", "-A")
+            git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "work")
+            files = crc.changed_return_files("main", repo)
+            self.assertEqual(files, [".migration/returns/TC-02.afs-migrator.yaml"])
+            self.assertTrue(crc.check("Fixes #22", files, repo)[0])
+            ok, msg = crc.check("Fixes #23", files, repo)
+            self.assertFalse(ok)
+            self.assertIn("#23", msg)
 
     def test_only_agent_prs_are_checked(self):
-        self.assertEqual(self.run_event("no contract", "harness/upgrade", "martins-vds").returncode, 0)
-        r = self.run_event("no contract", "copilot/tc-03", "Copilot")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("::error", r.stdout)
-        self.assertEqual(self.run_event(MIGRATOR, "copilot/tc-03", "Copilot").returncode, 0)
+        self.assertFalse(crc.is_agent_pr({"head": {"ref": "harness/x"}, "user": {"login": "martins-vds"}}))
+        self.assertTrue(crc.is_agent_pr({"head": {"ref": "copilot/tc-03"}, "user": {"login": "Copilot"}}))
 
 
 if __name__ == "__main__":

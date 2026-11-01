@@ -10,6 +10,10 @@ Behavior (ADR-0015):
   * Prints a compact summary: exit code, duration, size, the log path, up to K failure-looking lines
     (with line numbers in the log), and — on failure — the last N lines.
   * Appends one JSON record per run to <runs-dir>/<ticket>/runs.jsonl.
+  * Appends one row per run to the committed run journal <journal-dir>/<ticket>.md (default
+    .migration/evidence/runs/, when a .migration/ folder exists): time, gate, exit, seconds, command,
+    the log's SHA-256 and its first highlight. Raw logs stay out of git; the journal is the durable
+    record that the run happened and what it showed. Commit it with your work.
   * Exits with the command's exit code, so gates fail when the command fails.
 
 Defaults: ticket = $AFS_TICKET or "adhoc"; runs-dir = $AFS_RUNS_DIR or ".migration/runs".
@@ -18,6 +22,7 @@ must be kept exactly.
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -63,6 +68,26 @@ def summarize(lines, k, tail, failed):
     return parts
 
 
+def cell(text, limit=120):
+    return text.replace("|", "\\|").replace("`", "'").strip()[:limit]
+
+
+def journal(folder, ticket, record, sha, parts):
+    """Append one row to the committed run journal for this ticket."""
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{ticket}.md")
+    new = not os.path.exists(path)
+    first = next((p.split(":", 1)[1].strip() for p in parts if re.match(r"\s+\d+:", p)), "")
+    with open(path, "a", encoding="utf-8") as fh:
+        if new:
+            fh.write(f"# Run journal: {ticket}\n\nWritten by `afs-run`, one row per gate run. Raw logs are not "
+                     f"committed; the SHA-256 identifies the exact log.\n\n"
+                     "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight |\n"
+                     "|---|---|---|---|---|---|---|\n")
+        fh.write(f"| {record['ts']} | {record['name']} | {record['exit']} | {record['seconds']} | "
+                 f"`{cell(record['command'])}` | `{sha[:16]}` | {cell(first)} |\n")
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if "--" not in argv:
@@ -79,6 +104,9 @@ def main(argv=None):
     ap.add_argument("--runs-dir", default=os.environ.get("AFS_RUNS_DIR", ".migration/runs"))
     ap.add_argument("--highlights", type=int, default=20)
     ap.add_argument("--tail", type=int, default=15)
+    ap.add_argument("--journal-dir", default=os.environ.get("AFS_JOURNAL_DIR") or
+                    (".migration/evidence/runs" if os.path.isdir(".migration") else None),
+                    help="committed run journal folder; 'off' disables it")
     a = ap.parse_args(opts)
 
     name = slug(a.name or " ".join(cmd[:3]))
@@ -109,10 +137,14 @@ def main(argv=None):
     with open(os.path.join(folder, "runs.jsonl"), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
 
+    parts = summarize(lines, a.highlights, a.tail, code != 0)
+    if a.journal_dir and a.journal_dir != "off":
+        journal(a.journal_dir, ticket, record, hashlib.sha256(raw).hexdigest(), parts)
+
     status = "ok" if code == 0 else "FAILED"
     print(f"afs-run: {name} {status} exit={code} {seconds}s · {len(lines)} lines, {len(raw)} bytes")
     print(f"log: {log_path}")
-    for part in summarize(lines, a.highlights, a.tail, code != 0):
+    for part in parts:
         print(part)
     return code
 

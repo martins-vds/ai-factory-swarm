@@ -40,6 +40,8 @@ report to `.migration/evidence/final/report.md`.
 - Every conclusion cites evidence executed or inspected in this audit.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 scope: <slice name | final>
 report: <path>

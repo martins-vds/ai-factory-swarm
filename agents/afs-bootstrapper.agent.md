@@ -58,6 +58,8 @@ install.
 - Do not run the migration's later phases.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 setup_pr: <link>
 characterization_tier: <A|B|C>

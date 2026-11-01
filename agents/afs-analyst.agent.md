@@ -49,6 +49,8 @@ your ticket.
 - Quirks never block the inventory: record behavior as it is, link the quirk, keep going.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 graphs: {knowledge: <path>, domain: <path>, nodes: <n>, edges: <n>, flows: <n>}
 ledger: {entries: <n>, by_kind: {structural: <n>, behavioral: <n>, ui: <n>, integration: <n>, data: <n>}}
