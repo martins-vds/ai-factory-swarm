@@ -44,8 +44,8 @@ gates:
   idiom: ["ruff check", "ruff format --check"]
   tests: ["pytest -q"]
   crap: ["lizard --csv src > .migration/runs/lizard.csv", "python .migration/harness/tools/crap.py .migration/runs/lizard.csv --lcov coverage.lcov --max 30"]
-  mutation_changed: ["mutmut run --paths-to-mutate {changed}"]
-  mutation_full: ["mutmut run"]
+  mutation_changed: ["python .migration/harness/tools/afs-mutation --changed-since origin/main"]
+  mutation_full: ["python .migration/harness/tools/afs-mutation --all"]
 thresholds:
   crap_max_per_method: 30
   mutation_score_min: 0.8

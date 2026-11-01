@@ -60,7 +60,7 @@ jobs:
         run: python .migration/harness/tools/check_return_contract.py --base "origin/${{{{ github.base_ref }}}}"
 
   gates:
-    name: Gates (build, idiom, tests, CRAP)
+    name: Gates (build, idiom, tests, CRAP, mutation on changed code)
     runs-on: ubuntu-latest
     # PostgreSQL for target tests (profile target.stacks.data); harmless when the target doesn't use it.
     services:
@@ -77,8 +77,10 @@ jobs:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: "5432"
       DATABASE_URL: postgres://app:app@localhost:5432/app
+      AFS_BASE: origin/${{{{ github.base_ref || 'main' }}}}   # afs-mutation diffs against it
     steps:
       - uses: actions/checkout@v5
+        with: {{ fetch-depth: 0 }}
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
       - name: Run gates through afs-run
@@ -96,7 +98,7 @@ jobs:
           import subprocess, sys, yaml
           gates = yaml.safe_load(open(".migration/profile.yaml"))["gates"]
           rc = 0
-          for gate in ("build", "idiom", "tests", "crap"):
+          for gate in ("build", "idiom", "tests", "crap", "mutation_changed"):
               for i, cmd in enumerate(gates.get(gate, [])):
                   r = subprocess.run([".migration/harness/tools/afs-run", "--ticket", "ci", "--name", f"{{gate}}-{{i}}",
                                       "--", "bash", "-c", cmd], capture_output=True, text=True)

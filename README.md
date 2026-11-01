@@ -61,7 +61,8 @@ python tools/validate.py path/to/.migration              # validate a target's m
 python tools/check_lock.py [--remote]                    # check the pinned skill menu
 python tools/vendor_skills.py [--check]                  # refresh / drift-check the afs- copies
 
-# install the harness into a target clone (writes files; review, then open the setup PR)
+# install the harness into a target clone (writes files; review, then open the setup PR).
+# Then do the operator checklist in docs/operator-setup.md: repo settings bootstrap can't make.
 python tools/bootstrap.py --target ../target-repo --profile profile.yaml --capabilities capabilities.yaml \
   --stack-pack stacks/java-to-django.json --create-gap-issues
 ```

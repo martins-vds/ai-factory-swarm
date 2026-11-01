@@ -424,8 +424,8 @@ gates:                               # commands per gate (§10.3)
   idiom: ["ruff check", "ruff format --check"]
   tests: ["pytest -q"]
   crap: ["<crap command>"]
-  mutation_changed: ["mutmut run --paths-to-mutate {changed}"]
-  mutation_full: ["mutmut run"]
+  mutation_changed: ["python .migration/harness/tools/afs-mutation --changed-since origin/main"]   # enforces the score
+  mutation_full: ["python .migration/harness/tools/afs-mutation --all"]
 thresholds:                          # operator-set
   crap_max_per_method: 30
   mutation_score_min: 0.80

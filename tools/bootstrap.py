@@ -45,7 +45,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
-                 "understand.py", "check_return_contract.py"]
+                 "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -62,6 +62,17 @@ LABELS = [
     ("wayfinder:task", "c5def5", "Decision ticket: task"),
     ("ready-for-agent", "0e8a16", "Slice ticket an agent can claim"),
     ("afs:capability-gap", "d93f0b", "Capability gap found by bootstrap; blocks Phase 2"),
+]
+
+
+OPERATOR_CHECKLIST = [
+    "Actions enabled: allow all actions and reusable workflows",
+    "Workflow permissions: allow GitHub Actions to create and approve pull requests",
+    "Copilot coding agent enabled for this repository",
+    "Workflow runs on Copilot PRs do not wait for approval",
+    "Public repo, or an Actions budget (Copilot sessions and CI use Actions minutes)",
+    "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
+    "Dispatcher (L0 or you) has gh logged in as a user with write access",
 ]
 
 
@@ -414,6 +425,10 @@ def main():
         print(f"gap: {g}")
     for n in r["notes"]:
         print(f"note: {n}")
+    print("operator: repository settings bootstrap cannot make are listed in "
+          "https://github.com/martins-vds/ai-factory-swarm/blob/main/docs/operator-setup.md:")
+    for line in OPERATOR_CHECKLIST:
+        print(f"  [ ] {line}")
     return 0
 
 
