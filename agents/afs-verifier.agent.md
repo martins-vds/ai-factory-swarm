@@ -11,7 +11,8 @@ builder's reasoning, which you are not given.
 **First:** load `afs-migration-contract`, then run `afs-setup-check`.
 
 ## Inputs
-The PR, its ticket and the ledger entries it touches, the profile (gates, thresholds), the target ADRs.
+The PR (your session starts on its head branch; your own PR targets that branch), the builder's return
+file, its ticket and the ledger entries it touches, the profile (gates, thresholds), the target ADRs.
 
 ## Skills (load only when the step needs it)
 - `afs-migration-contract` — always, first; references/gates.md is your checklist.
@@ -40,11 +41,13 @@ The PR, its ticket and the ledger entries it touches, the profile (gates, thresh
 6. Report. Do not fix production code — hand findings back.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 pr: <link>
 verdict: <pass | changes-required | blocked>
 gates: {build: <exit>, behavior: <exit>, idiom: <exit>, crap: <max>, mutation_changed: <score>, regression: <exit>}
-evidence_logs: [<afs-run log paths>]
+evidence_logs: [.migration/evidence/runs/<ticket>.md]
 findings: [{severity: <blocker|major|minor>, where: <file:line>, what: <one line>}]
 tests_added: [<test ids>]
 ledger_issues: [<one line>]

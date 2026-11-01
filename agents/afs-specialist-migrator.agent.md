@@ -46,6 +46,8 @@ As for `afs-migrator`. Visual differences that follow the chosen UI direction ar
 change in what users can do is a quirk or decision ticket.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 ticket: <link>
 specialty: <data | ui | messaging>
@@ -54,5 +56,5 @@ gates: {build: <exit>, behavior: <exit>, idiom: <exit>, crap: <exit>, mutation_c
 specialty_evidence: [<reconciliation report | e2e run | contract tests>]
 ledger_updated: [<ids>]
 quirk_tickets: [<link>]
-handoff: <none | comment link>
+handoff: <none | .migration/handoffs/<ticket>.md>
 ```

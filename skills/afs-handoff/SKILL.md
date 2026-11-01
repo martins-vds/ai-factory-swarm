@@ -1,6 +1,6 @@
 ---
 name: afs-handoff
-description: Checkpoint and hand off — write a handoff comment on the ticket and stop, so a fresh agent can resume. Use at the context soft limit, when a stop rule fires, when blocked by a decision, and at the end of every session that leaves work unfinished.
+description: Checkpoint and hand off — commit a handoff file for the ticket and stop, so a fresh agent can resume. Use at the context soft limit, when a stop rule fires, when blocked by a decision, and at the end of every session that leaves work unfinished.
 ---
 
 # Handoff (ADR-0015)
@@ -18,7 +18,9 @@ one that keeps going.
 ## How
 1. Commit and push what is consistent (WIP commits are fine on the ticket branch; never leave the build
    broken on a shared branch).
-2. Post this comment on the ticket:
+2. Append this section to `.migration/handoffs/<ticket>.md` (create it if missing), commit and push.
+   If your session can also comment on the ticket, post a one-line pointer to the file; the file is the
+   record either way:
 ```markdown
 ## Handoff — <role> · <UTC timestamp>
 **State:** <in progress | blocked | needs human>  ·  **Branch / PR:** <link>  ·  **Last commit:** <sha>
@@ -36,8 +38,10 @@ one that keeps going.
 ### Next step for the next session
 <one precise instruction>
 ```
-3. Stop. Do not start anything else.
+3. Write your return file (`afs-migration-contract` → Durable outputs) with `handoff:` set to the
+   handoff file, commit, push. Stop. Do not start anything else.
 
 ## Resuming
-A new session reads the ticket body and the **latest** handoff comment only — not the whole thread —
+A new session (on the same branch) reads the ticket body and only the **last** section of
+`.migration/handoffs/<ticket>.md` — not earlier sections or the comment thread —
 then re-runs `afs-setup-check`, re-reads the acceptance criteria, and continues from "Next step".

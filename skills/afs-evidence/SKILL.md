@@ -1,6 +1,6 @@
 ---
 name: afs-evidence
-description: Run gates and produce auditable evidence — every gate command goes through afs-run, raw logs stay in .migration/runs/, and slice acceptance produces an evidence report. Use whenever you run a build, test, CRAP or mutation gate, or claim something passes.
+description: Run gates and produce auditable evidence — every gate command goes through afs-run, raw logs stay in .migration/runs/, a committed run journal records every run, and slice acceptance produces an evidence report. Use whenever you run a build, test, CRAP or mutation gate, or claim something passes.
 ---
 
 # Evidence
@@ -20,12 +20,15 @@ lines with their line numbers in the log, tail on failure) and exits with the co
 - Read the summary; open the log only at the reported line numbers (`sed -n '120,160p' <log>`), never
   whole.
 - Everyday commands (git, listing, quick checks) go through `rtk`, not `afs-run`.
-- Gate logs are not committed (`.migration/runs/` is gitignored). Quote the relevant lines in the PR
-  description or evidence report, with the gate name, exit code and log path.
+- Raw logs are not committed (`.migration/runs/` is gitignored and disappears with your session).
+  `afs-run` also appends a row per run to **`.migration/evidence/runs/<ticket>.md`** (time, gate, exit,
+  seconds, command, log SHA-256, first highlight). **Commit that journal** with your work; it is what
+  `evidence_logs` in your return file points to. Quote decisive lines in the PR summary if useful.
 
 ## Per-PR evidence (Migrator, Verifier)
-In the PR description, a table: gate · command · exit · key lines. All gates from
-`afs-migration-contract` → references/gates.md must be present.
+The committed run journal plus the return file's `gates` map are the evidence; every gate from
+`afs-migration-contract` → references/gates.md must appear in both. The PR summary may repeat the key
+lines for reviewers.
 
 ## Slice evidence report (Slice Coordinator, Auditor)
 Write `.migration/evidence/<slice>/report.md` (committed):

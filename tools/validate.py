@@ -7,6 +7,7 @@ Usage: validate.py <folder> [--schemas <dir>]
   profile.yaml       → schemas/profile.schema.json
   capabilities.yaml  → schemas/capabilities.schema.json
   ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique
+  returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`
 Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
 """
 import argparse
@@ -70,6 +71,17 @@ def main():
                 if doc["id"] in seen:
                     errors.append(f"{path}: duplicate id '{doc['id']}' (also in {seen[doc['id']]})")
                 seen[doc["id"]] = path.name
+
+    returns = folder / "returns"
+    if returns.is_dir():
+        validator = load_schema(schemas, "return.schema.json")
+        for path in sorted(returns.glob("*.y*ml")):
+            doc = check(validator, path, errors)
+            checked += 1
+            if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
+                want = f"{doc['ticket']}.{doc['role']}"
+                if path.stem != want:
+                    errors.append(f"{path}: file name must be '{want}.yaml'")
 
     if checked == 0:
         errors.append(f"{folder}: nothing to validate (no profile.yaml, capabilities.yaml or ledger/)")

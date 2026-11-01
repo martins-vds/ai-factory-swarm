@@ -52,6 +52,8 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
   ticket.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 phase: <0-8>
 decisions: [<ticket link: one-line answer>]

@@ -53,8 +53,24 @@ A quirk is **not** a stop: it blocks only the work that implements its answer (P
 affected capabilities). Inventory, characterization and planning continue around it: record the
 behavior as it is and link the quirk.
 
-Every PR you open ends with your agent's **return contract** YAML, filled in — also when you stop early
-(fill what you have, `null` the rest).
+## Durable outputs are committed files
+Remote sessions (the Copilot coding agent) can push commits but cannot reliably comment, create or
+label issues, or edit a PR description after it is opened. So everything that must outlive your
+session is a **committed file on your branch**, in the same PR as the work:
+
+| Output | File | Skill |
+|---|---|---|
+| Return contract | `.migration/returns/<ticket>.<role>.yaml` | (below) |
+| Handoff | `.migration/handoffs/<ticket>.md` | `afs-handoff` |
+| Quirk ticket draft | `.migration/quirks/<short-id>.md` | `afs-quirk-ticket` |
+| Gate runs | `.migration/evidence/runs/<ticket>.md` (written by `afs-run`) | `afs-evidence` |
+
+**Return file.** Every PR you open commits `.migration/returns/<ticket>.<role>.yaml`: `role` (your agent
+name, e.g. `afs-migrator`), `ticket` (e.g. `TC-03`), `issue` (`owner/repo#N` of the ticket), then every
+key of your agent's return contract, filled in — also when you stop early (fill what you have, `null` the
+rest). It is validated against `.migration/harness/schemas/return.schema.json`; CI fails an agent PR
+without one. The PR description is a human summary that links to it. The orchestrator turns quirk
+drafts into issues, links them and removes the drafts.
 
 ## Red flags
 | Thought | Reality |

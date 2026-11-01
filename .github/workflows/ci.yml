@@ -24,6 +24,8 @@ jobs:
         run: |
           python tools/validate.py templates/migration
           for d in examples/*/; do python tools/validate.py "$d"; done
+      - name: Return schema matches the agents' return contracts
+        run: python tools/gen_return_schema.py --check
       - name: Check skills.lock.json and stack packs (offline)
         run: |
           python tools/check_lock.py

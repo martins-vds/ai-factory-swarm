@@ -53,13 +53,15 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 - Two honest failed attempts on the same failure → stop, hand off, escalate.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 ticket: <link>
 pr: <link>
 gates: {build: <exit>, behavior: <exit>, idiom: <exit>, crap: <exit>, mutation_changed: <score>, regression: <exit>}
-evidence_logs: [<afs-run log paths>]
+evidence_logs: [.migration/evidence/runs/<ticket>.md]
 ledger_updated: [<ids>]
 quirk_tickets: [<link>]
 new_tickets: [<link: why>]
-handoff: <none | comment link>
+handoff: <none | .migration/handoffs/<ticket>.md>
 ```

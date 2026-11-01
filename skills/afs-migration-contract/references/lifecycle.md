@@ -19,5 +19,6 @@ Any phase: a quirk → quirk ticket to a human (blocks only dependents); a stop 
 ## Work tracking
 - **Decision map:** one `wayfinder:map` issue; decision tickets as sub-issues (`wayfinder:<type>`).
 - **Slice tickets:** `ready-for-agent` issues under a slice parent, native blocking edges.
-- **Frontier:** open, unblocked, unclaimed tickets. **Claim** by assigning before any work.
+- **Frontier:** open, unblocked, unclaimed tickets. **Claim** by assigning before any work — the
+  dispatcher (L0 or the operator) does this; assigning the Copilot coding agent is the claim.
 - Quirk and capability-gap tickets are decision tickets assigned to a human.

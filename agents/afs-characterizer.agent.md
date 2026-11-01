@@ -49,9 +49,11 @@ evidence), the ledger, the risk map, the read-only source.
 - Record every stand-in and workaround in `capabilities.yaml` notes.
 
 ## Return contract
+Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
+(`afs-migration-contract` → Durable outputs); summarize it in the PR description.
 ```yaml
 tier_used: {A: <n capabilities>, B: <n>, C: <n>}
-suite: {path: <path>, cases: <n>, passing: <n>, run_log: <afs-run log>}
+suite: {path: <path>, cases: <n>, passing: <n>, run_log: .migration/evidence/runs/<ticket>.md}
 predicted_vs_observed: {match: <n>, differs: <n>}
 ledger_updated: [<ids>]
 quirk_tickets: [<link>]
