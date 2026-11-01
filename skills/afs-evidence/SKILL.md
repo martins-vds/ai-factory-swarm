@@ -22,7 +22,8 @@ lines with their line numbers in the log, tail on failure) and exits with the co
 - Everyday commands (git, listing, quick checks) go through `rtk`, not `afs-run`.
 - Raw logs are not committed (`.migration/runs/` is gitignored and disappears with your session).
   `afs-run` also appends a row per run to **`.migration/evidence/runs/<ticket>.md`** (time, gate, exit,
-  seconds, command, log SHA-256, first highlight). **Commit that journal** with your work; it is what
+  seconds, command, log SHA-256, first highlight). Always pass your own `--ticket`: one journal per
+  ticket keeps parallel PRs from touching the same file. **Commit that journal** with your work; it is what
   `evidence_logs` in your return file points to. Quote decisive lines in the PR summary if useful.
 
 ## Per-PR evidence (Migrator, Verifier)

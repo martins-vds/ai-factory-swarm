@@ -25,7 +25,7 @@ python .migration/harness/tools/check_inputs.py <<'TICKET'
 TICKET
 
 # 4. Tools
-.migration/harness/tools/afs-run --ticket setup-check --name probe -- true
+.migration/harness/tools/afs-run --ticket <your ticket> --name setup-probe -- true   # your own journal, never a shared one
 rtk --version
 ```
 Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. Never conclude an
