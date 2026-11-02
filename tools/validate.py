@@ -8,11 +8,14 @@ Usage: validate.py <folder> [--schemas <dir>]
   capabilities.yaml  → schemas/capabilities.schema.json
   ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique
   returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`
+  handoffs/*.md      → every `## Handoff — <role> · <UTC>` section has its required subsections
+  quirks/*.md        → quirk drafts have Question, Evidence, Impact and Options sections
 Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
 """
 import argparse
 import json
 import pathlib
+import re
 import sys
 
 import yaml
@@ -43,6 +46,32 @@ def check(validator, path, errors):
         where = "/".join(str(p) for p in err.absolute_path) or "(root)"
         errors.append(f"{path}: {where}: {err.message}")
     return doc
+
+
+HANDOFF_PARTS = ["**State:**", "### Done", "### Remaining", "### Blockers / questions", "### Next step for the next session"]
+QUIRK_PARTS = ["## Question", "## Evidence", "## Impact", "## Options"]
+
+
+def check_markdown(folder, errors):
+    """Structure checks for agent-written Markdown outputs (afs-handoff, afs-quirk-ticket)."""
+    checked = 0
+    for path in sorted((folder / "handoffs").glob("*.md")) if (folder / "handoffs").is_dir() else []:
+        checked += 1
+        text = path.read_text(encoding="utf-8")
+        sections = re.split(r"(?m)^## Handoff\b", text)[1:]
+        if not sections:
+            errors.append(f"{path}: no '## Handoff — <role> · <UTC timestamp>' section")
+        for i, sec in enumerate(sections, 1):
+            for part in HANDOFF_PARTS:
+                if part not in sec:
+                    errors.append(f"{path}: handoff section {i} is missing '{part}'")
+    for path in sorted((folder / "quirks").glob("*.md")) if (folder / "quirks").is_dir() else []:
+        checked += 1
+        text = path.read_text(encoding="utf-8")
+        for part in QUIRK_PARTS:
+            if not re.search(r"(?m)^" + re.escape(part) + r"\s*$", text):
+                errors.append(f"{path}: quirk draft is missing '{part}'")
+    return checked
 
 
 def main():
@@ -82,6 +111,8 @@ def main():
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:
                     errors.append(f"{path}: file name must be '{want}.yaml'")
+
+    checked += check_markdown(folder, errors)
 
     if checked == 0:
         errors.append(f"{folder}: nothing to validate (no profile.yaml, capabilities.yaml or ledger/)")

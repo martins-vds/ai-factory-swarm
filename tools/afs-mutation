@@ -9,9 +9,13 @@ Usage (run it through afs-run so the run lands in the journal):
   minus excludes (migrations, settings, wsgi/asgi, tests, __init__ files with no code). --all mutates
   the whole --src tree; --paths takes an explicit comma list.
 * Only the files themselves are mutated (never whole packages). Each mutant runs a **narrowed test
-  command**: the tests for the file's bounded context (`tests/<context>/` for `src/<pkg>/<context>/…`,
-  else the whole suite), fail-fast, without coverage collection or the pytest cache
-  (--tests auto|all; --runner overrides it).
+  command**, fail-fast, without coverage collection or the pytest cache. --tests picks the tests:
+  - `coverage` (default): one coverage run with per-test contexts finds, for each mutated file, the
+    tests that execute it; each file's mutants run only those tests. Falls back to `auto` if
+    pytest-cov is missing or the coverage run fails.
+  - `auto`: the tests of the file's bounded context (`tests/<context>/` for `src/<pkg>/<context>/…`,
+    else the whole suite).
+  - `all`: the whole suite. --runner overrides all of these.
 * **Parallel:** --jobs N (default: CPUs, max 4) shards the files across N copies of the working tree,
   each with its own mutmut cache. Each worker gets AFS_MUTATION_WORKER=<i>, and POSTGRES_DB (if set) is
   suffixed `_w<i>` so database tests don't share a test database.
@@ -103,6 +107,61 @@ def runner_for(paths, src, mode):
     return " ".join(cmd)
 
 
+def has_pytest_cov():
+    return subprocess.run([sys.executable, "-c", "import pytest_cov, coverage"], capture_output=True).returncode == 0
+
+
+def base_cmd():
+    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider"]
+    if has_pytest_cov():
+        cmd.append("--no-cov")
+    return cmd
+
+
+def covering_tests(paths, src, test_targets):
+    """Map each mutated file to the test node ids that execute it, from one per-test coverage run."""
+    tmp = tempfile.mkdtemp(prefix="afs-cov-")
+    env = dict(os.environ, COVERAGE_FILE=os.path.join(tmp, ".coverage"))
+    cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=",
+           f"--cov={src}", "--cov-context=test", "--cov-report="] + test_targets
+    run = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if run.returncode not in (0, 1) or not os.path.exists(env["COVERAGE_FILE"]):
+        return None
+    import coverage
+    data = coverage.CoverageData(basename=env["COVERAGE_FILE"])
+    data.read()
+    measured = {os.path.realpath(f): f for f in data.measured_files()}
+    out = {}
+    for p in paths:
+        f = measured.get(os.path.realpath(p))
+        tests = set()
+        if f:
+            for ctxs in data.contexts_by_lineno(f).values():
+                tests |= {c.split("|")[0] for c in ctxs if c}
+        out[p] = sorted(t for t in tests if t)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return out
+
+
+def runners_for(paths, src, mode):
+    """One test command per mutated file."""
+    fallback = runner_for(paths, src, "auto" if mode == "coverage" else mode)
+    if mode != "coverage" or not has_pytest_cov():
+        return {p: fallback for p in paths}, mode if mode != "coverage" else "auto"
+    targets = sorted({t for t in (context_tests(p, src) for p in paths) if t}) or []
+    mapping = covering_tests(paths, src, targets)
+    if mapping is None:
+        return {p: fallback for p in paths}, "auto (coverage run failed)"
+    runners = {}
+    for p, tests in mapping.items():
+        if not tests:
+            runners[p] = fallback          # nothing executes this file: its mutants will survive honestly
+            continue
+        ids = tests if len(tests) <= 150 else sorted({t.split("::")[0] for t in tests})
+        runners[p] = " ".join(base_cmd() + [f"'{t}'" for t in ids])
+    return runners, "coverage"
+
+
 def shards(paths, n):
     """Balance files across n shards by size (largest first)."""
     out = [[] for _ in range(max(1, min(n, len(paths))))]
@@ -114,15 +173,17 @@ def shards(paths, n):
     return [s for s in out if s]
 
 
-def run_shard(i, workdir, paths, runner, env):
+def run_shard(i, workdir, paths, runners, env):
     env = dict(env, AFS_MUTATION_WORKER=str(i))
     if env.get("POSTGRES_DB"):
         env["POSTGRES_DB"] = f"{env['POSTGRES_DB']}_w{i}"
     cache = os.path.join(workdir, ".mutmut-cache")
     if os.path.exists(cache):
         os.remove(cache)
-    run = subprocess.run(["mutmut", "run", "--paths-to-mutate", ",".join(paths), "--runner", runner],
-                         cwd=workdir, env=env, capture_output=True, text=True)
+    run = None
+    for p in paths:                         # one mutmut run per file, with that file's own tests
+        run = subprocess.run(["mutmut", "run", "--paths-to-mutate", p, "--runner", runners[p]],
+                             cwd=workdir, env=env, capture_output=True, text=True)
     # mutmut 2.x exits non-zero whenever mutants survive; the score decides the gate.
     xml = subprocess.run(["mutmut", "junitxml", "--untested-policy", "failure", "--suspicious-policy", "ignore"],
                          cwd=workdir, env=env, capture_output=True, text=True)
@@ -152,7 +213,7 @@ def main():
     ap.add_argument("--exclude", action="append", default=[])
     ap.add_argument("--profile", default=".migration/profile.yaml")
     ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1))
-    ap.add_argument("--tests", choices=["auto", "all"], default="auto")
+    ap.add_argument("--tests", choices=["coverage", "auto", "all"], default="coverage")
     ap.add_argument("--runner", help="test command for each mutant (default: narrowed pytest)")
     a = ap.parse_args()
     excludes = DEFAULT_EXCLUDE + a.exclude
@@ -179,11 +240,14 @@ def main():
     if m and m.group(1) != "2":
         print(f"afs-mutation: mutmut {version} not supported (needs 2.x)", file=sys.stderr)
         return 2
-    runner = a.runner or runner_for(paths, a.src, a.tests)
+    if a.runner:
+        runners, selection = {p: a.runner for p in paths}, "--runner"
+    else:
+        runners, selection = runners_for(paths, a.src, a.tests)
     groups = shards(paths, a.jobs)
     results = []
     if len(groups) == 1:
-        results.append(run_shard(0, ".", groups[0], runner, os.environ))
+        results.append(run_shard(0, ".", groups[0], runners, os.environ))
     else:
         tmp = tempfile.mkdtemp(prefix="afs-mutation-")
         dirs = []
@@ -192,7 +256,7 @@ def main():
             shutil.copytree(".", d, ignore=COPY_IGNORE, symlinks=True)
             dirs.append(d)
         with concurrent.futures.ThreadPoolExecutor(len(groups)) as pool:
-            results = list(pool.map(lambda t: run_shard(t[0], t[1], t[2], runner, os.environ),
+            results = list(pool.map(lambda t: run_shard(t[0], t[1], t[2], runners, os.environ),
                                     [(i, dirs[i], groups[i]) for i in range(len(groups))]))
         shutil.rmtree(tmp, ignore_errors=True)
     killed = survived = skipped = 0
@@ -209,7 +273,7 @@ def main():
     ok = score >= threshold
     print(f"afs-mutation: {'ok' if ok else 'FAILED'} score={score:.3f} threshold={threshold} "
           f"killed={killed} survived={survived} skipped={skipped} files={len(paths)} jobs={len(groups)} base={base}")
-    print(f"  runner: {runner}")
+    print(f"  tests: {selection}; runner for {paths[0]}: {runners[paths[0]][:300]}")
     for loc in locations[:30]:
         print(f"  survived: {loc}")
     return 0 if ok else 1
