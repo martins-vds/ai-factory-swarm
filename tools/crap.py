@@ -15,7 +15,9 @@ Inputs
 Outputs
   * CSV (`--csv`) with every method.
   * Markdown risk map on stdout: summary + top N.
-  * `--max N`: exit 1 if any method exceeds N (gate mode, ADR-0011). Without --max, exit 0
+  * `--max N`: exit 1 if any method exceeds N (gate mode, ADR-0011). Gate mode requires coverage files
+    under .migration/runs/, written by the gate's own full test run, never a shared report.
+    Without --max, exit 0
     (risk-map mode: never blocks).
 
 Standard library only.
@@ -24,12 +26,13 @@ Examples
   lizard --csv src > lizard.csv
   python3 crap.py lizard.csv --top 25 > risk-map.md                      # source, no tests
   python3 crap.py lizard.csv --jacoco target/site/jacoco/jacoco.xml --csv crap.csv
-  python3 crap.py lizard.csv --lcov coverage.lcov --max 30               # target gate
+  python3 crap.py lizard.csv --lcov .migration/runs/crap.lcov --max 30   # target gate
 """
 import argparse
 import collections
 import csv
 import os
+import pathlib
 import sys
 import xml.etree.ElementTree as ET
 
@@ -105,6 +108,17 @@ def main():
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--max", type=float, help="gate: fail if any method's CRAP exceeds this")
     a = ap.parse_args()
+
+    if a.max is not None:
+        # Gate mode owns its coverage: a shared report (e.g. coverage.lcov written by every pytest run via
+        # addopts) may come from a targeted run and skew the score. The gate writes its own under
+        # .migration/runs/ in a preceding command (M5: a stale report scored 33 vs 14 on a full run).
+        runs = pathlib.Path(".migration/runs").resolve()
+        shared = [p for p in a.lcov + a.jacoco if runs not in pathlib.Path(p).resolve().parents]
+        if shared or not (a.lcov or a.jacoco):
+            sys.exit("crap.py --max needs coverage the gate wrote itself under .migration/runs/ (got: "
+                     f"{', '.join(shared) or 'none'}); run the full suite into it first, e.g. "
+                     "pytest -q --cov=src --cov-report=lcov:.migration/runs/crap.lcov")
 
     methods = read_lizard(a.lizard_csv)
     if not methods:
