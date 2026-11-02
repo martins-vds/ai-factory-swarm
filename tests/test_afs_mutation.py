@@ -54,6 +54,28 @@ class AfsMutationTest(unittest.TestCase):
         self.assertEqual(sorted(sum(groups, [])), ["a.py", "b.py", "c.py"])
         self.assertEqual(len(m.shards(["a.py"], 4)), 1)
 
+    @unittest.skipUnless(m.has_pytest_cov(), "pytest-cov not installed")
+    def test_coverage_picks_the_tests_that_execute_each_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            (t / "src").mkdir()
+            (t / "src/alpha.py").write_text("def a():\n    return 1\n")
+            (t / "src/beta.py").write_text("def b():\n    return 2\n")
+            (t / "tests").mkdir()
+            (t / "tests/test_alpha.py").write_text("import sys\nsys.path.insert(0, 'src')\nfrom alpha import a\n\n\n"
+                                                    "def test_a():\n    assert a() == 1\n")
+            (t / "tests/test_beta.py").write_text("import sys\nsys.path.insert(0, 'src')\nfrom beta import b\n\n\n"
+                                                   "def test_b():\n    assert b() == 2\n")
+            import os
+            cwd = os.getcwd()
+            os.chdir(t)
+            try:
+                mapping = m.covering_tests(["src/alpha.py", "src/beta.py"], "src", ["tests"])
+            finally:
+                os.chdir(cwd)
+            self.assertEqual(mapping["src/alpha.py"], ["tests/test_alpha.py::test_a"])
+            self.assertEqual(mapping["src/beta.py"], ["tests/test_beta.py::test_b"])
+
     @unittest.skipUnless(shutil.which("mutmut"), "mutmut not installed")
     def test_parallel_run_matches_serial(self):
         with tempfile.TemporaryDirectory() as t:

@@ -69,7 +69,16 @@ session is a **committed file on your branch**, in the same PR as the work:
 name, e.g. `afs-migrator`), `ticket` (e.g. `TC-03`), `issue` (`owner/repo#N` of the ticket), then every
 key of your agent's return contract, filled in — also when you stop early (fill what you have, `null` the
 rest). It is validated against `.migration/harness/schemas/return.schema.json`; CI fails an agent PR
-without one. The PR description is a human summary of the change that **links** to the return file, handoff and
+without one.
+
+**Every structured output is checked against a schema, and a failing check means redo.** Return
+files must use the contract's exact words and types (e.g. `verdict: pass`, not `passed`; a score is a
+number or `null`, never prose); ledger entries, handoffs and quirk drafts have required structure.
+Before you finish, run `python .migration/harness/tools/validate.py .migration`. If it reports
+errors, fix the outputs (or the work they describe) and run it again; never finish, hand off or
+push for review with validation failing. CI runs the same check on every PR.
+
+The PR description is a human summary of the change that **links** to the return file, handoff and
 journal; it never pastes their contents, because a later session can update the files but not the
 description, so a pasted copy goes stale (CI warns when it finds one). The orchestrator turns quirk
 drafts into issues, links them and removes the drafts.

@@ -52,6 +52,20 @@ class ReturnFileTest(unittest.TestCase):
         r = self.validate({"tc2.yaml": RETURN})
         self.assertIn("file name must be 'TC-02.afs-migrator.yaml'", r.stderr)
 
+    def test_validate_enforces_contract_values(self):
+        verifier = ("role: afs-verifier\nticket: TC-14\nissue: o/r#34\npr: o/r#61\nverdict: passed\n"
+                    "gates: {build: 0, behavior: 0, idiom: 0, crap: 14, mutation_changed: n/a, regression: 0}\n"
+                    "evidence_logs: []\nfindings: [{severity: resolved, where: x, what: y}]\n"
+                    "tests_added: []\nledger_issues: []\nquirk_tickets: []\n")
+        r = self.validate({"TC-14.afs-verifier.yaml": verifier})
+        self.assertIn("verdict", r.stderr)
+        self.assertIn("gates/mutation_changed", r.stderr)
+        self.assertIn("findings/0/severity", r.stderr)
+        fixed = (verifier.replace("verdict: passed", "verdict: pass").replace("mutation_changed: n/a", "mutation_changed: null")
+                 .replace("severity: resolved", "severity: minor"))
+        r = self.validate({"TC-14.afs-verifier.yaml": fixed})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_ci_check_wants_a_changed_return_file_for_the_closed_issue(self):
         with tempfile.TemporaryDirectory() as t:
             repo = pathlib.Path(t)
