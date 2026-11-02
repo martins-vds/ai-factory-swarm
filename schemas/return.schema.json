@@ -80,25 +80,49 @@
                 ]
               },
               "nodes": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "edges": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "flows": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               }
             }
           },
@@ -113,11 +137,19 @@
             ],
             "properties": {
               "entries": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "by_kind": {
                 "type": [
@@ -133,39 +165,79 @@
                 ],
                 "properties": {
                   "structural": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
+                    "anyOf": [
+                      {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^n/a: \\S"
+                      }
+                    ]
                   },
                   "behavioral": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
+                    "anyOf": [
+                      {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^n/a: \\S"
+                      }
+                    ]
                   },
                   "ui": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
+                    "anyOf": [
+                      {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^n/a: \\S"
+                      }
+                    ]
                   },
                   "integration": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
+                    "anyOf": [
+                      {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^n/a: \\S"
+                      }
+                    ]
                   },
                   "data": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
+                    "anyOf": [
+                      {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^n/a: \\S"
+                      }
+                    ]
                   }
                 }
               }
@@ -190,18 +262,34 @@
                 ]
               },
               "methods": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "above_threshold": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "hot_spots": {
                 "type": [
@@ -275,11 +363,19 @@
             ]
           },
           "capabilities_checked": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
+            "anyOf": [
+              {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              {
+                "type": "string",
+                "pattern": "^n/a: \\S"
+              }
+            ]
           },
           "gaps": {
             "type": [
@@ -395,32 +491,64 @@
             ],
             "properties": {
               "met": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "gap": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "waived": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "not_applicable": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               }
             }
           },
@@ -475,25 +603,49 @@
             ],
             "properties": {
               "A": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "B": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "C": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               }
             }
           },
@@ -516,18 +668,34 @@
                 ]
               },
               "cases": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "passing": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "run_log": {
                 "type": [
@@ -551,18 +719,34 @@
             ],
             "properties": {
               "match": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "differs": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               }
             }
           },
@@ -652,41 +836,89 @@
             ],
             "properties": {
               "build": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "behavior": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "idiom": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "crap": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "mutation_changed": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "minimum": 0,
-                "maximum": 1
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "regression": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               }
             }
@@ -805,11 +1037,19 @@
                   ]
                 },
                 "tickets": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "minimum": 0
+                  "anyOf": [
+                    {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^n/a: \\S"
+                    }
+                  ]
                 },
                 "blocked_by": {
                   "type": [
@@ -889,12 +1129,20 @@
         ],
         "properties": {
           "phase": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0,
-            "maximum": 8
+            "anyOf": [
+              {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 8
+              },
+              {
+                "type": "string",
+                "pattern": "^n/a: \\S"
+              }
+            ]
           },
           "decisions": {
             "type": [
@@ -1005,25 +1253,49 @@
             ],
             "properties": {
               "total": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "merged": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "open": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "blocked": {
                 "type": [
@@ -1064,19 +1336,35 @@
                 ]
               },
               "mutation_score": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "minimum": 0,
-                "maximum": 1
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "coverage_gaps": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               }
             }
           },
@@ -1170,41 +1458,89 @@
             ],
             "properties": {
               "build": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "behavior": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "idiom": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "crap": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "mutation_changed": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "minimum": 0,
-                "maximum": 1
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "regression": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               }
             }
@@ -1303,42 +1639,90 @@
             ],
             "properties": {
               "build": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "behavior": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "idiom": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               },
               "crap": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "minimum": 0
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "mutation_changed": {
-                "type": [
-                  "number",
-                  "null"
-                ],
-                "minimum": 0,
-                "maximum": 1
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
               },
               "regression": {
-                "type": [
-                  "integer",
-                  "null"
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
                 ]
               }
             }

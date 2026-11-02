@@ -211,10 +211,31 @@ def install_skills(target, plan, cache, notes):
               f"{' and the upstream LICENSE' if (dest / 'LICENSE').exists() and not (repo_dir / s['path'] / 'LICENSE').exists() else ''}.\n")
 
 
+LEGACY_RETURNS = ".migration/harness/legacy-returns.json"
+
+
+def legacy_returns(target):
+    """Return files committed before ADR-0017 (journal missing or without a Result column).
+
+    Written once, at the first install that knows the rule, and kept as-is by later installs, so a return
+    added afterwards can never become exempt. check_installed keeps it unchanged."""
+    existing = target / LEGACY_RETURNS
+    if existing.exists():
+        return existing.read_text(encoding="utf-8")
+    names = []
+    for ret in sorted((target / ".migration/returns").glob("*.y*ml")):
+        journal = target / ".migration/evidence/runs" / f"{ret.name.split('.')[0]}.md"
+        if not journal.exists() or "| Result |" not in journal.read_text(encoding="utf-8"):
+            names.append(ret.name)
+    return json.dumps({"rule": "ADR-0017", "returns": names}, indent=2) + "\n"
+
+
 def install_harness(target, lock):
     h = target / ".migration/harness"
+    legacy = legacy_returns(target)
     if h.exists():
         shutil.rmtree(h)
+    write(target / LEGACY_RETURNS, legacy)
     for t in HARNESS_TOOLS:
         dst = h / "tools" / t
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -293,7 +314,8 @@ def write_manifest(target, version, commit, plan):
                     if s["source"] else {})} for s in plan]
     entries += [{"path": ".github/hooks/rtk-rewrite.json", "kind": "hook"},
                 {"path": ".migration/harness/tools", "kind": "tools"},
-                {"path": ".migration/harness/schemas", "kind": "schemas"}]
+                {"path": ".migration/harness/schemas", "kind": "schemas"},
+                {"path": LEGACY_RETURNS, "kind": "legacy"}]
     if (target / ".migration/harness/patches").exists():
         entries.append({"path": ".migration/harness/patches", "kind": "patches"})
     for e in entries:

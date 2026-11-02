@@ -33,15 +33,81 @@ class ReturnFileTest(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
 
-    def validate(self, files):
+    def validate(self, files, journals=None, gates=None, legacy=None):
+        """files: returns/<name> → text; journals: ticket → rows (gate, command, result); gates: profile gates."""
         with tempfile.TemporaryDirectory() as t:
-            (pathlib.Path(t) / "returns").mkdir()
+            root = pathlib.Path(t)
+            (root / "returns").mkdir()
             for name, text in files.items():
-                (pathlib.Path(t) / "returns" / name).write_text(text)
+                (root / "returns" / name).write_text(text)
+            for ticket, rows in (journals or {}).items():
+                (root / "evidence/runs").mkdir(parents=True, exist_ok=True)
+                body = "".join(f"| 2026-11-02T00:00:0{i}+00:00 | {g} | 0 | 1.0 | `{c}` | `abc` |  | {r} |\n"
+                               for i, (g, c, r) in enumerate(rows))
+                (root / "evidence/runs" / f"{ticket}.md").write_text(
+                    "# Run journal\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+                    "|---|---|---|---|---|---|---|---|\n" + body)
+            if gates is not None:
+                # Only the gates matter here; validate.py checks the profile against its schema too, so skip it.
+                (root / "harness").mkdir(exist_ok=True)
+                (root / "profile.yaml").write_text(json.dumps({"gates": gates}))
+            if legacy is not None:
+                (root / "harness").mkdir(exist_ok=True)
+                (root / "harness/legacy-returns.json").write_text(json.dumps({"rule": "ADR-0017", "returns": legacy}))
             return subprocess.run([sys.executable, str(ROOT / "tools/validate.py"), t], capture_output=True, text=True)
 
+    MUT = "python .migration/harness/tools/afs-mutation --changed-since origin/main"
+    GATES = {"mutation_changed": [MUT]}
+
+    def mutation_run(self, score="1.000", command=None):
+        return {"TC-02": [("mutation", command or self.MUT, f"gate=mutation score={score} threshold=0.8")]}
+
+    def errors(self, r):
+        """validate.py's errors, ignoring the minimal test profile's own schema errors."""
+        return [l for l in r.stderr.splitlines() if "profile.yaml" not in l]
+
     def test_validate_accepts_a_complete_return_file(self):
-        r = self.validate({"TC-02.afs-migrator.yaml": RETURN})
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(), self.GATES)
+        self.assertEqual(self.errors(r), [])
+
+    def test_scores_must_match_the_last_trusted_mutation_run(self):
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run("0.912"), self.GATES)
+        self.assertIn("does not match the last mutation gate run", r.stderr)
+        self.assertIn("score=0.912", r.stderr)
+
+    def test_result_lines_from_other_commands_are_ignored(self):
+        fake = "echo AFS-RESULT gate=mutation score=1.000"
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(command=fake), self.GATES)
+        self.assertIn("has no mutation gate run with a result", r.stderr)
+
+    def test_gate_run_through_bash_c_counts(self):
+        cmd = "bash -c '" + self.MUT + "'"
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(command=cmd), self.GATES)
+        self.assertEqual(self.errors(r), [])
+
+    def test_score_without_a_journal_fails(self):
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, gates=self.GATES)
+        self.assertIn("has no mutation gate run with a result", r.stderr)
+
+    def test_finished_return_needs_every_gate_or_a_reason(self):
+        text = RETURN.replace("crap: 0", "crap: null")
+        r = self.validate({"TC-02.afs-migrator.yaml": text}, self.mutation_run(), self.GATES)
+        self.assertIn("gates.crap is null in a finished return", r.stderr)
+        text = RETURN.replace("crap: 0", "'crap': 'n/a: no production code changed'")
+        r = self.validate({"TC-02.afs-migrator.yaml": text}, self.mutation_run(), self.GATES)
+        self.assertEqual(self.errors(r), [])
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN.replace("crap: 0", "crap: 'n/a'")},
+                          self.mutation_run(), self.GATES)
+        self.assertIn("gates/crap", r.stderr)
+
+    def test_null_gates_are_fine_with_a_handoff(self):
+        text = (RETURN.replace("mutation_changed: 1.0", "mutation_changed: null")
+                .replace("handoff: null", "handoff: .migration/handoffs/TC-02.md"))
+        r = self.validate({"TC-02.afs-migrator.yaml": text})
+        self.assertNotIn("in a finished return", r.stderr)
+
+    def test_legacy_returns_are_exempt(self):
+        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, legacy=["TC-02.afs-migrator.yaml"])
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_validate_rejects_missing_keys_bad_gates_and_wrong_names(self):
@@ -61,7 +127,8 @@ class ReturnFileTest(unittest.TestCase):
         self.assertIn("verdict", r.stderr)
         self.assertIn("gates/mutation_changed", r.stderr)
         self.assertIn("findings/0/severity", r.stderr)
-        fixed = (verifier.replace("verdict: passed", "verdict: pass").replace("mutation_changed: n/a", "mutation_changed: null")
+        fixed = (verifier.replace("verdict: passed", "verdict: pass")
+                 .replace("mutation_changed: n/a", "'mutation_changed': 'n/a: covered by the builder run'")
                  .replace("severity: resolved", "severity: minor"))
         r = self.validate({"TC-14.afs-verifier.yaml": fixed})
         self.assertEqual(r.returncode, 0, r.stderr)

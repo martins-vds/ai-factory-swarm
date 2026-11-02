@@ -229,6 +229,7 @@ def main():
     paths = sorted(p for p in paths if keep(p, excludes))
     if not paths:
         print(f"afs-mutation: no mutable code changed ({base}); nothing to do")
+        print(f"AFS-RESULT gate=mutation score=n/a reason=no-mutable-code-changed base={base}")
         return 0
 
     if shutil.which("mutmut") is None:
@@ -273,6 +274,9 @@ def main():
     ok = score >= threshold
     print(f"afs-mutation: {'ok' if ok else 'FAILED'} score={score:.3f} threshold={threshold} "
           f"killed={killed} survived={survived} skipped={skipped} files={len(paths)} jobs={len(groups)} base={base}")
+    # The harness result line (ADR-0017): afs-run journals it; validate.py checks return files against it.
+    print(f"AFS-RESULT gate=mutation score={score:.3f} threshold={threshold} killed={killed} survived={survived} "
+          f"files={len(paths)} base={base}")
     print(f"  tests: {selection}; runner for {paths[0]}: {runners[paths[0]][:300]}")
     for loc in locations[:30]:
         print(f"  survived: {loc}")

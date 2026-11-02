@@ -7,7 +7,10 @@ Usage: validate.py <folder> [--schemas <dir>]
   profile.yaml       → schemas/profile.schema.json
   capabilities.yaml  → schemas/capabilities.schema.json
   ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique
-  returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`
+  returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`; and (ADR-0017)
+                       a finished return has no null gates, and each score equals the last mutation
+                       gate run's AFS-RESULT in evidence/runs/<ticket>.md (returns in
+                       harness/legacy-returns.json are exempt)
   handoffs/*.md      → every `## Handoff — <role> · <UTC>` section has its required subsections
   quirks/*.md        → quirk drafts have Question, Evidence, Impact and Options sections
 Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
@@ -16,6 +19,7 @@ import argparse
 import json
 import pathlib
 import re
+import shlex
 import sys
 
 import yaml
@@ -74,6 +78,82 @@ def check_markdown(folder, errors):
     return checked
 
 
+SCORE_KEYS = {"mutation_changed", "mutation_full", "mutation_score"}
+NOT_RUN = re.compile(r"^n/a: \S")
+
+
+def cell(text, limit=400):
+    """Same escaping afs-run uses for the journal's Command cell."""
+    return text.replace("|", "\\|").replace("`", "'").strip()[:limit]
+
+
+def read_journal(path):
+    """Rows of an afs-run journal as dicts, and whether it has the ADR-0017 Result column."""
+    rows, has_result = [], False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("| UTC |"):
+            has_result = line.rstrip().endswith("| Result |")
+            continue
+        if not line.startswith("| 2"):
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip())[1:-1]]
+        if len(cells) < 8:
+            continue
+        rows.append({"gate": cells[1], "exit": cells[2], "command": cells[4].strip("`"),
+                     "result": dict(kv.split("=", 1) for kv in cells[7].split() if "=" in kv)})
+    return rows, has_result
+
+
+def gate_commands(profile):
+    """Journal Command cells that count as a real gate run: each profile gate command, as run or via bash -c."""
+    trusted = set()
+    for cmds in (profile.get("gates") or {}).values():
+        for cmd in cmds or []:
+            trusted.add(cell(cmd))
+            trusted.add(cell(shlex.join(["bash", "-c", cmd])))
+    return trusted
+
+
+def scores_in(node, where=""):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            path = f"{where}.{k}" if where else k
+            if k in SCORE_KEYS and not isinstance(v, (dict, list)):
+                yield path, v
+            else:
+                yield from scores_in(v, path)
+
+
+def check_return_evidence(folder, path, doc, profile, errors):
+    """ADR-0017: a finished return reports every gate, and every score matches a gate run's AFS-RESULT."""
+    ticket = doc.get("ticket")
+    journal = folder / "evidence" / "runs" / f"{ticket}.md"
+    rows, _ = read_journal(journal) if journal.is_file() else ([], True)
+    finished = doc.get("handoff") in (None, "", "none")
+    if finished:
+        for key, value in (doc.get("gates") or {}).items():
+            if value is None:
+                errors.append(f"{path}: gates.{key} is null in a finished return; give the value, or "
+                              f"'n/a: <reason>' if the gate does not apply (null only with a handoff)")
+    trusted = gate_commands(profile or {})
+    runs = [r for r in rows if r["command"] in trusted and r["result"].get("gate") == "mutation"]
+    for key, value in scores_in(doc):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            continue
+        if not runs:
+            errors.append(f"{path}: {key}={value} but {journal} has no mutation gate run with a result; run the "
+                          f"profile's mutation gate through afs-run")
+            continue
+        last = runs[-1]["result"].get("score", "")
+        try:
+            ok = abs(float(last) - float(value)) < 0.0005
+        except ValueError:
+            ok = False
+        if not ok:
+            errors.append(f"{path}: {key}={value} does not match the last mutation gate run in {journal} "
+                          f"(score={last}); report the score afs-mutation printed")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder")
@@ -104,9 +184,15 @@ def main():
     returns = folder / "returns"
     if returns.is_dir():
         validator = load_schema(schemas, "return.schema.json")
+        profile = load_yaml(folder / "profile.yaml") if (folder / "profile.yaml").exists() else {}
+        # Returns committed before ADR-0017, listed once by bootstrap; CI keeps the list unchanged.
+        legacy_file = folder / "harness" / "legacy-returns.json"
+        legacy = set(json.loads(legacy_file.read_text(encoding="utf-8"))["returns"]) if legacy_file.exists() else set()
         for path in sorted(returns.glob("*.y*ml")):
             doc = check(validator, path, errors)
             checked += 1
+            if isinstance(doc, dict) and doc.get("ticket") and path.name not in legacy:
+                check_return_evidence(folder, path, doc, profile, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:

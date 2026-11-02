@@ -72,20 +72,56 @@ def cell(text, limit=120):
     return text.replace("|", "\\|").replace("`", "'").strip()[:limit]
 
 
-def journal(folder, ticket, record, sha, parts):
+RESULT = re.compile(r"^AFS-RESULT (\S.*)$")
+HEADER = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+RULE = "|---|---|---|---|---|---|---|---|\n"
+OLD_HEADER = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight |"
+
+
+def result_of(lines):
+    """The last `AFS-RESULT key=value …` line a harness gate tool printed (ADR-0017), or ''."""
+    for line in reversed(lines):
+        m = RESULT.match(line.strip())
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def upgrade(path):
+    """Add the Result column to a journal written before ADR-0017 (existing rows get an empty cell)."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    if OLD_HEADER not in text or "| Result |" in text:
+        return
+    out = []
+    for line in text.splitlines(keepends=True):
+        if line.startswith(OLD_HEADER):
+            out.append(HEADER)
+        elif line.startswith("|---|"):
+            out.append(RULE)
+        elif line.startswith("| 2"):
+            out.append(line.rstrip("\n") + "  |\n")
+        else:
+            out.append(line)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("".join(out))
+
+
+def journal(folder, ticket, record, sha, parts, result=""):
     """Append one row to the committed run journal for this ticket."""
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"{ticket}.md")
     new = not os.path.exists(path)
+    if not new:
+        upgrade(path)
     first = next((p.split(":", 1)[1].strip() for p in parts if re.match(r"\s+\d+:", p)), "")
     with open(path, "a", encoding="utf-8") as fh:
         if new:
             fh.write(f"# Run journal: {ticket}\n\nWritten by `afs-run`, one row per gate run. Raw logs are not "
-                     f"committed; the SHA-256 identifies the exact log.\n\n"
-                     "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight |\n"
-                     "|---|---|---|---|---|---|---|\n")
+                     f"committed; the SHA-256 identifies the exact log. Result is the gate tool's own "
+                     f"`AFS-RESULT` line.\n\n" + HEADER + RULE)
         fh.write(f"| {record['ts']} | {record['name']} | {record['exit']} | {record['seconds']} | "
-                 f"`{cell(record['command'])}` | `{sha[:16]}` | {cell(first)} |\n")
+                 f"`{cell(record['command'], 400)}` | `{sha[:16]}` | {cell(first)} | {cell(result, 200)} |\n")
 
 
 def main(argv=None):
@@ -139,7 +175,7 @@ def main(argv=None):
 
     parts = summarize(lines, a.highlights, a.tail, code != 0)
     if a.journal_dir and a.journal_dir != "off":
-        journal(a.journal_dir, ticket, record, hashlib.sha256(raw).hexdigest(), parts)
+        journal(a.journal_dir, ticket, record, hashlib.sha256(raw).hexdigest(), parts, result_of(lines))
 
     status = "ok" if code == 0 else "FAILED"
     print(f"afs-run: {name} {status} exit={code} {seconds}s · {len(lines)} lines, {len(raw)} bytes")

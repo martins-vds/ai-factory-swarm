@@ -4,7 +4,8 @@
 A return file (`.migration/returns/<ticket>.<role>.yaml`) is an agent's committed report for one
 ticket: `role`, `ticket`, `issue`, plus every key of that role's contract. The contract templates are
 turned into a strict schema. Placeholders map to types; anything may be null ("fill what you have,
-null the rest"):
+null the rest"), and measured values (exit codes, counts, scores) may also be 'n/a: <reason>'. validate.py
+adds what a schema can't (ADR-0017): a finished return has no null gates, and scores match the journal.
 
   <a | b | c>   (single words)       → one of those values (enum)
   <exit>                             → integer (a command's exit code)
@@ -55,21 +56,26 @@ def nullable(schema):
     return schema
 
 
+def measured(schema):
+    """A measured value (exit code, count, score): the number, null, or 'n/a: <reason>' when it does not apply."""
+    return {"anyOf": [nullable(schema), {"type": "string", "pattern": "^n/a: \\S"}]}
+
+
 def placeholder(ph):
     alts = [a.strip() for a in ph.split("|")]
     if len(alts) > 1 and all(re.fullmatch(r"[A-Za-z0-9_.-]+", a) for a in alts):
         return nullable({"enum": alts})
     if ph == "exit":
-        return nullable({"type": "integer"})
+        return measured({"type": "integer"})
     if ph == "n" or ph.startswith("n "):
-        return nullable({"type": "integer", "minimum": 0})
+        return measured({"type": "integer", "minimum": 0})
     if ph in ("score", "0-1"):
-        return nullable({"type": "number", "minimum": 0, "maximum": 1})
+        return measured({"type": "number", "minimum": 0, "maximum": 1})
     if ph == "max":
-        return nullable({"type": "number", "minimum": 0})
+        return measured({"type": "number", "minimum": 0})
     m = re.fullmatch(r"(\d+)-(\d+)", ph)
     if m:
-        return nullable({"type": "integer", "minimum": int(m.group(1)), "maximum": int(m.group(2))})
+        return measured({"type": "integer", "minimum": int(m.group(1)), "maximum": int(m.group(2))})
     return nullable({"type": "string"})
 
 
