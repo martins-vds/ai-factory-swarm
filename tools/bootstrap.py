@@ -45,7 +45,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
-                 "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py"]
+                 "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
+                 "afs-services"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -73,6 +74,7 @@ OPERATOR_CHECKLIST = [
     "Public repo, or an Actions budget (Copilot sessions and CI use Actions minutes)",
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",
+    "Copilot firewall lets setup steps pull the compose images (add the registry to the allowlist if a session reports services DOWN)",
 ]
 
 

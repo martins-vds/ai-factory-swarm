@@ -57,4 +57,9 @@ rtk:
 data:
   masking: false
   snapshot_owner: operations-team
+# Real services the tests run against, from the target's compose file (written with the Docker skills).
+# Copilot setup steps and the CI gates start `test` with tools/afs-services. Required when target.stacks.data is set.
+services:
+  compose: compose.yaml
+  test: [db]
 translation_rules: .migration/translation-rules.md

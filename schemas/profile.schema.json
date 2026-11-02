@@ -6,6 +6,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["harness_version", "source", "target", "characterization", "graph", "skills", "gates", "thresholds"],
+  "if": { "required": ["target"], "properties": { "target": { "required": ["stacks"], "properties": { "stacks": { "required": ["data"] } } } } },
+  "then": { "required": ["services"] },
   "properties": {
     "harness_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
     "source": {
@@ -139,6 +141,17 @@
       "properties": {
         "masking": { "type": "boolean", "default": false },
         "snapshot_owner": { "type": "string" }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compose", "test"],
+      "description": "The target's Docker Compose file is the one definition of the real services tests run against (database, broker, external-system stand-ins). Copilot setup steps and the CI gates start services.test with tools/afs-services; the human runs the same file locally. Required when target.stacks.data is set.",
+      "properties": {
+        "compose": { "type": "string", "minLength": 1, "description": "Path from the target repo root, e.g. compose.yaml." },
+        "test": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 }, "description": "Compose services the tests need; each defines a healthcheck." },
+        "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional variables exported to later steps so tests reach the services." }
       }
     },
     "translation_rules": { "type": "string" }

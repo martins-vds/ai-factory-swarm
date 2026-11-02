@@ -1,6 +1,6 @@
 ---
 name: afs-setup-check
-description: Verify the working environment before doing anything — source checkout present, pinned and read-only, migration state valid, harness tools available. Use as the very first step of every role agent session; stop if any check fails.
+description: Verify the working environment before doing anything — source checkout present, pinned and read-only, migration state valid, harness tools available, test services healthy. Use as the very first step of every role agent session; stop if any check fails.
 ---
 
 # Setup check (ADR-0008)
@@ -27,8 +27,15 @@ TICKET
 # 4. Tools
 .migration/harness/tools/afs-run --ticket <your ticket> --name setup-probe -- true   # your own journal, never a shared one
 rtk --version
+
+# 5. Test services up and healthy (profile `services`; setup steps started them from the compose file)
+python .migration/harness/tools/afs-services check
 ```
-Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. Never conclude an
+Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. Roles that do not
+run tests (Program Orchestrator, Planner, Analyst) skip check 5. If check 5 fails, try
+`python .migration/harness/tools/afs-services up` once (it prints the services' logs on failure) —
+starting the compose services is the setup step, not a workaround. Never start a database or other
+service by hand, and never point tests at an in-memory or mocked stand-in instead. Never conclude an
 input "is not present" without check 3: a missing named input is a stop, not an open question.
 
 ## Outcome
