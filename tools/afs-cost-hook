@@ -12,11 +12,17 @@ the session's event log, and writes `.migration/costs/<session-id>.json`:
     that confirms the format on each surface).
 
 Event log: the payload's transcriptPath / transcript_path, else
-$COPILOT_HOME|~/.copilot/session-state/<sessionId>/events.jsonl. In a remote coding-agent session the hook
-commits and pushes the record at sessionEnd (the agent has finished by then); locally it only writes it.
+$COPILOT_HOME|~/.copilot/session-state/<sessionId>/events.jsonl. The hook only writes the record: in a
+coding-agent session Copilot's own final commit ("Apply remaining changes") picks it up (seen in M5;
+pushing from the hook would race with it); locally the agent or operator commits it with the work.
+
+Spike result (M5, coding agent): at sessionEnd the log has no session.shutdown and no assistant.usage,
+so only output tokens are known per session. The record therefore also keeps the session's time window
+(`started_at`, `ended_at`) so billed AI credits can be attributed by `afs-costs` (ADR-0021 phase 1.1),
+and `diagnostics.data_keys` (field names only, per event type) to spot usage fields if Copilot adds them.
 
 Never fails the session: any error is written to the record's `error` and the hook exits 0.
-Usage: afs-cost-hook --event agentStop|sessionEnd [--out-dir .migration/costs] [--no-push]
+Usage: afs-cost-hook --event agentStop|sessionEnd [--out-dir .migration/costs]
 """
 import argparse
 import collections
@@ -98,8 +104,15 @@ def summarize(log):
         source = "assistant.message (output only, partial)" if models else None
     fields = sorted({k for e in events if e.get("type") in ("session.shutdown", "assistant.usage")
                      for k in (e.get("data") or {})})
-    return ({m: dict(c) for m, c in models.items()}, source, extra,
-            {"event_types": dict(kinds.most_common()), "usage_fields": fields, "events": len(events)})
+    data_keys = collections.defaultdict(set)
+    for e in events:
+        if isinstance(e.get("data"), dict):
+            data_keys[e.get("type")] |= set(e["data"])
+    stamps = [e.get("timestamp") for e in events if isinstance(e.get("timestamp"), str)]
+    window = {"started_at": min(stamps) if stamps else None, "ended_at": max(stamps) if stamps else None}
+    return ({m: dict(c) for m, c in models.items()}, source, {**extra, **window},
+            {"event_types": dict(kinds.most_common()), "usage_fields": fields, "events": len(events),
+             "data_keys": {k: sorted(v) for k, v in sorted(data_keys.items(), key=lambda kv: str(kv[0]))}})
 
 
 def ticket_hint():
@@ -112,11 +125,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--event", required=True)
     ap.add_argument("--out-dir", default=".migration/costs")
-    ap.add_argument("--no-push", action="store_true")
     a = ap.parse_args(argv)
     p = payload()
     sid = p.get("sessionId") or p.get("session_id") or "unknown"
-    remote = bool(os.environ.get("GITHUB_COPILOT_GIT_TOKEN") or os.environ.get("COPILOT_AGENT_PROMPT"))
+    # Coding-agent sessions run on an Actions runner; the Copilot token variables were not visible to hooks (M5).
+    remote = bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("RUNNER_TEMP")
+                  or os.environ.get("GITHUB_COPILOT_GIT_TOKEN") or os.environ.get("COPILOT_AGENT_PROMPT"))
     record = {"schema": "afs-cost/1", "session_id": sid, "event": a.event,
               "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
               "surface": "coding-agent" if remote else "local", **ticket_hint()}
@@ -135,16 +149,6 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{sid}.json"
     path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    if remote and a.event == "sessionEnd" and not a.no_push:
-        cmds = [["git", "add", str(path)],
-                ["git", "-c", "user.name=afs-cost-hook", "-c", "user.email=afs-cost-hook@users.noreply.github.com",
-                 "commit", "-q", "-m", f"Cost record for Copilot session {sid}"],
-                ["git", "push", "-q", "origin", "HEAD"]]
-        for c in cmds:
-            r = subprocess.run(c, capture_output=True, text=True)
-            if r.returncode:
-                print(f"afs-cost-hook: {' '.join(c[:2])} failed: {r.stderr.strip()[:300]}", file=sys.stderr)
-                break
     return 0
 
 

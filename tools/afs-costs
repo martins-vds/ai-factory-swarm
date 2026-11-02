@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Migration cost: billed AI credits and Actions minutes, attributed to harness sessions (ADR-0021 phase 1.1).
+
+Two inputs, both committed under .migration/costs/:
+  <session-id>.json      one per Copilot session, written by the afs-cost-hook (tokens known, time window)
+  billing/<date>.json    GitHub's AI-credit usage report and usage report for one day (`fetch`, run daily
+                         by the afs-costs workflow with the operator's BILLING_READ_TOKEN)
+
+  afs-costs fetch --date 2026-11-02     read the billing scope/account from profile `costs.billing`
+  afs-costs report [--out FILE]         Markdown report; prints `AFS-RESULT gate=costs …`
+
+Attribution is an estimate and says so: GitHub reports credits per day, model and user, not per session.
+A day's agent credits are shared among that day's harness sessions in proportion to their output
+tokens (the only usage the session logs carry at hook time). Usage outside the harness on the same
+account and day inflates the share, so the report also shows the day's total and the agent SKU's.
+Standard library only (plus PyYAML for the profile).
+"""
+import argparse
+import collections
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import sys
+import urllib.parse
+import urllib.request
+
+COSTS = pathlib.Path(".migration/costs")
+API = "https://api.github.com"
+SCOPES = {"user": "users", "organization": "organizations", "enterprise": "enterprises"}
+TICKET = re.compile(r"(?i)\b([a-z]{2,6})-(\d+[a-z]?)\b")
+
+
+def billing_settings(profile=".migration/profile.yaml"):
+    import yaml
+    doc = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    return ((doc.get("costs") or {}).get("billing")) or {}
+
+
+def get(path, params, token):
+    url = f"{API}/{path}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                               "X-GitHub-Api-Version": "2026-03-10",
+                                               "Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def fetch(a):
+    cfg = billing_settings(a.profile)
+    if not cfg:
+        print("::notice::No costs.billing in the profile; billed usage not fetched (ADR-0021).")
+        return 0
+    token = os.environ.get(a.token_env)
+    if not token:
+        print(f"::warning::{a.token_env} is not set; billed usage not fetched (operator checklist).")
+        return 0
+    day = dt.date.fromisoformat(a.date)
+    base = f"{SCOPES[cfg['scope']]}/{cfg['account']}/settings/billing"
+    params = {"year": day.year, "month": day.month, "day": day.day}
+    out = {"date": a.date, "scope": cfg["scope"], "account": cfg["account"],
+           "ai_credits": get(f"{base}/ai_credit/usage", params, token).get("usageItems", []),
+           "usage": get(f"{base}/usage", params, token).get("usageItems", [])}
+    path = COSTS / "billing" / f"{a.date}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"wrote {path}: {len(out['ai_credits'])} AI-credit items, {len(out['usage'])} usage items")
+    return 0
+
+
+def credits(item):
+    """Credits in one AI-credit usage item (quantity in credits, else amount in USD × 100)."""
+    if str(item.get("unitType", "")).lower() == "credits":
+        return float(item.get("netQuantity", item.get("grossQuantity", 0)) or 0)
+    return float(item.get("netAmount", item.get("grossAmount", 0)) or 0) * 100
+
+
+def sessions():
+    out = []
+    for p in sorted(COSTS.glob("*.json")):
+        try:
+            rec = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if rec.get("schema") != "afs-cost/1":
+            continue
+        m = TICKET.search(rec.get("branch") or "")
+        rec["ticket"] = f"{m.group(1).upper()}-{m.group(2)}" if m else "unattributed"
+        rec["output"] = sum(v.get("output", 0) for v in (rec.get("models") or {}).values())
+        rec["day"] = (rec.get("ended_at") or rec.get("recorded_at") or "")[:10]
+        out.append(rec)
+    return out
+
+
+def report(a):
+    recs = sessions()
+    billing = {}
+    for p in sorted((COSTS / "billing").glob("*.json")) if (COSTS / "billing").is_dir() else []:
+        billing[p.stem] = json.loads(p.read_text(encoding="utf-8"))
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    lines = ["# Migration cost", "",
+             "Billed figures come from GitHub's usage reports (exact per day, model and user). Per-session and",
+             "per-ticket credits are **estimates**: a day's agent credits shared by output tokens (ADR-0021).", ""]
+    by_day = collections.defaultdict(list)
+    for r in recs:
+        by_day[r["day"]].append(r)
+    est = collections.Counter()
+    total_credits = total_agent = total_minutes = 0.0
+    lines += ["## By day", "", "| Day | Sessions | Output tokens | Credits (all) | Credits (agent SKU) | Actions min (repo) |",
+              "|---|---:|---:|---:|---:|---:|"]
+    for day in sorted(set(by_day) | set(billing)):
+        b = billing.get(day) or {}
+        items = b.get("ai_credits") or []
+        all_c = sum(credits(i) for i in items)
+        agent = [i for i in items if "agent" in f"{i.get('sku', '')} {i.get('product', '')}".lower()]
+        agent_c = sum(credits(i) for i in agent) if agent else all_c
+        minutes = sum(float(i.get("quantity", 0) or 0) for i in b.get("usage") or []
+                      if str(i.get("product", "")).lower() == "actions"
+                      and (not repo or i.get("repositoryName") in (repo, repo.split("/")[-1])))
+        day_out = sum(r["output"] for r in by_day.get(day, []))
+        for r in by_day.get(day, []):
+            share = agent_c * (r["output"] / day_out) if day_out else 0.0
+            r["est_credits"] = share
+            est[r["ticket"]] += share
+        total_credits, total_agent, total_minutes = total_credits + all_c, total_agent + agent_c, total_minutes + minutes
+        billed = "n/a" if not b else f"{all_c:,.0f}"
+        lines.append(f"| {day} | {len(by_day.get(day, []))} | {day_out:,} | {billed} | "
+                     f"{'n/a' if not b else f'{agent_c:,.0f}'} | {'n/a' if not b else f'{minutes:,.0f}'} |")
+    lines += ["", "## By ticket (estimated)", "", "| Ticket | Sessions | Output tokens | Est. credits | Est. USD |",
+              "|---|---:|---:|---:|---:|"]
+    by_ticket = collections.defaultdict(list)
+    for r in recs:
+        by_ticket[r["ticket"]].append(r)
+    for t in sorted(by_ticket):
+        out_t = sum(r["output"] for r in by_ticket[t])
+        lines.append(f"| {t} | {len(by_ticket[t])} | {out_t:,} | {est[t]:,.0f} | ${est[t] / 100:,.2f} |")
+    partial = sum(1 for r in recs if "partial" in str(r.get("usage_source")))
+    lines += ["", f"- Sessions recorded: {len(recs)} ({partial} with output tokens only); billed days: {len(billing)}.",
+              f"- Totals on billed days: {total_credits:,.0f} credits (${total_credits / 100:,.2f}), agent SKU "
+              f"{total_agent:,.0f}, Actions {total_minutes:,.0f} min."]
+    text = "\n".join(lines) + "\n"
+    if a.out:
+        pathlib.Path(a.out).write_text(text, encoding="utf-8")
+    else:
+        print(text)
+    print(f"AFS-RESULT gate=costs sessions={len(recs)} billed_days={len(billing)} credits={total_credits:.0f} "
+          f"agent_credits={total_agent:.0f} actions_minutes={total_minutes:.0f}")
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    f = sub.add_parser("fetch")
+    f.add_argument("--date", default=(dt.date.today() - dt.timedelta(days=1)).isoformat())
+    f.add_argument("--profile", default=".migration/profile.yaml")
+    f.add_argument("--token-env", default="BILLING_READ_TOKEN")
+    r = sub.add_parser("report")
+    r.add_argument("--out")
+    a = ap.parse_args(argv)
+    return fetch(a) if a.cmd == "fetch" else report(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

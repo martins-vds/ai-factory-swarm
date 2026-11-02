@@ -18,6 +18,7 @@ list, and the setup PR repeats it as a checklist.
 | 8 | **Copilot firewall lets setup steps pull the compose images** (ADR-0016): if blocked, add the registry (e.g. `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`) to the allowlist | Settings → Copilot → Coding agent → Firewall | Setup steps start the target's test services with `afs-services up` | `afs-setup-check` reports `services DOWN`; agents stop instead of testing |
 
 | 9 | **Graph first** (ADR-0020): after the setup PR merges, run **AFS understand (code graphs)** with `side=source` on `main`, review its PR (the graph gate and the list of entry points that reach data), and merge it | Actions → AFS understand → Run workflow | Analysis and planning query the graph; a graph that can't reach the data hides capabilities | Planner and Analyst stop at setup; CI fails on slice anchors that reach no data |
+| 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret**: a fine-grained token that can read billing for the account named in profile `costs.billing` (your user, organization or enterprise) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
 
 ## What the code graph contains
 

@@ -171,6 +171,19 @@
         "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional variables exported to later steps so tests reach the services." }
       }
     },
+    "costs": {
+      "type": "object", "additionalProperties": false,
+      "description": "ADR-0021: where billed Copilot AI credits and Actions minutes are read from (tools/afs-costs, AFS costs workflow).",
+      "properties": {
+        "billing": {
+          "type": "object", "additionalProperties": false, "required": ["scope", "account"],
+          "properties": {
+            "scope": { "enum": ["user", "organization", "enterprise"] },
+            "account": { "type": "string", "minLength": 1, "description": "User login, organization or enterprise slug that pays for Copilot." }
+          }
+        }
+      }
+    },
     "translation_rules": { "type": "string" }
   },
   "$defs": {

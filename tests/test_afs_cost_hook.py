@@ -11,7 +11,8 @@ HOOK = pathlib.Path(__file__).resolve().parent.parent / "tools/afs-cost-hook"
 
 
 def run(cwd, payload, env_extra=None, event="sessionEnd"):
-    env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_COPILOT_GIT_TOKEN", "COPILOT_AGENT_PROMPT")}
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GITHUB_COPILOT_GIT_TOKEN", "COPILOT_AGENT_PROMPT", "GITHUB_ACTIONS", "RUNNER_TEMP")}
     env.update(env_extra or {})
     return subprocess.run([sys.executable, str(HOOK), "--event", event], cwd=cwd, input=json.dumps(payload),
                           capture_output=True, text=True, env=env)
@@ -50,6 +51,16 @@ class CostHookTest(unittest.TestCase):
         self.assertEqual(rec["totalPremiumRequests"], 1)
         self.assertEqual(rec["diagnostics"]["event_types"]["assistant.message"], 1)
         self.assertEqual(rec["surface"], "local")
+
+    def test_time_window_data_keys_and_runner_surface(self):
+        t = log(self.dir / "t/events.jsonl", [
+            {"type": "session.start", "timestamp": "2026-11-02T21:36:40Z", "data": {"selectedModel": "m", "cwd": "/x"}},
+            {"type": "assistant.message", "timestamp": "2026-11-02T22:12:00Z", "data": {"outputTokens": 9}}])
+        run(self.dir, {"sessionId": "w1", "transcriptPath": str(t)}, {"GITHUB_ACTIONS": "true"})
+        rec = self.record("w1")
+        self.assertEqual((rec["started_at"], rec["ended_at"]), ("2026-11-02T21:36:40Z", "2026-11-02T22:12:00Z"))
+        self.assertEqual(rec["diagnostics"]["data_keys"]["session.start"], ["cwd", "selectedModel"])
+        self.assertEqual(rec["surface"], "coding-agent")
 
     def test_per_call_usage_then_output_only_fallbacks(self):
         home = self.dir / "home"
