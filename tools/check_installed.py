@@ -27,7 +27,9 @@ def tree_files(root, rel):
     base = root / rel
     if base.is_file():
         return [rel]
-    return sorted(str(p.relative_to(root)) for p in base.rglob("*") if p.is_file())
+    # Interpreter caches are not harness content (a tool importing a sibling writes __pycache__).
+    return sorted(str(p.relative_to(root)) for p in base.rglob("*")
+                  if p.is_file() and "__pycache__" not in p.parts)
 
 
 def check(root):

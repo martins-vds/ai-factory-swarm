@@ -137,6 +137,15 @@ class BootstrapTest(unittest.TestCase):
         self.assertIn("unexpected: .github/skills/afs-ledger/extra.md", out.stdout)
         self.assertIn("missing: .github/agents/afs-auditor.agent.md", out.stdout)
 
+    def test_interpreter_caches_are_not_drift(self):
+        self.run_bootstrap()
+        cache = self.target / ".migration/harness/tools/__pycache__"
+        cache.mkdir()
+        (cache / "check_graph.cpython-313.pyc").write_bytes(b"x")
+        out = subprocess.run(["python3", ".migration/harness/tools/check_installed.py"], cwd=self.target,
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout)
+
     def test_new_gap_needs_the_issue_flag(self):
         with self.assertRaisesRegex(bootstrap.BootstrapError, "data-migration"):
             self.run_bootstrap(caps=self.caps_with_new_gap())

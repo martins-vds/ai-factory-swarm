@@ -110,7 +110,8 @@ def files_of(root, rel):
     base = root / rel
     if base.is_file():
         return {rel: sha256(base)}
-    return {str(p.relative_to(root)): sha256(p) for p in sorted(base.rglob("*")) if p.is_file()}
+    return {str(p.relative_to(root)): sha256(p) for p in sorted(base.rglob("*"))
+            if p.is_file() and "__pycache__" not in p.parts}
 
 
 def write(path, text, mode=None):

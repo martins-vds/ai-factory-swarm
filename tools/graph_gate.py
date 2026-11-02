@@ -27,6 +27,7 @@ import sys
 import yaml
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.dont_write_bytecode = True       # installed harness files are drift-checked (check_installed.py)
 sys.path.insert(0, str(HERE))
 import check_graph  # noqa: E402
 import check_graph_fresh  # noqa: E402
