@@ -14,6 +14,7 @@ Usage:
   check_graph_fresh.py                                 exit 1 on a stale source graph; a stale target graph
                                                        is only a warning (code changes every merge)
   check_graph_fresh.py --require source,target         also exit 1 when a required side has no graph
+  check_graph_fresh.py --only .migration/graphs/target/full   check just that graph (the workflow's own build)
   check_graph_fresh.py --acceptance-since origin/main  require both sides if the change adds or updates an
                                                        auditor return with `verdict: complete` (CI)
 """
@@ -105,6 +106,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--require", default="", help="comma-separated sides that must have a fresh graph")
     ap.add_argument("--acceptance-since", metavar="REF")
+    ap.add_argument("--only", metavar="FOLDER", help="check this graph folder alone, as a hard requirement")
     a = ap.parse_args(argv)
     required = {s for s in a.require.split(",") if s}
     if a.acceptance_since and accepting(a.acceptance_since):
@@ -113,6 +115,17 @@ def main(argv=None):
 
     pinned = yaml.safe_load(pathlib.Path(".migration/source.lock").read_text(encoding="utf-8"))["sha"]
     problems, warnings, fresh = [], [], []
+    if a.only:
+        folder = pathlib.Path(a.only)
+        side = folder.parent.name
+        if side not in ("source", "target") or not folder.is_dir():
+            print(f"{folder}: not a graph folder (.migration/graphs/<source|target>/<scope>)", file=sys.stderr)
+            return 2
+        problems = check_source(folder, pinned) if side == "source" else check_target(folder)
+        for p in problems:
+            print(p, file=sys.stderr)
+        print(f"graph {folder}: {'STALE' if problems else 'OK'}")
+        return 1 if problems else 0
     for side in ("source", "target"):
         folders = sorted(p for p in (GRAPHS / side).glob("*") if p.is_dir()) if (GRAPHS / side).is_dir() else []
         if not folders and side in required:

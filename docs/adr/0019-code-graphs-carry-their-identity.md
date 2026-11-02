@@ -38,3 +38,7 @@ remote session.
 - "Is the graph stale?" has one deterministic answer, and an acceptance can't pass on a stale graph.
 - Graphs built before this ADR are unstamped and must be rebuilt once.
 - Target graphs cost Copilot premium requests, so they are built per acceptance rather than per merge.
+- The workflow pushes the graph and opens its PR **before** checking it, and checks only the graph it
+  built (`--only`). A failed check then leaves a PR to inspect instead of a lost, already-paid build.
+- Graph builds run on `main`. A workflow token cannot push a branch whose history changes workflow files
+  that are not on `main` yet, so a harness-upgrade branch must merge first.
