@@ -17,8 +17,13 @@ Usage (run it through afs-run so the run lands in the journal):
     else the whole suite).
   - `all`: the whole suite. --runner overrides all of these.
 * **Parallel:** --jobs N (default: CPUs, max 4) shards the files across N copies of the working tree,
-  each with its own mutmut cache. Each worker gets AFS_MUTATION_WORKER=<i>, and POSTGRES_DB (if set) is
-  suffixed `_w<i>` so database tests don't share a test database.
+  each with its own mutmut cache. Each worker gets AFS_MUTATION_WORKER=<i>, and POSTGRES_DB is suffixed
+  `_w<i>` so database tests don't share a test database. POSTGRES_DB comes from the environment, else from
+  the profile's `services.env`; with test services declared but no POSTGRES_DB known, the run uses one
+  worker rather than letting workers share a database.
+* **No silent loss:** if `mutmut run` fails fatally on any file (exit bit 1, e.g. the tests fail before
+  mutating), afs-mutation reports those files and exits 2 without a score; their mutants are never just
+  left out of the denominator.
 * Then `mutmut junitxml` per shard; score = killed / (killed + survived + untested). Untested mutants
   count as survived.
 * Threshold: --threshold, else profile.thresholds.mutation_score_min, else 0.8.
@@ -173,22 +178,40 @@ def shards(paths, n):
     return [s for s in out if s]
 
 
+MUTMUT_FATAL = 1   # mutmut 2.x exit codes are bit flags: 1 fatal, 2 survived, 4 timeout, 8 suspicious
+
+
 def run_shard(i, workdir, paths, runners, env):
+    """Run each file's mutants; return (junit xml or None, tail text, [(file, tail) that failed fatally])."""
     env = dict(env, AFS_MUTATION_WORKER=str(i))
     if env.get("POSTGRES_DB"):
         env["POSTGRES_DB"] = f"{env['POSTGRES_DB']}_w{i}"
     cache = os.path.join(workdir, ".mutmut-cache")
     if os.path.exists(cache):
         os.remove(cache)
-    run = None
+    run, failed = None, []
     for p in paths:                         # one mutmut run per file, with that file's own tests
         run = subprocess.run(["mutmut", "run", "--paths-to-mutate", p, "--runner", runners[p]],
                              cwd=workdir, env=env, capture_output=True, text=True)
-    # mutmut 2.x exits non-zero whenever mutants survive; the score decides the gate.
+        # Survivors, timeouts and slow mutants set other bits; the score decides those. A fatal error means
+        # this file's mutants were never tested, so it must not just vanish from the score.
+        if run.returncode & MUTMUT_FATAL:
+            failed.append((p, "\n".join((run.stdout + run.stderr).strip().splitlines()[-5:])))
     xml = subprocess.run(["mutmut", "junitxml", "--untested-policy", "failure", "--suspicious-policy", "ignore"],
                          cwd=workdir, env=env, capture_output=True, text=True)
-    tail = (run.stdout + run.stderr).strip().splitlines()[-3:]
-    return xml.stdout if "<testsuite" in xml.stdout else None, "\n".join(tail) + xml.stderr[-300:]
+    tail = (run.stdout + run.stderr).strip().splitlines()[-3:] if run else []
+    return xml.stdout if "<testsuite" in xml.stdout else None, "\n".join(tail) + xml.stderr[-300:], failed
+
+
+def services_env(profile):
+    """Defaults from the profile's `services.env` (ADR-0016); the real environment wins."""
+    try:
+        import yaml
+        prof = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}, False
+    services = prof.get("services") or {}
+    return {k: str(v) for k, v in (services.get("env") or {}).items()}, bool(services)
 
 
 def threshold_from(args):
@@ -245,10 +268,17 @@ def main():
         runners, selection = {p: a.runner for p in paths}, "--runner"
     else:
         runners, selection = runners_for(paths, a.src, a.tests)
-    groups = shards(paths, a.jobs)
+    defaults, has_services = services_env(a.profile)
+    env = {**defaults, **os.environ}
+    jobs = a.jobs
+    if jobs > 1 and has_services and not env.get("POSTGRES_DB"):
+        print("afs-mutation: test services are declared but POSTGRES_DB is unknown (set it, or services.env "
+              "in the profile); running one worker so workers don't share a test database", file=sys.stderr)
+        jobs = 1
+    groups = shards(paths, jobs)
     results = []
     if len(groups) == 1:
-        results.append(run_shard(0, ".", groups[0], runners, os.environ))
+        results.append(run_shard(0, ".", groups[0], runners, env))
     else:
         tmp = tempfile.mkdtemp(prefix="afs-mutation-")
         dirs = []
@@ -257,12 +287,19 @@ def main():
             shutil.copytree(".", d, ignore=COPY_IGNORE, symlinks=True)
             dirs.append(d)
         with concurrent.futures.ThreadPoolExecutor(len(groups)) as pool:
-            results = list(pool.map(lambda t: run_shard(t[0], t[1], t[2], runners, os.environ),
+            results = list(pool.map(lambda t: run_shard(t[0], t[1], t[2], runners, env),
                                     [(i, dirs[i], groups[i]) for i in range(len(groups))]))
         shutil.rmtree(tmp, ignore_errors=True)
     killed = survived = skipped = 0
     locations = []
-    for xml_text, tail in results:
+    failed = [f for _, _, fs in results for f in fs]
+    if failed:
+        for path, tail in failed:
+            print(f"afs-mutation: mutmut failed on {path}; its mutants were not tested:\n{tail}", file=sys.stderr)
+        print(f"AFS-RESULT gate=mutation score=n/a error=mutmut-failed failed_files={len(failed)} "
+              f"files={len(paths)} base={base}")
+        return 2
+    for xml_text, tail, _ in results:
         if xml_text is None:
             print("afs-mutation: mutmut produced no results:\n" + tail, file=sys.stderr)
             return 2

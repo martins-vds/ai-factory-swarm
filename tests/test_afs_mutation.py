@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 loader = importlib.machinery.SourceFileLoader("afs_mutation", str(ROOT / "tools/afs-mutation"))
@@ -23,6 +24,34 @@ JUNIT = """<?xml version="1.0" ?><testsuites><testsuite name="mutmut" tests="4" 
 
 
 class AfsMutationTest(unittest.TestCase):
+    def test_fatal_mutmut_run_is_reported_not_dropped(self):
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append((cmd, kw.get("env", {}).get("POSTGRES_DB")))
+            if cmd[:2] == ["mutmut", "run"]:
+                # src/a.py: mutants survived (bit 2) — fine; src/b.py: fatal (bit 1), e.g. tests fail unmutated
+                rc = 2 if cmd[3] == "src/a.py" else 1
+                return subprocess.CompletedProcess(cmd, rc, stdout="baseline tests failed\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="<testsuite/>", stderr="")
+
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(m.subprocess, "run", fake_run):
+            xml, _, failed = m.run_shard(1, d, ["src/a.py", "src/b.py"], {"src/a.py": "x", "src/b.py": "y"},
+                                         {"POSTGRES_DB": "cargotracker"})
+        self.assertEqual([f for f, _ in failed], ["src/b.py"])
+        self.assertIn("baseline tests failed", failed[0][1])
+        self.assertTrue(all(db == "cargotracker_w1" for _, db in calls), calls)
+
+    def test_profile_services_env_supplies_defaults(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / "profile.yaml"
+            p.write_text("services: {compose: compose.yaml, test: [db], env: {POSTGRES_DB: cargotracker}}\n")
+            self.assertEqual(m.services_env(str(p)), ({"POSTGRES_DB": "cargotracker"}, True))
+            p.write_text("services: {compose: compose.yaml, test: [db]}\n")
+            self.assertEqual(m.services_env(str(p)), ({}, True))
+            p.write_text("gates: {}\n")
+            self.assertEqual(m.services_env(str(p)), ({}, False))
+
     def test_score_counts_failures_as_survivors_and_ignores_skipped(self):
         killed, survived, skipped, locs = m.score_from_junit(JUNIT)
         self.assertEqual((killed, survived, skipped), (2, 1, 1))
@@ -115,6 +144,15 @@ class AfsMutationTest(unittest.TestCase):
             result = [l for l in low.stdout.splitlines() if l.startswith("AFS-RESULT ")]
             self.assertEqual(len(result), 1, low.stdout)
             self.assertRegex(result[0], r"^AFS-RESULT gate=mutation score=0\.\d{3} threshold=0\.4 killed=\d+ survived=\d+")
+            # A test that fails on unmutated code makes mutmut abort: no score, exit 2, never a silent drop.
+            (t / "tests/test_calc.py").write_text(
+                "import sys\nsys.path.insert(0, 'src')\nfrom calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 6\n")
+            broken = run("0.4")
+            self.assertEqual(broken.returncode, 2, broken.stdout + broken.stderr)
+            self.assertIn("mutmut failed on src/calc.py", broken.stderr)
+            self.assertIn("AFS-RESULT gate=mutation score=n/a error=mutmut-failed", broken.stdout)
+            (t / "tests/test_calc.py").write_text(
+                "import sys\nsys.path.insert(0, 'src')\nfrom calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
             high = run("0.99")
             self.assertEqual(high.returncode, 1, high.stdout + high.stderr)
             self.assertIn("survived: ", high.stdout)
