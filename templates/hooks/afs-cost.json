@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python3 .migration/harness/tools/afs-cost-hook --event agentStop",
+        "cwd": ".",
+        "timeoutSec": 30
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "python3 .migration/harness/tools/afs-cost-hook --event sessionEnd",
+        "cwd": ".",
+        "timeoutSec": 60
+      }
+    ]
+  }
+}

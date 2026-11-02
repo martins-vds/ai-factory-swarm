@@ -48,7 +48,7 @@ import validate  # noqa: E402
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
-                 "enrich_graph.py", "graph_gate.py"]
+                 "enrich_graph.py", "graph_gate.py", "afs-cost-hook"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -293,6 +293,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")
+    shutil.copyfile(ROOT / "templates/hooks/afs-cost.json", target / ".github/hooks/afs-cost.json")   # ADR-0021
     ci = target / ".github/copilot-instructions.md"
     text = ci.read_text(encoding="utf-8") if ci.exists() else ""
     text = upsert_block(text, "afs", (tpl / "afs-instructions.md").read_text(encoding="utf-8"))
@@ -316,6 +317,7 @@ def write_manifest(target, version, commit, plan):
                  **({"repo": s["source"]["repo"], "commit": s["source"]["commit"], "upstream_path": s["path"]}
                     if s["source"] else {})} for s in plan]
     entries += [{"path": ".github/hooks/rtk-rewrite.json", "kind": "hook"},
+                {"path": ".github/hooks/afs-cost.json", "kind": "hook"},
                 {"path": ".migration/harness/tools", "kind": "tools"},
                 {"path": ".migration/harness/schemas", "kind": "schemas"},
                 {"path": LEGACY_RETURNS, "kind": "legacy"}]

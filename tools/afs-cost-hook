@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Copilot hook: record one session's token usage as a committed cost record (ADR-0021, phase 1).
+
+Runs from `.github/hooks/afs-cost.json` on `agentStop` and `sessionEnd`, for Copilot coding-agent
+sessions, the Copilot CLI and VS Code (hooks share the format). Reads the hook payload on stdin, finds
+the session's event log, and writes `.migration/costs/<session-id>.json`:
+
+  * per model: requests, input, output, cache_read, cache_write and reasoning tokens. Taken from the
+    authoritative `session.shutdown` → `modelMetrics` when present, else summed from per-call
+    `assistant.usage` events, else output tokens only from `assistant.message` (marked `partial`);
+  * `diagnostics`: which event types and usage fields the log actually had (phase 1 is also the spike
+    that confirms the format on each surface).
+
+Event log: the payload's transcriptPath / transcript_path, else
+$COPILOT_HOME|~/.copilot/session-state/<sessionId>/events.jsonl. In a remote coding-agent session the hook
+commits and pushes the record at sessionEnd (the agent has finished by then); locally it only writes it.
+
+Never fails the session: any error is written to the record's `error` and the hook exits 0.
+Usage: afs-cost-hook --event agentStop|sessionEnd [--out-dir .migration/costs] [--no-push]
+"""
+import argparse
+import collections
+import datetime as dt
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+USAGE_KEYS = {"inputTokens": "input", "outputTokens": "output", "cacheReadTokens": "cache_read",
+              "cacheWriteTokens": "cache_write", "reasoningTokens": "reasoning"}
+
+
+def payload():
+    try:
+        raw = sys.stdin.read()
+        return json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+
+
+def find_log(p):
+    for key in ("transcriptPath", "transcript_path"):
+        if p.get(key) and pathlib.Path(p[key]).is_file():
+            return pathlib.Path(p[key])
+    sid = p.get("sessionId") or p.get("session_id")
+    home = pathlib.Path(os.environ.get("COPILOT_HOME") or pathlib.Path.home() / ".copilot")
+    if sid:
+        cand = home / "session-state" / sid / "events.jsonl"
+        if cand.is_file():
+            return cand
+    logs = sorted((home / "session-state").glob("*/events.jsonl"), key=lambda f: f.stat().st_mtime)
+    return logs[-1] if logs else None
+
+
+def number(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+
+
+def summarize(log):
+    events = []
+    for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    kinds = collections.Counter(e.get("type") for e in events)
+    models = collections.defaultdict(lambda: collections.Counter())
+    source, extra = None, {}
+    shutdown = [e for e in events if e.get("type") == "session.shutdown"]
+    if shutdown:
+        data = shutdown[-1].get("data") or {}
+        for model, m in (data.get("modelMetrics") or {}).items():
+            usage = m.get("usage") or m
+            for k, ours in USAGE_KEYS.items():
+                models[model][ours] += number(usage.get(k))
+            req = m.get("requests") or {}
+            models[model]["requests"] += number(req.get("count") if isinstance(req, dict) else req)
+        source = "session.shutdown.modelMetrics"
+        extra = {k: data[k] for k in ("totalPremiumRequests", "totalApiDurationMs") if k in data}
+    if not models:
+        usage_events = [e for e in events if e.get("type") == "assistant.usage"]
+        for e in usage_events:
+            d = e.get("data") or {}
+            model = d.get("model") or "unknown"
+            for k, ours in USAGE_KEYS.items():
+                models[model][ours] += number(d.get(k))
+            models[model]["requests"] += 1
+        source = "assistant.usage" if usage_events else None
+    if not models:
+        model = "unknown"
+        for e in events:
+            if e.get("type") == "session.model_change":
+                model = (e.get("data") or {}).get("newModel") or model
+            if e.get("type") == "assistant.message":
+                models[model]["output"] += number((e.get("data") or {}).get("outputTokens"))
+                models[model]["requests"] += 1
+        source = "assistant.message (output only, partial)" if models else None
+    fields = sorted({k for e in events if e.get("type") in ("session.shutdown", "assistant.usage")
+                     for k in (e.get("data") or {})})
+    return ({m: dict(c) for m, c in models.items()}, source, extra,
+            {"event_types": dict(kinds.most_common()), "usage_fields": fields, "events": len(events)})
+
+
+def ticket_hint():
+    prompt = os.environ.get("COPILOT_AGENT_PROMPT", "")
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+    return {"branch": branch or None, "prompt_head": prompt[:200] or None}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--event", required=True)
+    ap.add_argument("--out-dir", default=".migration/costs")
+    ap.add_argument("--no-push", action="store_true")
+    a = ap.parse_args(argv)
+    p = payload()
+    sid = p.get("sessionId") or p.get("session_id") or "unknown"
+    remote = bool(os.environ.get("GITHUB_COPILOT_GIT_TOKEN") or os.environ.get("COPILOT_AGENT_PROMPT"))
+    record = {"schema": "afs-cost/1", "session_id": sid, "event": a.event,
+              "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+              "surface": "coding-agent" if remote else "local", **ticket_hint()}
+    try:
+        log = find_log(p)
+        record["log"] = str(log) if log else None
+        if log:
+            models, source, extra, diag = summarize(log)
+            record.update(models=models, usage_source=source, **{k: v for k, v in extra.items()},
+                          diagnostics=diag)
+        else:
+            record.update(models={}, usage_source=None, diagnostics={"payload_keys": sorted(p)})
+    except Exception as exc:          # never fail the session over cost accounting
+        record["error"] = f"{type(exc).__name__}: {exc}"
+    out = pathlib.Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{sid}.json"
+    path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if remote and a.event == "sessionEnd" and not a.no_push:
+        cmds = [["git", "add", str(path)],
+                ["git", "-c", "user.name=afs-cost-hook", "-c", "user.email=afs-cost-hook@users.noreply.github.com",
+                 "commit", "-q", "-m", f"Cost record for Copilot session {sid}"],
+                ["git", "push", "-q", "origin", "HEAD"]]
+        for c in cmds:
+            r = subprocess.run(c, capture_output=True, text=True)
+            if r.returncode:
+                print(f"afs-cost-hook: {' '.join(c[:2])} failed: {r.stderr.strip()[:300]}", file=sys.stderr)
+                break
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as exc:      # last resort: a hook must not break the session
+        print(f"afs-cost-hook: {exc}", file=sys.stderr)
+        sys.exit(0)
