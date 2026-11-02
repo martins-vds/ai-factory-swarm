@@ -66,4 +66,6 @@ data:
 services:
   compose: compose.yaml
   test: [db]
+costs:                       # ADR-0021: billed AI credits and Actions minutes (AFS costs workflow)
+  billing: {scope: organization, account: example-org}
 translation_rules: .migration/translation-rules.md

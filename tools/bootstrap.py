@@ -48,7 +48,7 @@ import validate  # noqa: E402
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
-                 "enrich_graph.py", "graph_gate.py", "afs-cost-hook"]
+                 "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -77,6 +77,7 @@ OPERATOR_CHECKLIST = [
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",
     "Copilot firewall lets setup steps pull the compose images (add the registry to the allowlist if a session reports services DOWN)",
+    "Costs (optional): profile costs.billing names the account that pays for Copilot (user, organization or enterprise); BILLING_READ_TOKEN secret that can read that account's billing (docs/operator-setup.md, ADR-0021)",
     "Graph first: after this PR merges, run the afs-understand workflow (side=source) on main and merge its PR; graph_gate.py --side source --require-graph must pass before Phase 2 (ADR-0020)",
 ]
 
@@ -290,7 +291,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                project_marker="manage.py", copilot_cli_version=COPILOT_CLI_VERSION,
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
-    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml"):
+    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-costs.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")

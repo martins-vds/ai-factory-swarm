@@ -1,6 +1,6 @@
 # ADR-0021: Session cost recorded by a Copilot hook
 
-- Status: Accepted (phase 1: tokens; phase 2: credits, Actions minutes, reports, reconciliation)
+- Status: Accepted (phase 1: tokens per session · phase 1.1: billed credits and attribution · phase 2: below)
 - Date: 2026-11-02
 
 ## Context
@@ -28,8 +28,32 @@ runs on `agentStop` and `sessionEnd`:
 
 Phase 1 is also the spike: the first real sessions show which source each surface actually provides.
 
-**Phase 2 (after the spike):**
-- a pinned model rate table, with credits per record;
+**Spike result (M5 final audit, coding agent).** The hook ran at `sessionEnd`, and Copilot's final
+"Apply remaining changes" commit picked up the record; a push from the hook itself is not needed and would
+race with that commit. But at that point the log had no `session.shutdown` and no `assistant.usage`. The
+only usage was output tokens per `assistant.message` (35,602 over 89 messages), and the model wasn't named.
+Hooks also couldn't see the Copilot token variables, so remote detection uses the Actions runner's
+environment.
+
+**Correction (same day).** The Copilot CLI writes `session.shutdown`, with the authoritative per-model
+input, cached and output tokens, about a second *after* `agentStop`; other tools that parse these logs
+report the same. The hook read immediately. It now polls for that line (`--grace`, default 20 s) and
+records `shutdown_wait_s`. When the line arrives, the record holds exact tokens per model, and phase 2's
+rate table turns them into exact credits. The billing report remains the cross-check. Pricing trap:
+`input_tokens` already includes `cache_read_tokens`, so cached tokens must be priced separately.
+
+**Phase 1.1 (decided after the spike).**
+- The hook keeps each session's time window and the field names per event type (`diagnostics.data_keys`),
+  so usage fields show up if Copilot adds them. It no longer pushes.
+- `tools/afs-costs fetch`, run daily by the AFS costs workflow with the operator's `BILLING_READ_TOKEN`,
+  records GitHub's AI-credit and usage reports for the account in profile `costs.billing` under
+  `.migration/costs/billing/<date>.json`. Billed figures are exact per day, model and user.
+- `afs-costs report` shares each day's agent-SKU credits among that day's harness sessions in proportion
+  to their output tokens, and labels the result an estimate. It also shows the day's totals and the
+  target repo's Actions minutes.
+
+**Phase 2 (still open):**
+- a pinned model rate table, with exact credits per session, once session logs carry input tokens at hook time;
 - Actions minutes per coding-agent run, from the Actions API;
 - the graph workflow's SDK usage recorded the same way;
 - a schema-checked record and a `costs` report by ticket, slice, agent and model;

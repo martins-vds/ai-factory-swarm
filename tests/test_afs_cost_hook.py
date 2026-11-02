@@ -11,7 +11,9 @@ HOOK = pathlib.Path(__file__).resolve().parent.parent / "tools/afs-cost-hook"
 
 
 def run(cwd, payload, env_extra=None, event="sessionEnd"):
-    env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_COPILOT_GIT_TOKEN", "COPILOT_AGENT_PROMPT")}
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GITHUB_COPILOT_GIT_TOKEN", "COPILOT_AGENT_PROMPT", "GITHUB_ACTIONS", "RUNNER_TEMP")}
+    env.setdefault("AFS_COST_GRACE", "0")
     env.update(env_extra or {})
     return subprocess.run([sys.executable, str(HOOK), "--event", event], cwd=cwd, input=json.dumps(payload),
                           capture_output=True, text=True, env=env)
@@ -51,6 +53,16 @@ class CostHookTest(unittest.TestCase):
         self.assertEqual(rec["diagnostics"]["event_types"]["assistant.message"], 1)
         self.assertEqual(rec["surface"], "local")
 
+    def test_time_window_data_keys_and_runner_surface(self):
+        t = log(self.dir / "t/events.jsonl", [
+            {"type": "session.start", "timestamp": "2026-11-02T21:36:40Z", "data": {"selectedModel": "m", "cwd": "/x"}},
+            {"type": "assistant.message", "timestamp": "2026-11-02T22:12:00Z", "data": {"outputTokens": 9}}])
+        run(self.dir, {"sessionId": "w1", "transcriptPath": str(t)}, {"GITHUB_ACTIONS": "true"})
+        rec = self.record("w1")
+        self.assertEqual((rec["started_at"], rec["ended_at"]), ("2026-11-02T21:36:40Z", "2026-11-02T22:12:00Z"))
+        self.assertEqual(rec["diagnostics"]["data_keys"]["session.start"], ["cwd", "selectedModel"])
+        self.assertEqual(rec["surface"], "coding-agent")
+
     def test_per_call_usage_then_output_only_fallbacks(self):
         home = self.dir / "home"
         log(home / "session-state/s2/events.jsonl", [
@@ -77,6 +89,24 @@ class CostHookTest(unittest.TestCase):
                              capture_output=True, text=True, env={**os.environ, "COPILOT_HOME": str(self.dir / "x")})
         self.assertEqual(bad.returncode, 0)
 
+    def test_waits_for_the_shutdown_line_written_after_the_hook_starts(self):
+        t = log(self.dir / "t/events.jsonl", [{"type": "assistant.message", "data": {"outputTokens": 5}}])
+        env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_ACTIONS", "RUNNER_TEMP")}
+        env["AFS_COST_GRACE"] = "10"
+        proc = subprocess.Popen([sys.executable, str(HOOK), "--event", "agentStop"], cwd=self.dir, env=env,
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc.stdin.write(json.dumps({"sessionId": "late", "transcriptPath": str(t)}))
+        proc.stdin.close()
+        import time
+        time.sleep(1.0)
+        with t.open("a") as f:      # the CLI appends its totals ~1s after agentStop
+            f.write(json.dumps({"type": "session.shutdown", "data": {"modelMetrics": {
+                "gpt-6.1-sol": {"usage": {"inputTokens": 567000, "cacheReadTokens": 283000, "outputTokens": 645}}}}}) + "\n")
+        self.assertEqual(proc.wait(timeout=20), 0)
+        rec = self.record("late")
+        self.assertEqual(rec["usage_source"], "session.shutdown.modelMetrics")
+        self.assertEqual(rec["models"]["gpt-6.1-sol"]["input"], 567000)
+        self.assertGreater(rec["shutdown_wait_s"], 0)
 
 if __name__ == "__main__":
     unittest.main()
