@@ -107,5 +107,14 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual(self.run_tool("--acceptance-since", "base").returncode, 0)
 
 
+    def test_only_checks_the_named_graph(self):
+        self.graph("source", {"source": f"o/src@{PIN}"}, PIN)        # unstamped, but not ours
+        self.target_graph()
+        self.commit("graphs")
+        r = self.run_tool("--only", ".migration/graphs/target/full")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.run_tool("--only", ".migration/graphs/source/full").returncode, 1)
+        self.assertEqual(self.run_tool("--only", ".migration/graphs/nope").returncode, 2)
+
 if __name__ == "__main__":
     unittest.main()

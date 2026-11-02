@@ -4,6 +4,7 @@
 # side=target: the target's profile graph.target_paths at this commit; needed fresh for slice acceptance.
 # Each graph records what it describes (SNAPSHOT.txt, project.gitCommitHash) so check_graph_fresh.py can
 # tell, deterministically, whether it is stale (ADR-0019). Billed to Copilot premium requests.
+# Run it on main: a workflow token can't push a branch whose history changes workflow files not yet on main.
 name: AFS understand (code graphs)
 
 on:
@@ -143,10 +144,12 @@ jobs:
           b="afs/graph-$SIDE-$SCOPE-${{{{ github.run_id }}}}"
           git switch -c "$b"
           git add ".migration/graphs/$SIDE/$SCOPE"
-          python .migration/harness/tools/check_graph_fresh.py   # the new graph must check as fresh
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -qm "Code graph: $SIDE $SCOPE at $AFS_GRAPH_ID"
           git push -q origin "$b"
           gh pr create --base "${{{{ github.ref_name }}}}" --head "$b" --title "Code graph: $SIDE $SCOPE" \
             --body-file ".migration/graphs/$SIDE/$SCOPE/graph-check.md" \
             || echo "::notice::Branch $b pushed; open the PR by hand (Actions may not be allowed to create PRs)."
+          # Only after the graph is safely on a branch: it must check as fresh (ADR-0019). This graph alone;
+          # other graphs on the base are not this run's business. A failure leaves the PR to inspect.
+          python .migration/harness/tools/check_graph_fresh.py --only ".migration/graphs/$SIDE/$SCOPE"
