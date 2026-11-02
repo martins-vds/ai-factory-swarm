@@ -77,7 +77,7 @@ OPERATOR_CHECKLIST = [
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",
     "Copilot firewall lets setup steps pull the compose images (add the registry to the allowlist if a session reports services DOWN)",
-    "Costs (optional): BILLING_READ_TOKEN secret (fine-grained PAT that can read the billing account named in profile costs.billing) for the daily AFS costs workflow (ADR-0021)",
+    "Costs (optional): profile costs.billing names the account that pays for Copilot (user, organization or enterprise); BILLING_READ_TOKEN secret that can read that account's billing (docs/operator-setup.md, ADR-0021)",
     "Graph first: after this PR merges, run the afs-understand workflow (side=source) on main and merge its PR; graph_gate.py --side source --require-graph must pass before Phase 2 (ADR-0020)",
 ]
 

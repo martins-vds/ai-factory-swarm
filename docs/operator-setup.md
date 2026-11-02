@@ -18,7 +18,23 @@ list, and the setup PR repeats it as a checklist.
 | 8 | **Copilot firewall lets setup steps pull the compose images** (ADR-0016): if blocked, add the registry (e.g. `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`) to the allowlist | Settings → Copilot → Coding agent → Firewall | Setup steps start the target's test services with `afs-services up` | `afs-setup-check` reports `services DOWN`; agents stop instead of testing |
 
 | 9 | **Graph first** (ADR-0020): after the setup PR merges, run **AFS understand (code graphs)** with `side=source` on `main`, review its PR (the graph gate and the list of entry points that reach data), and merge it | Actions → AFS understand → Run workflow | Analysis and planning query the graph; a graph that can't reach the data hides capabilities | Planner and Analyst stop at setup; CI fails on slice anchors that reach no data |
-| 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret**: a fine-grained token that can read billing for the account named in profile `costs.billing` (your user, organization or enterprise) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
+| 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret** for the account that **pays** for Copilot, named in profile `costs.billing` (see below) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
+
+## Cost tracking: which billing account and token
+
+Copilot usage is billed to whoever provides the seat, which isn't necessarily you. Set `costs.billing` in
+the profile to that account:
+
+| Copilot is billed to | `costs.billing` | `BILLING_READ_TOKEN` must be |
+|---|---|---|
+| Your personal plan | `{scope: user, account: <login>}` | a fine-grained PAT for your user with **Plan: read** |
+| An organization (seat from the org) | `{scope: organization, account: <org>}` | a fine-grained PAT whose **resource owner is the org**, with organization **Administration: read**, created by an **org owner or billing manager**, in an org that allows fine-grained PATs |
+| An enterprise | `{scope: enterprise, account: <enterprise-slug>}` | a token of an **enterprise owner or billing manager** with **Enterprise billing: read**, or a GitHub App installed on the enterprise with that permission |
+
+Usage of a seat billed through an organization or enterprise does **not** appear in the user endpoint, so
+the scope must match the payer. If you're unsure, look at Settings → Copilot ("Usage billed to"). The
+organization and enterprise reports cover everyone on that account; `afs-costs` attributes only the days
+with harness sessions, and says it's an estimate.
 
 ## What the code graph contains
 

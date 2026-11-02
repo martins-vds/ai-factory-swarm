@@ -16,8 +16,10 @@ $COPILOT_HOME|~/.copilot/session-state/<sessionId>/events.jsonl. The hook only w
 coding-agent session Copilot's own final commit ("Apply remaining changes") picks it up (seen in M5;
 pushing from the hook would race with it); locally the agent or operator commits it with the work.
 
-Spike result (M5, coding agent): at sessionEnd the log has no session.shutdown and no assistant.usage,
-so only output tokens are known per session. The record therefore also keeps the session's time window
+Spike result (M5, coding agent): reading the log immediately found no session.shutdown and no
+assistant.usage, so only output tokens were known. The CLI writes session.shutdown (the authoritative
+per-model totals) about a second after agentStop, so the hook now polls for it for up to --grace
+seconds (`shutdown_wait_s` records how long it took, or null). The record therefore also keeps the session's time window
 (`started_at`, `ended_at`) so billed AI credits can be attributed by `afs-costs` (ADR-0021 phase 1.1),
 and `diagnostics.data_keys` (field names only, per event type) to spot usage fields if Copilot adds them.
 
@@ -32,6 +34,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 
 USAGE_KEYS = {"inputTokens": "input", "outputTokens": "output", "cacheReadTokens": "cache_read",
               "cacheWriteTokens": "cache_write", "reasoningTokens": "reasoning"}
@@ -61,6 +64,24 @@ def find_log(p):
 
 def number(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+
+
+def wait_for_shutdown(log, grace, interval=0.5):
+    """Poll the log for the session.shutdown line, which carries the per-model totals.
+
+    The Copilot CLI writes it about a second *after* agentStop, so a hook that reads at once sees only
+    output tokens (the M5 spike; also reported by other tools that parse these logs). Returns the seconds
+    waited, or None if it never appeared within `grace`."""
+    start = time.monotonic()
+    while True:
+        try:
+            if '"session.shutdown"' in log.read_text(encoding="utf-8", errors="ignore"):
+                return round(time.monotonic() - start, 1)
+        except OSError:
+            pass
+        if time.monotonic() - start >= grace:
+            return None
+        time.sleep(interval)
 
 
 def summarize(log):
@@ -125,6 +146,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--event", required=True)
     ap.add_argument("--out-dir", default=".migration/costs")
+    ap.add_argument("--grace", type=float, default=float(os.environ.get("AFS_COST_GRACE", "20")),
+                    help="seconds to wait for session.shutdown (default 20, env AFS_COST_GRACE)")
     a = ap.parse_args(argv)
     p = payload()
     sid = p.get("sessionId") or p.get("session_id") or "unknown"
@@ -138,6 +161,7 @@ def main(argv=None):
         log = find_log(p)
         record["log"] = str(log) if log else None
         if log:
+            record["shutdown_wait_s"] = wait_for_shutdown(log, a.grace)
             models, source, extra, diag = summarize(log)
             record.update(models=models, usage_source=source, **{k: v for k, v in extra.items()},
                           diagnostics=diag)

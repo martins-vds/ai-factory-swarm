@@ -35,6 +35,13 @@ only usage was output tokens per `assistant.message` (35,602 over 89 messages), 
 Hooks also couldn't see the Copilot token variables, so remote detection uses the Actions runner's
 environment.
 
+**Correction (same day).** The Copilot CLI writes `session.shutdown`, with the authoritative per-model
+input, cached and output tokens, about a second *after* `agentStop`; other tools that parse these logs
+report the same. The hook read immediately. It now polls for that line (`--grace`, default 20 s) and
+records `shutdown_wait_s`. When the line arrives, the record holds exact tokens per model, and phase 2's
+rate table turns them into exact credits. The billing report remains the cross-check. Pricing trap:
+`input_tokens` already includes `cache_read_tokens`, so cached tokens must be priced separately.
+
 **Phase 1.1 (decided after the spike).**
 - The hook keeps each session's time window and the field names per event type (`diagnostics.data_keys`),
   so usage fields show up if Copilot adds them. It no longer pushes.
