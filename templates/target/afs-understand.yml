@@ -96,6 +96,14 @@ jobs:
           [ "$SIDE" = target ] && anchors="" || anchors=$(python -c "import yaml,sys;s=yaml.safe_load(open(sys.argv[1])) if sys.argv[1]!='full' else {{}};print(' '.join('--anchor '+x for x in s.get('anchors',[])))" \
             "$([ "$SCOPE" = full ] && echo full || echo .migration/slices/$SCOPE.yaml)")
           dom=""; [ -f "$out/domain-graph.json" ] && dom="--domain $out/domain-graph.json"
+          # Enrichment (ADR-0020): the profile's harness enrichers add what Understand Anything can't infer
+          # (ORM tables, reads/writes, endpoints, pages, routes), from the same folder it analysed.
+          enrichers=$(python -c "import yaml,sys;g=yaml.safe_load(open('.migration/profile.yaml')).get('graph') or {{}};print(' '.join('--enricher '+e for e in (g.get('enrich') or {{}}).get(sys.argv[1]) or []))" "$SIDE")
+          if [ -n "$enrichers" ]; then
+            python .migration/harness/tools/enrich_graph.py "$out/knowledge-graph.json" --root "$RUNNER_TEMP/analyze" $enrichers
+          else
+            echo "::warning::No graph.enrich.$SIDE in the profile: the graph has only what Understand Anything infers (ADR-0020)."
+          fi
           # Identity (ADR-0019): what this graph describes, replacing the throwaway commit id in the JSONs.
           if [ "$SIDE" = source ]; then id="${{{{ steps.lock.outputs.sha }}}}"; else id="${{{{ github.sha }}}}"; fi
           echo "AFS_GRAPH_ID=$id" >> "$GITHUB_ENV"
@@ -120,6 +128,7 @@ jobs:
             fi
             echo "understand_anything: {ua_commit}"; echo "run: ${{{{ github.server_url }}}}/${{{{ github.repository }}}}/actions/runs/${{{{ github.run_id }}}}"; }} > "$out/SNAPSHOT.txt"
           {{ echo "> $(grep -E '^(source|target_commit|tree\.)' "$out/SNAPSHOT.txt" | tr '\n' ' ')"; echo; \
+            if [ "$SCOPE" = full ]; then python .migration/harness/tools/graph_gate.py --side "$SIDE" || true; echo; fi; \
             python .migration/harness/tools/check_graph.py "$out/knowledge-graph.json" $dom $anchors; }} > "$out/graph-check.md"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -153,3 +162,5 @@ jobs:
           # Only after the graph is safely on a branch: it must check as fresh (ADR-0019). This graph alone;
           # other graphs on the base are not this run's business. A failure leaves the PR to inspect.
           python .migration/harness/tools/check_graph_fresh.py --only ".migration/graphs/$SIDE/$SCOPE"
+          # ADR-0020: the graph must have the profile's required types and reach data from every slice anchor.
+          if [ "$SCOPE" = full ]; then python .migration/harness/tools/graph_gate.py --side "$SIDE" > /dev/null; fi

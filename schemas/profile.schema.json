@@ -67,6 +67,22 @@
         "commit": { "$ref": "#/$defs/sha" },
         "patches": { "type": "array", "items": { "type": "string" }, "description": "Files under the harness patches/ folder applied after install." },
         "source_snapshot": { "type": "string", "default": ".migration/graphs/source/" },
+        "enrich": {
+          "type": "object", "additionalProperties": false,
+          "description": "ADR-0020: harness enrichers (tools/enrich_graph.py) run on each side's graph after Understand Anything, adding the tables, endpoints, pages, routes and data links it cannot infer. Values come from the stack pack's `graph` block.",
+          "properties": {
+            "source": { "type": "array", "items": { "enum": ["java-ee", "django"] } },
+            "target": { "type": "array", "items": { "enum": ["java-ee", "django"] } }
+          }
+        },
+        "require": {
+          "type": "object", "additionalProperties": false,
+          "description": "ADR-0020: node and edge types each side's (enriched) graph must contain; tools/graph_gate.py fails without them.",
+          "properties": {
+            "source": { "$ref": "#/$defs/graphTypes" },
+            "target": { "$ref": "#/$defs/graphTypes" }
+          }
+        },
         "target_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "default": ["src"], "description": "Target folders the target graph analyses; check_graph_fresh compares their git tree hashes (ADR-0019). Keep tests out, so test-only changes don't make the graph stale." }
       }
     },
@@ -163,6 +179,13 @@
     "tier": { "enum": ["A", "B", "C"] },
     "stacks": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "commands": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "graphTypes": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "nodes": { "type": "array", "items": { "type": "string" } },
+        "edges": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "skillMap": {
       "type": "object",
       "additionalProperties": { "type": "array", "minItems": 1, "items": { "type": "string" } }

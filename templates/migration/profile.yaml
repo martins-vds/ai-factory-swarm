@@ -23,6 +23,10 @@ graph:
   tool: understand-anything
   commit: 4e6d3299017a7432da15957874992837a315c5b4
   patches: [understand-anything/argument-hint.patch]
+  enrich: {source: [java-ee], target: [django]}       # ADR-0020: harness enrichers (stack pack graph block)
+  require:                                             # types each side's graph must contain (graph_gate.py)
+    source: {nodes: [table, page, endpoint], edges: [reads_from, writes_to, routes, calls]}
+    target: {nodes: [table, endpoint], edges: [reads_from, writes_to, routes, calls]}
 risk_map:
   exclude: ["*.min.js", "*/webapp/js/*", "*/generated/*"]
 skills:

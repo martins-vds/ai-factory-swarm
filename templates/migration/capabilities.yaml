@@ -15,6 +15,11 @@ capabilities:
     status: met
     provided_by:
       - { kind: tool, name: understand-anything, version: "2.9.8" }
+  - id: graph-data-links          # ADR-0020: tables, routes and reads/writes the graph tool can't infer
+    applies_to: both
+    status: met
+    provided_by:
+      - { kind: tool, name: "enrich_graph.py (java-ee, django)" }
   - id: build-run
     applies_to: source
     status: met

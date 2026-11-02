@@ -47,7 +47,7 @@
           "enum": [
             "build-run", "characterization-harness", "unit-integration-tests", "coverage", "complexity",
             "crap", "mutation-testing", "lint-format", "stack-idioms", "data-migration", "ui-end-to-end",
-            "code-graph", "output-filtering"
+            "code-graph", "graph-data-links", "output-filtering"
           ]
         },
         "applies_to": { "enum": ["source", "target", "both"] },

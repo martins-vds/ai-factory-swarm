@@ -34,7 +34,13 @@ strategy, UI direction), `profile.context.working_budget`.
 4. **Hot spots** (high CRAP, brittle) get a design ticket before their implementation tickets.
 5. **Account for every capability:** each ledger entry maps to a slice, or to a proposed deferral with a
    reason (a human approves it later).
-6. Write the plan as a draft for review (do not publish).
+6. **Data-path anchors (ADR-0020).** For every slice, write `.migration/slices/<slice>.yaml` with
+   `data_paths.source`: the slice's entry points in the source graph (pages, endpoints, `TYPE=NAME` for
+   exact matches, e.g. `endpoint=POST /handling/reports`). Run `graph_gate.py --side source`: each anchor
+   must reach a table through the directed flow. A slice that can't is either mis-anchored or exposes an
+   enricher gap: say which in the plan. Add `data_paths.target` anchors (the planned target entry points)
+   for acceptance.
+7. Write the plan as a draft for review (do not publish).
 
 ## Rules
 - Do not decide architecture or mappings yourself; use the decision-map answers. Missing decision → a
