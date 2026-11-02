@@ -403,7 +403,14 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
     if missing:
         notes.append(f"offline: {len(missing)} profile skill reference(s) not installed")
 
-    install_skills(target, plan, {}, notes)
+    cache = {}
+    try:
+        install_skills(target, plan, cache, notes)
+    finally:
+        # fetch() checks each upstream out into its own temp folder; remove them (one run left 13, ~260 MB).
+        for d in cache.values():
+            if isinstance(d, pathlib.Path) and d.name.startswith("afs-src-"):
+                shutil.rmtree(d, ignore_errors=True)
     install_harness(target, lock)
     install_agents(target)
     write_copilot_files(target, lock, version, commit)
