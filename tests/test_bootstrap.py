@@ -78,6 +78,11 @@ class BootstrapTest(unittest.TestCase):
             self.assertIn("jobs", doc)
         self.assertIn("copilot-setup-steps", yaml.safe_load(
             (self.target / ".github/workflows/copilot-setup-steps.yml").read_text())["jobs"])
+        # ADR-0018: the workflows' Python is the profile's declared python-X.Y, not a harness default.
+        prof = yaml.safe_load((self.target / ".migration/profile.yaml").read_text())
+        want = next(s.split("-", 1)[1] for s in prof["target"]["stacks"]["backend"] if s.startswith("python-"))
+        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml"):
+            self.assertIn(f'python-version: "{want}"', (self.target / ".github/workflows" / wf).read_text())
         for cmd in (["python3", ".migration/harness/tools/check_installed.py"],
                     ["python3", ".migration/harness/tools/validate.py", ".migration"]):
             out = subprocess.run(cmd, cwd=self.target, capture_output=True, text=True)

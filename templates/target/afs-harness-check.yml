@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with: {{ fetch-depth: 0 }}   # check_graph_fresh compares tree hashes and finds acceptance returns
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
       - run: pip install -q {pip_packages}
@@ -34,6 +35,10 @@ jobs:
           fi
       - name: Compose file defines the profile's test services, each with a healthcheck
         run: python .migration/harness/tools/afs-services lint
+      # ADR-0019: a stale source graph always fails; an acceptance (auditor verdict: complete) also needs a
+      # target graph built from this code. Otherwise a stale target graph is only a warning.
+      - name: Code graphs describe the code they claim to
+        run: python .migration/harness/tools/check_graph_fresh.py ${{{{ github.event_name == 'pull_request' && format('--acceptance-since origin/{{0}}', github.base_ref) || '' }}}}
       - name: Harness files are unchanged
         run: python .migration/harness/tools/check_installed.py
       - name: RTK block and hook match RTK {rtk_version}
@@ -73,10 +78,12 @@ jobs:
         with: {{ python-version: "{python_version}" }}
       # The target's compose file (profile `services`) is the one definition of the real services tests use;
       # Copilot setup steps start the same services, so agent sessions and CI test against the same thing.
-      - name: Start test services from the target's compose file
+      - name: Runtimes match the profile's target stacks
         run: |
           pip install -q pyyaml
-          python .migration/harness/tools/afs-services up
+          python .migration/harness/tools/check_runtime.py
+      - name: Start test services from the target's compose file
+        run: python .migration/harness/tools/afs-services up
       - name: Run gates through afs-run
         run: |
           if [ ! -f {project_marker} ]; then

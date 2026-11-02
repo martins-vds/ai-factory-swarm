@@ -39,6 +39,16 @@ approval: { by: <human>, ref: org/repo#131, reason: … }   # required for defer
 - `characterized` / `spec-derived` need `characterization_tier`.
 - One capability per file; ids are unique; never delete an entry — change its status.
 
+## Evidence items (enforced by `validate.py`, ADR-0018)
+Each item is one of: a committed file (`.migration/evidence/runs/<ticket>.md`, a report), a test id
+`path::name` (parameters like `[abc123]` allowed), or `legacy-test: .source/<path>::name`.
+- The file must exist in the repo, and a test id's `name` must still be defined in that file. Rename
+  or move a test → update every ledger item that cites it in the same PR.
+- **Never cite a raw log under `.migration/runs/`**: that folder is gitignored and disappears with your
+  session. Cite your run journal `.migration/evidence/runs/<ticket>.md`, whose rows carry each log's
+  SHA-256.
+- No other prefixes and no prose: an observation goes in the slice report, which you then cite.
+
 ## Workflow
 1. **Discover** (Analyst, Characterizer, anyone): create the entry with `status: pending`.
 2. **Characterize:** add evidence and tier; set `verification`.

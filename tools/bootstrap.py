@@ -42,15 +42,16 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+import check_runtime  # noqa: E402
 import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
-                 "afs-services"]
+                 "afs-services", "check_runtime.py", "check_graph_fresh.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
-PYTHON_VERSION = "3.12"
+DEFAULT_PYTHON = "3.12"   # when the profile declares no python-X.Y stack
 BLOCKS = {
     "afs": ("<!-- afs-instructions v", "<!-- /afs-instructions -->"),
     "rtk": ("<!-- rtk-instructions v", "<!-- /rtk-instructions -->"),
@@ -273,14 +274,14 @@ def write_state(target, profile, profile_path, caps_doc):
         write(m / "ledger/.gitkeep", "")
 
 
-def write_copilot_files(target, lock, version, commit):
+def write_copilot_files(target, lock, version, commit, profile=None):
     rtk = lock["tools"][0]
     ua_src = lock["sources"]["understand-anything"]
     patches = [p for pl in lock.get("plugins", []) for p in pl.get("patches", [])]
     ua_patch_steps = "\n".join(
         f'          git -C "$ua" apply "$GITHUB_WORKSPACE/.migration/harness/patches/{p}"' for p in patches)
     fmt = dict(harness_version=version, harness_commit_short=commit[:7], rtk_version=rtk["version"],
-               rtk_repo=rtk["repo"], rtk_asset=rtk["asset"], python_version=PYTHON_VERSION,
+               rtk_repo=rtk["repo"], rtk_asset=rtk["asset"], python_version=check_runtime.python_version(profile or {}, DEFAULT_PYTHON),
                pip_packages=PIP_PACKAGES, ua_repo=ua_src["repo"], ua_commit=ua_src["commit"],
                ua_commit_short=ua_src["commit"][:7], ua_patch_steps=ua_patch_steps,
                project_marker="manage.py", copilot_cli_version=COPILOT_CLI_VERSION,
@@ -413,7 +414,7 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
                 shutil.rmtree(d, ignore_errors=True)
     install_harness(target, lock)
     install_agents(target)
-    write_copilot_files(target, lock, version, commit)
+    write_copilot_files(target, lock, version, commit, profile)
     merge_gitignore(target)
     write_manifest(target, version, commit, plan)
 

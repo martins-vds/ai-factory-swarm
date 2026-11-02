@@ -18,7 +18,7 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
   references/final-verification.md are your method.
 - `afs-setup-check` — session start.
 - `afs-handoff` — soft limit or stop rule.
-- `understand-anything` — refresh the target graph; query both graphs.
+- `understand-anything` — query both graphs (you don't build them; the afs-understand workflow does).
 - `code-review` — reading the target critically.
 - `clean-architecture`, `domain-driven-design` — misplaced-responsibility checks.
 - `afs-evidence` — run what you need to prove through `afs-run`; write the report.
@@ -27,10 +27,15 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
 - `documentation-writer` — the final report's readability.
 
 ## Procedure
+**Graphs first (ADR-0019).** Run `python .migration/harness/tools/check_graph_fresh.py --require
+source,target` before anything else. If it fails, stop with a handoff naming the stale or missing side:
+the dispatcher runs the afs-understand workflow (`side=source` or `side=target`) and merges its PR. Never
+audit from a stale graph, and never report `verdict: complete` while it fails (CI rejects that).
+
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
 exists and passes now, the flow connects end to end. Classify every delta with the five gap classes.
 
-**Final verification:** refresh the target graph; confirm the source snapshot matches the pinned SHA;
+**Final verification:** with both graphs fresh (above);
 sweep **top-down** from every screen, route and workflow and **bottom-up** from every non-UI capability;
 trust but verify suspected gaps in code; file a ticket for every gap as you find it; write the A–G
 report to `.migration/evidence/final/report.md`.

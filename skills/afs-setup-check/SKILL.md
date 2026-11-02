@@ -1,6 +1,6 @@
 ---
 name: afs-setup-check
-description: Verify the working environment before doing anything — source checkout present, pinned and read-only, migration state valid, harness tools available, test services healthy. Use as the very first step of every role agent session; stop if any check fails.
+description: Verify the working environment before doing anything — source checkout present, pinned and read-only, migration state valid, harness tools available, test services healthy, runtimes as declared. Use as the very first step of every role agent session; stop if any check fails.
 ---
 
 # Setup check (ADR-0008)
@@ -30,8 +30,12 @@ rtk --version
 
 # 5. Test services up and healthy (profile `services`; setup steps started them from the compose file)
 python .migration/harness/tools/afs-services check
+
+# 6. Runtimes are the versions the profile declares (e.g. python-3.13 in target.stacks)
+python .migration/harness/tools/check_runtime.py
 ```
-Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. Roles that do not
+Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. A failed check 6
+means the session runs a different runtime than CI and the profile: stop, never run the gates on it. Roles that do not
 run tests (Program Orchestrator, Planner, Analyst) skip check 5. If check 5 fails, try
 `python .migration/harness/tools/afs-services up` once (it prints the services' logs on failure) —
 starting the compose services is the setup step, not a workaround. Never start a database or other

@@ -28,8 +28,8 @@ jobs:
           fi
       - name: Validate sample migration state
         run: |
-          python tools/validate.py templates/migration
-          for d in examples/*/; do python tools/validate.py "$d"; done
+          python tools/validate.py --sample templates/migration
+          for d in examples/*/; do python tools/validate.py --sample "$d"; done
       - name: Return schema matches the agents' return contracts
         run: python tools/gen_return_schema.py --check
       - name: Check skills.lock.json and stack packs (offline)
