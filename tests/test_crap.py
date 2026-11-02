@@ -12,11 +12,22 @@ LIZARD = ('NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,en
 
 
 class CrapResultTest(unittest.TestCase):
-    def run_crap(self, limit):
+    def run_crap(self, limit, lcov=".migration/runs/crap.lcov"):
         with tempfile.TemporaryDirectory() as t:
             csv = pathlib.Path(t) / "lizard.csv"
             csv.write_text(LIZARD)
-            return subprocess.run([sys.executable, str(CRAP), str(csv), "--max", limit], capture_output=True, text=True)
+            (pathlib.Path(t) / ".migration/runs").mkdir(parents=True)
+            (pathlib.Path(t) / ".migration/runs/crap.lcov").write_text("SF:src/a.py\nend_of_record\n")
+            (pathlib.Path(t) / "coverage.lcov").write_text("SF:src/a.py\nend_of_record\n")
+            extra = ["--lcov", lcov] if lcov else []
+            return subprocess.run([sys.executable, str(CRAP), str(csv), *extra, "--max", limit],
+                                  capture_output=True, text=True, cwd=t)
+
+    def test_gate_mode_needs_its_own_coverage(self):
+        for lcov in ("coverage.lcov", None):
+            r = self.run_crap("100", lcov)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("needs coverage the gate wrote itself", r.stderr)
 
     def test_pass_and_fail_both_report_the_worst_method(self):
         ok = self.run_crap("100")
