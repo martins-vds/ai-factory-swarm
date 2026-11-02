@@ -35,11 +35,12 @@ install.
    the evidence (`afs-migration-contract` → references/characterization.md).
 3. **Capability checklist.** For each required capability (build-run, characterization harness, tests,
    coverage, complexity, CRAP, mutation testing, lint/format, stack idioms, data migration, UI end-to-end,
-   code graph, output filtering) and for source and target: find a provider in the built-in menu, then
-   with `find-skills`. Write `.migration/capabilities.yaml`. Every unmet capability → an operator ticket
+   code graph, **graph data links** (a harness enricher for the stack, ADR-0020; none = `gap`), output
+   filtering) and for source and target: find a provider in the built-in menu, then with `find-skills`. Write `.migration/capabilities.yaml`. Every unmet capability → an operator ticket
    (status `gap`). Source CRAP and coverage are `best_effort`.
-4. **Profile.** Write `.migration/profile.yaml` from the harness template: stacks, tier, graph commit and
-   patches, risk-map exclusions (vendored/minified/generated code), stack skills, gate commands,
+4. **Profile.** Write `.migration/profile.yaml` from the harness template: stacks, tier, graph commit,
+   patches, `graph.enrich` and `graph.require` (copy the stack pack's `graph` block; bootstrap refuses a
+   profile without them), risk-map exclusions (vendored/minified/generated code), stack skills, gate commands,
    thresholds (defaults unless the operator says otherwise), concurrency, context budgets, RTK edition.
 5. **Install** with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
    installed): `--target <clone> --profile <profile> --capabilities <checklist> --stack-pack
@@ -59,7 +60,13 @@ install.
    pass and the test gate runs against it. Copilot setup steps and the CI gates start these services, so
    agents never test against mocks where a real service exists. A later slice that needs a new service
    adds it to the same file.
-7. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**,
+7. **Graph first (ADR-0020).** Once the setup PR is merged, the dispatcher runs the afs-understand
+   workflow with `side=source` on `main` and merges its PR. It builds, enriches and stamps the full source
+   graph. `python .migration/harness/tools/graph_gate.py --side source --require-graph` must pass before
+   any analysis or planning: the required types are present, and its entry-point report shows which pages
+   and endpoints reach data. Review that list with the operator; a page that should reach data and doesn't
+   is an enricher gap to fix in the harness, not something to work around.
+8. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**,
    with the operator checklist from `docs/operator-setup.md` (bootstrap prints it) as unchecked boxes.
 
 ## Rules

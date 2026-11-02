@@ -39,6 +39,14 @@ jobs:
       # target graph built from this code. Otherwise a stale target graph is only a warning.
       - name: Code graphs describe the code they claim to
         run: python .migration/harness/tools/check_graph_fresh.py ${{{{ github.event_name == 'pull_request' && format('--acceptance-since origin/{{0}}', github.base_ref) || '' }}}}
+      # ADR-0020: the source graph has the profile's required types and every slice's source anchors reach
+      # data; the target graph is held to the same at acceptance.
+      - name: Code graphs reach the data
+        run: |
+          python .migration/harness/tools/graph_gate.py --side source > /dev/null
+          if [ "${{{{ github.event_name }}}}" = pull_request ]; then
+            python .migration/harness/tools/graph_gate.py --side target --acceptance-since "origin/${{{{ github.base_ref }}}}" > /dev/null
+          fi
       - name: Harness files are unchanged
         run: python .migration/harness/tools/check_installed.py
       - name: RTK block and hook match RTK {rtk_version}

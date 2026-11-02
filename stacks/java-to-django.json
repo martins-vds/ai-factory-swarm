@@ -2,7 +2,45 @@
   "lockVersion": 1,
   "pinnedOn": "2026-10-30",
   "stack": "java-ee-to-python-django",
-  "notes": "Stack pack: stack-specific skills for Java EE (JSF/EJB/JPA, Oracle) \u2192 Python/Django (PostgreSQL), from code-migration-hackathon PR #6. Installed by bootstrap in addition to the built-in menu, and referenced from profile.skills.*.",
+  "notes": "Stack pack: stack-specific skills for Java EE (JSF/EJB/JPA, Oracle) → Python/Django (PostgreSQL), from code-migration-hackathon PR #6. Installed by bootstrap in addition to the built-in menu, and referenced from profile.skills.*.",
+  "graph": {
+    "notes": "ADR-0020: what the graph needs beyond Understand Anything for this stack. Copy into profile.graph (enrich, require); bootstrap fails if the profile omits them.",
+    "enrich": {
+      "source": [
+        "java-ee"
+      ],
+      "target": [
+        "django"
+      ]
+    },
+    "require": {
+      "source": {
+        "nodes": [
+          "table",
+          "page",
+          "endpoint"
+        ],
+        "edges": [
+          "reads_from",
+          "writes_to",
+          "routes",
+          "calls"
+        ]
+      },
+      "target": {
+        "nodes": [
+          "table",
+          "endpoint"
+        ],
+        "edges": [
+          "reads_from",
+          "writes_to",
+          "routes",
+          "calls"
+        ]
+      }
+    }
+  },
   "sources": {
     "awesome-copilot": {
       "repo": "github/awesome-copilot",

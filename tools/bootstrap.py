@@ -47,7 +47,8 @@ import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
-                 "afs-services", "check_runtime.py", "check_graph_fresh.py"]
+                 "afs-services", "check_runtime.py", "check_graph_fresh.py",
+                 "enrich_graph.py", "graph_gate.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -76,6 +77,7 @@ OPERATOR_CHECKLIST = [
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",
     "Copilot firewall lets setup steps pull the compose images (add the registry to the allowlist if a session reports services DOWN)",
+    "Graph first: after this PR merges, run the afs-understand workflow (side=source) on main and merge its PR; graph_gate.py --side source --require-graph must pass before Phase 2 (ADR-0020)",
 ]
 
 
@@ -366,6 +368,26 @@ def ensure_labels(target_repo):
                "-f", f"name={name}", "-f", f"color={color}", "-f", f"description={desc}")
 
 
+def check_profile_graph(profile, packs):
+    """ADR-0020: a stack pack's graph enrichers and required types must be in the profile, explicitly."""
+    graph = profile.get("graph") or {}
+    for pack in packs:
+        want = pack.get("graph") or {}
+        for side, enrichers in (want.get("enrich") or {}).items():
+            have = set((graph.get("enrich") or {}).get(side) or [])
+            if not set(enrichers) <= have:
+                raise BootstrapError(f"profile graph.enrich.{side} must include {enrichers} (stack pack "
+                                     f"{pack.get('stack')}, ADR-0020); without them the {side} graph has no "
+                                     "tables, routes or data links")
+        for side, types in (want.get("require") or {}).items():
+            have = (graph.get("require") or {}).get(side) or {}
+            for kind in ("nodes", "edges"):
+                lacking = sorted(set(types.get(kind) or []) - set(have.get(kind) or []))
+                if lacking:
+                    raise BootstrapError(f"profile graph.require.{side}.{kind} must include {lacking} (stack pack "
+                                         f"{pack.get('stack')}, ADR-0020)")
+
+
 def check_profile_skills(profile, installed, offline):
     refs = []
 
@@ -398,6 +420,7 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
     lock = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
     packs = [json.loads(pathlib.Path(p).read_text(encoding="utf-8")) for p in pack_paths]
     plan = plan_skills(lock, packs, offline, skip_private)
+    check_profile_graph(profile, packs)
     missing = check_profile_skills(profile, {s["name"] for s in plan}, offline)
     version, commit, dirty = harness_identity()
     notes = [f"harness has uncommitted changes; installed.json records {commit[:7]}"] if dirty else []

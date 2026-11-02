@@ -30,7 +30,9 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 1. **Intake (Phase 0).** Record source repo + pinned SHA, target repo, back-end and front-end stacks,
    tracker, data stores, snapshot owner. Write `.migration/source.lock`. Dispatch `afs-bootstrapper`.
 2. **Bootstrap gate.** Review the setup PR and `capabilities.yaml` with the operator. Every capability
-   gap has an operator ticket; Phase 2 starts only when all are `met`, `waived` or `not-applicable`.
+   gap has an operator ticket; Phase 2 starts only when all are `met`, `waived` or `not-applicable`, **and**
+   the full source graph is built and passes `graph_gate.py --side source --require-graph` (ADR-0020).
+   Nothing is analysed, characterized or planned from a graph that can't reach the data.
 3. **Understand & characterize.** Dispatch `afs-analyst`, then `afs-characterizer`. Track their returns.
 4. **Chart (Phase 4).** With the operator, run `wayfinder` to chart the decision map: target architecture
    and bounded contexts, library/idiom mappings, data model and migration strategy, cross-cutting
