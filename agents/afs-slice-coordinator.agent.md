@@ -41,6 +41,10 @@ slice.
 5. **Slice acceptance** (all tickets merged): end-to-end characterization, differential checks (tier A)
    or checks against specs, full mutation run, capability coverage (dispatch `afs-auditor` for gate 7),
    ledger reconciled, evidence report written. Then request the human side-by-side check.
+   **Before dispatching the Auditor**, make both graphs fresh (ADR-0019): run the afs-understand workflow
+   with `side=target` on `main` (and `side=source` if `check_graph_fresh.py` says so), merge its PR, and
+   confirm `python .migration/harness/tools/check_graph_fresh.py --require source,target` passes. Remote
+   sessions can't run workflows, so this is the dispatcher's step.
 
 ## Rules
 - **Parallel dispatch, path check:** before dispatching tickets that run at the same time, compare

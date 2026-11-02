@@ -6,7 +6,9 @@ Usage: validate.py <folder> [--schemas <dir>]
 <folder> is a target repo's `.migration/` (or the harness's `templates/migration/`). Checks, when present:
   profile.yaml       → schemas/profile.schema.json
   capabilities.yaml  → schemas/capabilities.schema.json
-  ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique
+  ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique, and
+                       (ADR-0018) every evidence item exists, is committed (never .migration/runs/),
+                       and a test id's symbol is still defined
   returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`; and (ADR-0017)
                        a finished return has no null gates, and each score equals the last mutation
                        gate run's AFS-RESULT in evidence/runs/<ticket>.md (returns in
@@ -154,10 +156,47 @@ def check_return_evidence(folder, path, doc, profile, errors):
                           f"(score={last}); report the score afs-mutation printed")
 
 
+UNCOMMITTED = (".migration/runs/",)   # gitignored: raw logs vanish with the session (ADR-0018)
+PREFIXED = re.compile(r"^(?P<kind>[a-z][a-z-]*): (?P<ref>.+)$")
+
+
+def check_evidence(root, path, doc, errors):
+    """ADR-0018: every ledger evidence item points at something committed that still exists.
+
+    Forms: `file`, `file::symbol` (a test id; `[params]` ignored), `legacy-test: .source/file::symbol`.
+    Paths are relative to the repo root; `.source/` items are checked only when the source checkout
+    is present (it is in agent sessions, not in the CI harness job)."""
+    for item in doc.get("evidence") or []:
+        m = PREFIXED.match(item)
+        if m and m.group("kind") != "legacy-test":
+            errors.append(f"{path}: evidence '{item}': unknown prefix '{m.group('kind')}:' (only 'legacy-test:')")
+            continue
+        ref = m.group("ref") if m else item
+        file, _, symbol = ref.partition("::")
+        if file.startswith(UNCOMMITTED):
+            errors.append(f"{path}: evidence '{item}' is a raw log under .migration/runs/, which is never "
+                          f"committed; cite the run journal .migration/evidence/runs/<ticket>.md instead")
+            continue
+        target = root / file
+        if file.startswith(".source/") and not (root / ".source").is_dir():
+            continue
+        if not target.is_file():
+            errors.append(f"{path}: evidence '{item}': {file} does not exist")
+            continue
+        if symbol:
+            name = re.sub(r"\[.*\]$", "", symbol.split("::")[-1])
+            text = target.read_text(encoding="utf-8", errors="ignore")
+            # Language-neutral: `name(` (def/method), or `class/def/function name`.
+            if not re.search(rf"\b{re.escape(name)}\s*\(|\b(class|def|function)\s+{re.escape(name)}\b", text):
+                errors.append(f"{path}: evidence '{item}': no '{name}' defined in {file} (stale symbol)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder")
     ap.add_argument("--schemas", default=str(HERE.parent / "schemas"))
+    ap.add_argument("--sample", action="store_true",
+                    help="harness samples/fixtures: skip checks that need the target repo's files on disk")
     a = ap.parse_args()
     folder, schemas = pathlib.Path(a.folder), pathlib.Path(a.schemas)
     errors, checked = [], 0
@@ -180,6 +219,8 @@ def main():
                 if doc["id"] in seen:
                     errors.append(f"{path}: duplicate id '{doc['id']}' (also in {seen[doc['id']]})")
                 seen[doc["id"]] = path.name
+            if isinstance(doc, dict) and not a.sample:
+                check_evidence(folder.resolve().parent, path, doc, errors)
 
     returns = folder / "returns"
     if returns.is_dir():
