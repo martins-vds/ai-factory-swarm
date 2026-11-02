@@ -66,6 +66,11 @@ jobs:
             if [ -f "$f" ]; then pip install -q -r "$f"; break; fi
           done
 
+      # The same compose services the CI gates use (profile `services`), so agents run integration tests
+      # against the real database instead of skipping them. afs-setup-check confirms they are healthy.
+      - name: Start test services from the target's compose file
+        run: python .migration/harness/tools/afs-services up
+
       # Understand Anything at its pinned commit, with the harness patches (ADR-0009). Role agents load it
       # from $HOME/.afs/understand-anything.
       - name: Install Understand Anything ({ua_commit_short})

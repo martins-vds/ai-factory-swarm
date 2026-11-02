@@ -7,3 +7,4 @@ gap-without-ticket	'ticket' is a required property
 tier-a-without-environment	'available' was expected
 profile-short-sha	does not match
 profile-score-as-percent	is greater than the maximum of 1
+data-without-services	'services' is a required property

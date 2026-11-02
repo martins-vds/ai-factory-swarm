@@ -32,6 +32,8 @@ jobs:
             for f in .migration/quirks/*.md; do echo "::error file=$f::Quirk draft not yet opened as an issue: $f"; done
             exit 1
           fi
+      - name: Compose file defines the profile's test services, each with a healthcheck
+        run: python .migration/harness/tools/afs-services lint
       - name: Harness files are unchanged
         run: python .migration/harness/tools/check_installed.py
       - name: RTK block and hook match RTK {rtk_version}
@@ -62,27 +64,19 @@ jobs:
   gates:
     name: Gates (build, idiom, tests, CRAP, mutation on changed code)
     runs-on: ubuntu-latest
-    # PostgreSQL for target tests (profile target.stacks.data); harmless when the target doesn't use it.
-    services:
-      postgres:
-        image: postgres:17
-        env: {{ POSTGRES_DB: app, POSTGRES_USER: app, POSTGRES_PASSWORD: app }}
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U app" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      POSTGRES_DB: app
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      DATABASE_URL: postgres://app:app@localhost:5432/app
       AFS_BASE: origin/${{{{ github.base_ref || 'main' }}}}   # afs-mutation diffs against it
     steps:
       - uses: actions/checkout@v5
         with: {{ fetch-depth: 0 }}
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
+      # The target's compose file (profile `services`) is the one definition of the real services tests use;
+      # Copilot setup steps start the same services, so agent sessions and CI test against the same thing.
+      - name: Start test services from the target's compose file
+        run: |
+          pip install -q pyyaml
+          python .migration/harness/tools/afs-services up
       - name: Run gates through afs-run
         run: |
           if [ ! -f {project_marker} ]; then

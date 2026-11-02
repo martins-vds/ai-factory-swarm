@@ -43,7 +43,11 @@ references below hold detail — read one only when your procedure points to it.
 ## Stop and escalate
 Stop, write a handoff, and escalate (do not keep trying) when:
 - the same failure repeats after **two** honest attempts;
-- setup is wrong — source missing, wrong SHA, writable, or tools missing (`afs-setup-check`);
+- setup is wrong — source missing, wrong SHA, writable, tools missing, or test services down
+  (`afs-setup-check`);
+- tests your work depends on cannot run in your session (no database, a service unreachable, a missing
+  tool). "CI will run them" is not evidence: never finish with tests you could not run, never replace a
+  real service with a mock or in-memory stand-in to make them pass, and never mark the work done;
 - the graph and the code disagree on something your work depends on **and the code alone cannot settle
   it**. The code is the authority: when it is clear, record the discrepancy and continue;
 - a real limit blocks the requested approach;

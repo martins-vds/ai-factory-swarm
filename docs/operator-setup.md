@@ -15,6 +15,7 @@ list, and the setup PR repeats it as a checklist.
 | 5 | **Public repo or Actions budget** | Settings → Billing (account or org) | Copilot sessions and CI consume Actions minutes on private repos | Jobs "not started because recent account payments have failed or your spending limit needs to be increased" |
 | 6 | `SOURCE_READ_TOKEN` secret, **private sources only**: a fine-grained PAT with Contents: Read-only on the source repo only | Settings → Secrets and variables → Actions, **and** Settings → Environments → `copilot` | Remote sessions and workflows check out the pinned source | `.source/` missing; `afs-setup-check` stops |
 | 7 | A user token for the **dispatcher** (L0 or you): `gh` logged in as a user with write access | Where the Program Orchestrator runs | Assigning issues to Copilot with a custom agent, opening quirk and gap issues, blocking edges, merges. Remote sessions cannot do these | Tickets are never dispatched; quirk drafts stay in PRs (CI fails on them) |
+| 8 | **Copilot firewall lets setup steps pull the compose images** (ADR-0016): if blocked, add the registry (e.g. `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`) to the allowlist | Settings → Copilot → Coding agent → Firewall | Setup steps start the target's test services with `afs-services up` | `afs-setup-check` reports `services DOWN`; agents stop instead of testing |
 
 ## Recommended
 - Branch protection on `main`: require the **AFS harness check** jobs (harness, return file, gates).

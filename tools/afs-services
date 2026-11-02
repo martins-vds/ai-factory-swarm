@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Start and check the target's test services from its Docker Compose file (profile `services`).
+
+One compose file in the target repo is the single definition of the services the tests need (database,
+broker, external-system stand-ins). Copilot setup steps and the CI gates both start it with `up`, so agent
+sessions and CI run against the same real services; the human runs the same file locally.
+
+  afs-services up      start profile services.test with `docker compose up -d --wait`
+  afs-services check   every services.test service is running and healthy (afs-setup-check)
+  afs-services lint    the compose file exists and every services.test service is defined with a healthcheck
+
+Profile (.migration/profile.yaml):
+  services:
+    compose: compose.yaml      # path from the repo root
+    test: [db]                 # services the tests need
+    env: {KEY: value}          # optional; exported to later steps through $GITHUB_ENV
+
+With no `services` in the profile, `up` and `check` print a notice and exit 0.
+"""
+import argparse
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+import yaml
+
+
+def load_services(profile):
+    doc = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    return doc.get("services")
+
+
+def lint(services, root):
+    """Return a list of problems with the compose file for the declared test services."""
+    path = root / services["compose"]
+    if not path.is_file():
+        return [f"{path}: compose file named in profile services.compose does not exist"]
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        return [f"{path}: not valid YAML ({e})"]
+    defined = doc.get("services") or {}
+    errors = []
+    for name in services.get("test", []):
+        if name not in defined:
+            errors.append(f"{path}: profile services.test names '{name}', which the compose file does not define")
+        elif not (defined[name] or {}).get("healthcheck"):
+            errors.append(f"{path}: service '{name}' needs a healthcheck so `up --wait` knows when it is ready")
+    return errors
+
+
+def compose(services, root, *args):
+    return ["docker", "compose", "-f", str(root / services["compose"]), *args]
+
+
+def export_env(services):
+    env = services.get("env") or {}
+    target = os.environ.get("GITHUB_ENV")
+    if env and target:
+        with open(target, "a", encoding="utf-8") as f:
+            for k, v in env.items():
+                f.write(f"{k}={v}\n")
+    for k, v in env.items():
+        print(f"export {k}={v}")
+
+
+def up(services, root, timeout):
+    errors = lint(services, root)
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        return 1
+    cmd = compose(services, root, "up", "-d", "--wait", "--wait-timeout", str(timeout), *services["test"])
+    print("+", " ".join(cmd), flush=True)
+    rc = subprocess.run(cmd).returncode
+    if rc:
+        subprocess.run(compose(services, root, "ps", "-a"))
+        subprocess.run(compose(services, root, "logs", "--tail", "50", *services["test"]))
+        return rc
+    export_env(services)
+    return 0
+
+
+def states(services, root):
+    r = subprocess.run(compose(services, root, "ps", "-a", "--format", "json"), capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip() or "docker compose ps failed")
+    out = r.stdout.strip()
+    # Compose v2 prints one JSON object per line; older releases print a single array.
+    rows = json.loads(out) if out.startswith("[") else [json.loads(l) for l in out.splitlines() if l.strip()]
+    return {row["Service"]: row for row in rows}
+
+
+def check(services, root):
+    try:
+        found = states(services, root)
+    except (RuntimeError, FileNotFoundError) as e:
+        print(f"services DOWN: {e}", file=sys.stderr)
+        return 1
+    bad = []
+    for name in services["test"]:
+        row = found.get(name)
+        if row is None:
+            bad.append(f"{name}: not started")
+        elif row.get("State") != "running" or row.get("Health", "healthy") not in ("healthy", ""):
+            bad.append(f"{name}: {row.get('State')} {row.get('Health', '')}".strip())
+    if bad:
+        print("services DOWN: " + "; ".join(bad), file=sys.stderr)
+        return 1
+    print("services OK: " + ", ".join(services["test"]))
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("action", choices=["up", "check", "lint"])
+    ap.add_argument("--profile", default=".migration/profile.yaml")
+    ap.add_argument("--root", default=".", help="repo root the compose path is relative to")
+    ap.add_argument("--timeout", type=int, default=180, help="seconds `up --wait` waits for health")
+    a = ap.parse_args(argv)
+    services = load_services(a.profile)
+    if not services:
+        print("::notice::No `services` in the profile; tests run without compose services.")
+        return 0
+    root = pathlib.Path(a.root)
+    if a.action == "lint":
+        errors = lint(services, root)
+        print("\n".join(errors) or "compose OK", file=sys.stderr if errors else sys.stdout)
+        return 1 if errors else 0
+    return up(services, root, a.timeout) if a.action == "up" else check(services, root)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

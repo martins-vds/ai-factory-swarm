@@ -50,6 +50,15 @@ install.
    `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
 6. **Scaffold the target** per the architecture ADRs: layout, CI running the gates, lint/format, test
    runner, coverage, CRAP and mutation tooling, containers.
+   **Test services:** write the target's `compose.yaml` with `docker-compose-orchestration` (images with
+   `docker-expert`, Dockerfiles with `multi-stage-dockerfile`; never by hand). It defines every real
+   service the tests need — the database from `target.stacks.data`, brokers, stand-ins for external
+   systems — each with a healthcheck, with credentials that match the target's default settings, and
+   ports bound to `127.0.0.1`. It may also run the app for the human's side-by-side check. Record it in
+   the profile's `services` (`compose`, `test`), then confirm `afs-services lint` and `afs-services up`
+   pass and the test gate runs against it. Copilot setup steps and the CI gates start these services, so
+   agents never test against mocks where a real service exists. A later slice that needs a new service
+   adds it to the same file.
 7. **Validate** (`python .migration/harness/tools/validate.py .migration`) and open the **setup PR**,
    with the operator checklist from `docs/operator-setup.md` (bootstrap prints it) as unchecked boxes.
 

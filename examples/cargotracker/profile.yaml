@@ -61,4 +61,7 @@ rtk:
 data:
   masking: false
   snapshot_owner: "n/a: the source seeds sample data at startup (SampleDataGenerator)"
+services:
+  compose: compose.yaml
+  test: [db]
 translation_rules: .migration/translation-rules.md
