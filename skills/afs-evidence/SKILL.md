@@ -22,10 +22,20 @@ lines with their line numbers in the log, tail on failure) and exits with the co
 - Everyday commands (git, listing, quick checks) go through `rtk`, not `afs-run`.
 - Raw logs are not committed (`.migration/runs/` is gitignored and disappears with your session).
   `afs-run` also appends a row per run to **`.migration/evidence/runs/<ticket>.md`** (time, gate, exit,
-  seconds, command, log SHA-256, first highlight). Always pass your own `--ticket`: one journal per
+  seconds, command, log SHA-256, first highlight, **result**). Always pass your own `--ticket`: one journal per
   ticket keeps parallel PRs from touching the same file. **Commit that journal** with your work; it is what
   `evidence_logs` in your return file points to. Link the journal from the PR description; don't
   paste it.
+
+## Results come from the gate tools, never from you (ADR-0017)
+Harness gate tools (`afs-mutation`, `crap.py`, and each stack's adapter) print one line
+`AFS-RESULT gate=<gate> key=value …`; `afs-run` records it in the journal's Result column. Never convert,
+round or retype a tool's output yourself, and never print an `AFS-RESULT` line from anything else.
+- A score in your return file (`mutation_changed`, `mutation_full`, `mutation_score`) is copied exactly
+  from the last mutation run in your journal **made with the profile's gate command** (as given, or via
+  `bash -c`). `validate.py` compares them; a run with other options (`--paths …`) doesn't count.
+- When you finish (no handoff), every `gates` value is a number or `n/a: <reason>` (e.g. `n/a: no
+  production code changed`). `null` means "not reached" and is allowed only with a handoff.
 
 ## Per-PR evidence (Migrator, Verifier)
 The committed run journal plus the return file's `gates` map are the evidence; every gate from

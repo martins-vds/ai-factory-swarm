@@ -112,6 +112,9 @@ class AfsMutationTest(unittest.TestCase):
             low = run("0.4")   # add() is tested, neg() is not: roughly half the mutants survive
             self.assertEqual(low.returncode, 0, low.stdout + low.stderr)
             self.assertIn("score=", low.stdout)
+            result = [l for l in low.stdout.splitlines() if l.startswith("AFS-RESULT ")]
+            self.assertEqual(len(result), 1, low.stdout)
+            self.assertRegex(result[0], r"^AFS-RESULT gate=mutation score=0\.\d{3} threshold=0\.4 killed=\d+ survived=\d+")
             high = run("0.99")
             self.assertEqual(high.returncode, 1, high.stdout + high.stderr)
             self.assertIn("survived: ", high.stdout)

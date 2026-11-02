@@ -154,8 +154,12 @@ def main():
         for f, c in by_file.most_common(a.top):
             print(f"| {c} | {f} |")
 
-    if a.max is not None and over:
-        sys.exit(1)
+    if a.max is not None:
+        # The harness result line (ADR-0017): afs-run journals it; validate.py checks return files against it.
+        worst = max((m["crap"] for m in methods), default=0.0)
+        print(f"\nAFS-RESULT gate=crap max={worst:.1f} threshold={a.max:g} over={len(over)} methods={len(methods)}")
+        if over:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

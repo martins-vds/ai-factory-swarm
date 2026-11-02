@@ -77,7 +77,8 @@ without one.
 
 **Every structured output is checked against a schema, and a failing check means redo.** Return
 files must use the contract's exact words and types (e.g. `verdict: pass`, not `passed`; a score is a
-number or `null`, never prose); ledger entries, handoffs and quirk drafts have required structure.
+number, `n/a: <reason>` or — only with a handoff — `null`, never prose; scores must equal the gate
+tool's `AFS-RESULT` in your journal, see `afs-evidence`); ledger entries, handoffs and quirk drafts have required structure.
 Before you finish, run `python .migration/harness/tools/validate.py .migration`. If it reports
 errors, fix the outputs (or the work they describe) and run it again; never finish, hand off or
 push for review with validation failing. CI runs the same check on every PR.

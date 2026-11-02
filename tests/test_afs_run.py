@@ -77,6 +77,27 @@ class AfsRunTest(unittest.TestCase):
         r = subprocess.run([sys.executable, str(AFS_RUN), "echo", "x"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
 
+    def test_journal_records_the_tools_result_line(self):
+        j = pathlib.Path(self.runs, "journal")
+        script = "echo noise; echo 'AFS-RESULT gate=mutation score=0.700 threshold=0.8'; echo 'AFS-RESULT gate=mutation score=0.812 threshold=0.8'"
+        afs(self.runs, "bash", "-c", script, extra=("--journal-dir", str(j), "--name", "mut"))
+        text = (j / "T-1.md").read_text()
+        self.assertIn("| Result |", text)
+        row = [l for l in text.splitlines() if "| mut |" in l][0]
+        self.assertTrue(row.rstrip().endswith("| gate=mutation score=0.812 threshold=0.8 |"), row)
+
+    def test_old_journal_gains_the_result_column(self):
+        j = pathlib.Path(self.runs, "journal"); j.mkdir()
+        (j / "T-1.md").write_text("# Run journal: T-1\n\n"
+                                  "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight |\n"
+                                  "|---|---|---|---|---|---|---|\n"
+                                  "| 2026-11-01T00:00:00+00:00 | old | 0 | 1.0 | `true` | `abc` |  |\n")
+        afs(self.runs, "true", extra=("--journal-dir", str(j), "--name", "new"))
+        lines = (j / "T-1.md").read_text().splitlines()
+        self.assertIn("| Result |", lines[2])
+        self.assertEqual(lines[3].count("|"), 9)
+        self.assertTrue(all(l.count("|") == 9 for l in lines[4:]), lines)
+
 
 if __name__ == "__main__":
     unittest.main()
