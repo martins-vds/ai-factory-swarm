@@ -6,6 +6,7 @@ Usage: validate.py <folder> [--schemas <dir>]
 <folder> is a target repo's `.migration/` (or the harness's `templates/migration/`). Checks, when present:
   profile.yaml       → schemas/profile.schema.json
   capabilities.yaml  → schemas/capabilities.schema.json
+  slices/*.yaml      → schemas/slice.schema.json (unknown keys are errors)
   ledger/*.yaml      → schemas/ledger-entry.schema.json, plus: file name == `<id>.yaml`, ids unique, and
                        (ADR-0018) every evidence item exists, is committed (never .migration/runs/),
                        and a test id's symbol is still defined
@@ -204,6 +205,13 @@ def main():
     for name, schema in (("profile.yaml", "profile.schema.json"), ("capabilities.yaml", "capabilities.schema.json")):
         if (folder / name).exists():
             check(load_schema(schemas, schema), folder / name, errors)
+            checked += 1
+
+    slices = folder / "slices"
+    if slices.is_dir():
+        validator = load_schema(schemas, "slice.schema.json")
+        for path in sorted(slices.glob("*.y*ml")):
+            check(validator, path, errors)
             checked += 1
 
     ledger = folder / "ledger"
