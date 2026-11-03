@@ -1,0 +1,44 @@
+# ADR-0028: Graph flow is method-level
+
+- Status: Accepted (martins-vds, 2026-11-03: option 1 on #47)
+- Issue: #47
+
+## Context
+The pilot's Analyst (HR-02, pilot #115) found the data path for `POST /handling/reports` going through
+`JmsApplicationEvents →publishes→ CargoHandledQueue`. The REST method actually sends to the
+**registration-attempt** queue; only after registration does a different method send to
+`CargoHandledQueue`.
+
+The graph was class-level. `JmsApplicationEvents` declares five queues, so the class "published" to all
+five, and the breadth-first search took whichever was shortest. The path was real code but not the real
+flow, and a gate can pass on such a path. The same imprecision applied to every multi-purpose class:
+CDI event producers, repositories that read in one method and write in another, and services.
+
+## Decision
+1. **Methods are nodes.**
+   - The Graphify merge keeps each method as a `method` node `Type.name`, which its type `contains`.
+   - Calls keep their method endpoints.
+   - An implementing type's method `implements` the interface method of the same name, so dispatch is
+     followed method by method.
+2. **Framework rules attach to the method that does the work.** Each method's text span runs from its
+   first line, as Graphify reports it, to the next method's. A rule then attaches to the method whose
+   span matches:
+   - JPA reads and writes; JMS sends (a method publishes to the queue fields it uses); CDI `fire`;
+     `JobOperator.start`;
+   - and on the other end: the JAX-RS verb method, the `@MessageDriven` `onMessage`, the `@Observes`
+     method, the `@Schedule` method.
+   - Django: ORM, render and task enqueues inside a class's method attach to that method.
+   - Where the graph knows no methods for a type, the rule falls back to the type, as before.
+3. **Entering at a type still reaches all of it.** `contains` is followed, so a page using a bean, a
+   batch job calling a bean, an injected dependency, or a constructor call reaches every method of that
+   type. That's the honest precision there: a page can call any bean member, and the graph doesn't know
+   which method follows a constructor.
+
+## Consequences
+- **On the pilot source,** `POST /handling/reports` now follows the real flow:
+  `submitReport → receivedHandlingEventRegistrationAttempt → HandlingEventRegistrationAttemptQueue → onMessage → registerHandlingEvent → store → HandlingEvent`.
+  Each `JmsApplicationEvents` method publishes only its own queue. Track Cargo's anchors still pass,
+  18 of 27 entry points still reach data, and `WS /tracking` still has no path.
+- Paths name methods (`Type.method`), which makes them longer but says exactly what runs.
+- **Remaining imprecision is visible in the path:** it is a `contains` step after a type-level entry. A
+  later refinement could resolve constructor-then-call chains.

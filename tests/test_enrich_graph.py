@@ -44,10 +44,11 @@ class JavaEETest(unittest.TestCase):
         self.assertEqual(edges(self.g, "defines_schema"), {("Order", "orders"), ("Customer", "Customer")})
 
     def test_repository_reads_and_writes(self):
-        self.assertEqual(edges(self.g, "reads_from"), {("JpaOrderRepository", "orders"),
-                                                       ("JpaOrderRepository", "Customer")})
-        self.assertEqual(edges(self.g, "writes_to"), {("JpaOrderRepository", "orders"),
-                                                      ("JpaOrderRepository", "Customer")}, "incl. a for-each variable")
+        self.assertEqual(edges(self.g, "reads_from"), {("JpaOrderRepository.find", "orders"),
+                                                       ("JpaOrderRepository.find", "Customer")})
+        self.assertEqual(edges(self.g, "writes_to"), {("JpaOrderRepository.store", "orders"),
+                                                      ("JpaOrderRepository.store", "Customer")},
+                         "per method, incl. a for-each variable")
 
     def test_named_query_annotation_is_not_a_cdi_bean(self):
         self.assertNotIn("Unused", {t for _, t in edges(self.g, "routes")})
@@ -59,28 +60,40 @@ class JavaEETest(unittest.TestCase):
                       edges(self.g, "contains"))
 
     def test_jax_rs_endpoint_and_jms_hop(self):
-        self.assertIn(("POST /orders/report", "OrderResource"), edges(self.g, "routes"))
-        self.assertIn(("Events", "java:app/jms/OrderQueue"), edges(self.g, "publishes"))
-        self.assertIn(("java:app/jms/OrderQueue", "OrderConsumer"), edges(self.g, "triggers"))
+        self.assertIn(("POST /orders/report", "OrderResource.report"), edges(self.g, "routes"))
+        self.assertIn(("Events.orderReported", "java:app/jms/OrderQueue"), edges(self.g, "publishes"))
+        self.assertIn(("java:app/jms/OrderQueue", "OrderConsumer.onMessage"), edges(self.g, "triggers"))
 
     def test_directed_paths_to_data(self):
-        self.assertIn("←implements `JpaOrderRepository` →reads_from", path(self.g, "public/dashboard.xhtml"))
+        self.assertIn("←implements `JpaOrderRepository.find` →reads_from", path(self.g, "public/dashboard.xhtml"))
         jms = path(self.g, "endpoint=POST /orders/report")
-        self.assertIn("→publishes", jms)
-        self.assertIn("→triggers `OrderConsumer`", jms)
+        self.assertIn("→publishes `java:app/jms/OrderQueue`", jms)
+        self.assertIn("→triggers `OrderConsumer.onMessage`", jms)
         self.assertTrue(path(self.g, "templates/layout.xhtml").startswith("**NO PATH**"))
+
+    def test_each_method_publishes_only_to_the_queue_it_uses(self):
+        """ADR-0028: one class, two queues, two methods; a flow follows the method it enters (pilot #115)."""
+        self.assertEqual(edges(self.g, "publishes") & {("Events", "java:app/jms/OrderQueue"),
+                                                       ("Events", "java:app/jms/AuditQueue")}, set())
+        report = check_graph.reachable(check_graph.anchor_nodes("endpoint=POST /orders/report", self.g.doc["nodes"]),
+                                       self.g.doc["edges"])
+        names = {n["name"] for n in self.g.doc["nodes"] if n["id"] in report}
+        self.assertIn("java:app/jms/OrderQueue", names)
+        self.assertNotIn("java:app/jms/AuditQueue", names, "the report never audits")
+        self.assertTrue(path(self.g, "endpoint=GET /orders/ping").startswith("**NO PATH**"),
+                        "ping only audits, and the audit consumer reads nothing")
 
     def test_websocket_endpoint_and_cdi_events(self):
         self.assertIn(("WS /live", "LivePush"), edges(self.g, "routes"))
-        self.assertIn(("OrderChecker", "cdi-event @OrderChecked Order"), edges(self.g, "publishes"))
+        self.assertIn(("OrderChecker.check", "cdi-event @OrderChecked Order"), edges(self.g, "publishes"))
         triggers = edges(self.g, "triggers")
-        self.assertIn(("cdi-event @OrderChecked Order", "LivePush"), triggers)
-        self.assertNotIn(("cdi-event @OrderChecked Order", "AuditTrail"), triggers, "different event type")
+        self.assertIn(("cdi-event @OrderChecked Order", "LivePush.onOrderChecked"), triggers)
+        self.assertNotIn(("cdi-event @OrderChecked Order", "AuditTrail.onCustomer"), triggers, "different event type")
 
     def test_schedule_and_batch_job(self):
-        self.assertIn(("timer Nightly.run (minute=*/2, hour=*)", "Nightly"), edges(self.g, "triggers"))
+        self.assertIn(("timer Nightly.run (minute=*/2, hour=*)", "Nightly.run"), edges(self.g, "triggers"))
         calls = edges(self.g, "calls")
-        self.assertIn(("Nightly", "batch-job OrderImportJob"), calls)
+        self.assertIn(("Nightly.run", "batch-job OrderImportJob"), calls)
         self.assertIn(("batch-job OrderImportJob", "OrderLineReader"), calls)
         self.assertIn(("batch-job OrderImportJob", "OrderLineWriter"), calls)
 
@@ -92,7 +105,7 @@ class JavaEETest(unittest.TestCase):
     def test_directed_paths_through_async_hops(self):
         timer = path(self.g, "resource=timer Nightly.run (minute=*/2, hour=*)")
         self.assertIn("→calls `batch-job OrderImportJob`", timer)
-        self.assertIn("→triggers `OrderConsumer`", timer)
+        self.assertIn("→triggers `OrderConsumer.onMessage`", timer)
         self.assertIn("→publishes", path(self.g, "public/live.xhtml"))
 
     def test_existing_nodes_are_reused_and_edges_carry_provenance(self):
@@ -116,8 +129,8 @@ class DjangoTest(unittest.TestCase):
         self.assertEqual(edges(self.g, "defines_schema"), {("OrderModel", "shop_orders"), ("AuditModel", "orders_auditmodel")})
 
     def test_orm_reads_and_writes_tests_ignored(self):
-        self.assertEqual(edges(self.g, "reads_from"), {("DjangoOrderRepository", "shop_orders")})
-        self.assertEqual(edges(self.g, "writes_to"), {("DjangoOrderRepository", "orders_auditmodel")})
+        self.assertEqual(edges(self.g, "reads_from"), {("DjangoOrderRepository.find", "shop_orders")})
+        self.assertEqual(edges(self.g, "writes_to"), {("DjangoOrderRepository.record", "orders_auditmodel")})
 
     def test_urls_with_factory_and_include(self):
         routes = edges(self.g, "routes")
@@ -132,13 +145,13 @@ class DjangoTest(unittest.TestCase):
 
     def test_directed_paths_to_data(self):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/"))
-        self.assertIn("←implements `DjangoOrderRepository` →reads_from", path(self.g, "orders/interfaces/views.py"))
+        self.assertIn("←implements `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
         self.assertTrue(path(self.g, "endpoint=/api/health/").startswith("**NO PATH**"))
 
     def test_management_command_and_task(self):
         self.assertIn(("import_orders", "Command"), edges(self.g, "routes"))
         self.assertIn(("task shop.orders.tasks.record_note", "record_note"), edges(self.g, "triggers"))
-        self.assertIn(("Command", "task shop.orders.tasks.record_note"), edges(self.g, "publishes"))
+        self.assertIn(("Command.handle", "task shop.orders.tasks.record_note"), edges(self.g, "publishes"))
         self.assertIn("→publishes `task shop.orders.tasks.record_note` →triggers `record_note`",
                       path(self.g, "command=import_orders"))
 
@@ -198,7 +211,7 @@ class GraphifyMergeTest(unittest.TestCase):
                 "links": [{"source": "f", "target": "A", "relation": "contains"},
                           {"source": "A", "target": "A.m", "relation": "method"}] + links}
 
-    def test_methods_count_as_their_type_and_only_flow_relations_merge(self):
+    def test_methods_are_nodes_their_type_contains_and_only_flow_relations_merge(self):
         g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
         enrich_graph.merge_graphify(g, self.doc([
             {"source": "v", "target": "A.m", "relation": "calls", "confidence": "INFERRED", "source_file": "c.py",
@@ -207,7 +220,8 @@ class GraphifyMergeTest(unittest.TestCase):
             {"source": "B", "target": "A", "relation": "inherits", "confidence": "EXTRACTED"},
             {"source": "A", "target": "P", "relation": "inherits", "confidence": "EXTRACTED"},
             {"source": "B", "target": "v", "relation": "references", "confidence": "EXTRACTED"}]))
-        self.assertEqual(edges(g, "calls"), {("view", "Repo"), ("view", "SqlRepo")})
+        self.assertEqual(edges(g, "calls"), {("view", "Repo.find"), ("view", "SqlRepo")}, "a call lands on the method")
+        self.assertIn(("Repo", "Repo.find"), edges(g, "contains"))
         self.assertEqual(edges(g, "implements"), {("SqlRepo", "Repo")}, "a Protocol-based base is an interface")
         self.assertEqual(edges(g, "inherits"), set(), "external bases and references are not merged")
         desc = {e["description"] for e in g.doc["edges"]}
@@ -218,7 +232,8 @@ class GraphifyMergeTest(unittest.TestCase):
         g = enrich_graph.Graph({"project": {}, "nodes": [
             {"id": "llm-repo", "type": "class", "name": "Repo", "filePath": "a.py"}], "edges": []})
         enrich_graph.merge_graphify(g, self.doc([{"source": "v", "target": "A", "relation": "calls"}]))
-        self.assertEqual([e["target"] for e in g.doc["edges"]], ["llm-repo"])
+        self.assertEqual([(e["source"], e["target"]) for e in g.doc["edges"] if e["type"] == "calls"],
+                         [("function:c.py:view", "llm-repo")])
 
     def test_unknown_schema_version_is_refused(self):
         g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})

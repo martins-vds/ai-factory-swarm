@@ -161,7 +161,7 @@ def java_index(root):
     types, by_simple = {}, collections.defaultdict(list)
     for f in sorted(root.rglob("*.java")):
         raw = f.read_text(encoding="utf-8", errors="ignore")
-        text = JAVA_COMMENT.sub(" ", raw)
+        text = JAVA_COMMENT.sub(lambda c: re.sub(r"[^\n]", " ", c.group()), raw)   # keeps line numbers
         pkg = re.search(r"^\s*package\s+([\w.]+)\s*;", text, re.M)
         m = TYPE_DECL.search(JAVA_STRING.sub('""', text))
         if not m:
@@ -188,6 +188,44 @@ def resolve(t, simple, types, by_simple):
 
 def class_id(g, t, rule):
     return g.node("class", t.path, t.name, rule)
+
+
+def members(g, t):
+    """(method name, node id, first line) for the type's methods the graph knows (Graphify), in line order."""
+    pre = f"{t.name}."
+    return sorted(((n["name"][len(pre):], n["id"], (n.get("lineRange") or [0])[0]) for n in g.nodes.values()
+                   if n.get("type") == "method" and n.get("filePath") == t.path and n["name"].startswith(pre)),
+                  key=lambda m: m[2])
+
+
+def spans(g, t, rule):
+    """[(node id, text)]: each known method's lines, up to the next method; or the whole type if none are known
+    (ADR-0028). A rule attaches to the method whose text matches, not to every method of the type."""
+    ms = members(g, t)
+    if not ms:
+        return [(class_id(g, t, rule), t.text)]
+    lines = t.text.splitlines()
+    return [(nid, "\n".join(lines[start - 1:(ms[i + 1][2] - 1 if i + 1 < len(ms) else len(lines))]))
+            for i, (_, nid, start) in enumerate(ms)]
+
+
+def where(g, t, pattern, rule):
+    """Node ids of the methods (else the type) whose text matches a regex."""
+    return [nid for nid, text in spans(g, t, rule) if re.search(pattern, text)]
+
+
+def method_id(g, t, name, rule):
+    """The node of the type's method with this name, else the type's."""
+    return next((nid for n, nid, _ in members(g, t) if n == name), None) or class_id(g, t, rule)
+
+
+def at_line(g, t, line, rule):
+    """The node of the method that contains a line, else the type's."""
+    hit = None
+    for _, nid, start in members(g, t):
+        if start <= line:
+            hit = nid
+    return hit or class_id(g, t, rule)
 
 
 def enrich_java_ee(g, root):
@@ -218,27 +256,27 @@ def enrich_java_ee(g, root):
         body = t.text
         # Repositories: EntityManager use → reads/writes of entity tables
         if "EntityManager" in body:
-            reads, writes = set(), set()
-            for q in re.findall(r"createNamedQuery\s*\(\s*\"([^\"]+)\"", body):
-                if q in named:
-                    reads.add(named[q])
-            for q in re.findall(r"create(?:Native)?Query\s*\(\s*\"([^\"]+)\"", body):
-                reads |= entities_in_jpql(q)
-            for cls in re.findall(r"\b(?:find|getReference)\s*\(\s*(\w+)\.class", body):
-                e = resolve(t, cls, types, by_simple)
-                if e in tables:
-                    reads.add(e)
             # Declarations, including for-each loop variables (`for (Leg leg : legs)`)
             declared = dict((v, ty) for ty, v in re.findall(r"\b([A-Z]\w*)(?:<[^>]*>)?\s+(\w+)\s*[,);=:]", body))
-            for op, var in re.findall(r"\.(persist|merge|remove)\s*\(\s*(\w+)", body):
-                e = resolve(t, declared.get(var, ""), types, by_simple) if var in declared else None
-                if e in tables:
-                    writes.add(e)
-            cid = class_id(g, t, "jpa-repository")
-            for e in sorted(reads):
-                g.edge(cid, tables[e], "reads_from", "jpa-repository")
-            for e in sorted(writes):
-                g.edge(cid, tables[e], "writes_to", "jpa-repository")
+            for nid, text in spans(g, t, "jpa-repository"):
+                reads, writes = set(), set()
+                for q in re.findall(r"createNamedQuery\s*\(\s*\"([^\"]+)\"", text):
+                    if q in named:
+                        reads.add(named[q])
+                for q in re.findall(r"create(?:Native)?Query\s*\(\s*\"([^\"]+)\"", text):
+                    reads |= entities_in_jpql(q)
+                for cls in re.findall(r"\b(?:find|getReference)\s*\(\s*(\w+)\.class", text):
+                    e = resolve(t, cls, types, by_simple)
+                    if e in tables:
+                        reads.add(e)
+                for op, var in re.findall(r"\.(persist|merge|remove)\s*\(\s*(\w+)", text):
+                    e = resolve(t, declared.get(var, ""), types, by_simple) if var in declared else None
+                    if e in tables:
+                        writes.add(e)
+                for e in sorted(reads):
+                    g.edge(nid, tables[e], "reads_from", "jpa-repository")
+                for e in sorted(writes):
+                    g.edge(nid, tables[e], "writes_to", "jpa-repository")
         # CDI / EJB dependency injection (framework wiring): @Inject / @EJB fields → calls
         for ty in (re.findall(r"@(?:Inject|EJB)\b(?:\s*@\w+(?:\([^)]*\))?)*\s+(?:private|protected|public)?\s*"
                              r"(?:final\s+)?([A-Z]\w*)(?:<[^>]*>)?\s+\w+\s*;", body)):
@@ -249,22 +287,25 @@ def enrich_java_ee(g, root):
         base = re.search(r"@Path\s*\(\s*\"([^\"]*)\"\s*\)\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:public\s+)?"
                          r"(?:abstract\s+)?(?:class|interface)\b", body)
         if base:
-            for verb, sub in re.findall(r"@(GET|POST|PUT|DELETE|PATCH)\b((?:\s*@\w+(?:\([^)]*\))?)*)", body):
+            for verb, sub, meth in re.findall(r"@(GET|POST|PUT|DELETE|PATCH)\b((?:\s*@\w+(?:\([^)]*\))?)*)\s*"
+                                              r"(?:(?:public|protected|private|static|final)\s+)*"
+                                              r"[\w<>\[\],.?\s]+?\s(\w+)\s*\(", body):
                 pm = re.search(r"@Path\s*\(\s*\"([^\"]*)\"", sub)
                 path = "/" + "/".join(x.strip("/") for x in (base.group(1), pm.group(1) if pm else "") if x.strip("/"))
-                eid = g.node("endpoint", t.path, f"{verb} {path}", "jax-rs", f"HTTP {verb} {path} ({t.name})")
-                g.edge(eid, class_id(g, t, "jax-rs"), "routes", "jax-rs")
+                eid = g.node("endpoint", t.path, f"{verb} {path}", "jax-rs", f"HTTP {verb} {path} ({t.name}.{meth})")
+                g.edge(eid, method_id(g, t, meth, "jax-rs"), "routes", "jax-rs")
     # JMS: producers (@Resource(lookup=…) Queue/Topic fields) publish to a queue node; @MessageDriven
     # consumers with the same destinationLookup are triggered by it — the asynchronous hop of a flow.
     for fq, t in types.items():
-        for lookup in re.findall(r"@Resource\s*\(\s*(?:lookup|name|mappedName)\s*=\s*\"([^\"]+)\"[^)]*\)\s*"
-                                 r"(?:private|protected|public)?\s*(?:Queue|Topic|Destination)\s+\w+", t.text):
+        for lookup, field in re.findall(r"@Resource\s*\(\s*(?:lookup|name|mappedName)\s*=\s*\"([^\"]+)\"[^)]*\)\s*"
+                                        r"(?:private|protected|public)?\s*(?:Queue|Topic|Destination)\s+(\w+)", t.text):
             qid = g.node("resource", "jms", lookup, "jms", f"JMS destination {lookup}")
-            g.edge(class_id(g, t, "jms"), qid, "publishes", "jms")
+            for nid in where(g, t, rf"\b{field}\b", "jms"):      # the methods that use this queue (ADR-0028)
+                g.edge(nid, qid, "publishes", "jms")
         if re.search(r"@MessageDriven\b", t.text):
             for lookup in re.findall(r"destinationLookup\"\s*,\s*propertyValue\s*=\s*\"([^\"]+)\"", t.text):
                 qid = g.node("resource", "jms", lookup, "jms", f"JMS destination {lookup}")
-                g.edge(qid, class_id(g, t, "jms"), "triggers", "jms")
+                g.edge(qid, method_id(g, t, "onMessage", "jms"), "triggers", "jms")
     # WebSocket endpoints: @ServerEndpoint("/x") → endpoint `WS /x`, routes to the class
     for fq, t in types.items():
         m = re.search(r"@ServerEndpoint\s*\(\s*(?:value\s*=\s*)?\"([^\"]+)\"", t.text)
@@ -278,22 +319,25 @@ def enrich_java_ee(g, root):
     ev_name = lambda q, ty: " ".join(["cdi-event", *[f"@{x}" for x in q], ty])
     events = {}
     for fq, t in types.items():
-        for anns, ty in re.findall(r"((?:@\w+(?:\([^)]*\))?\s*)+)(?:private|protected|public)?\s*(?:final\s+)?"
-                                   r"Event\s*<\s*(\w+)[^>]*>\s+\w+\s*;", t.text):
+        for anns, ty, field in re.findall(r"((?:@\w+(?:\([^)]*\))?\s*)+)(?:private|protected|public)?\s*"
+                                          r"(?:final\s+)?Event\s*<\s*(\w+)[^>]*>\s+(\w+)\s*;", t.text):
             if "@Inject" in anns:
                 key = (quals(anns), ty)
                 events[key] = g.node("resource", "cdi", ev_name(*key), "cdi-event", f"CDI event {ev_name(*key)}")
-                g.edge(class_id(g, t, "cdi-event"), events[key], "publishes", "cdi-event")
+                for nid in where(g, t, rf"\b{field}\s*\.\s*fire\b", "cdi-event"):
+                    g.edge(nid, events[key], "publishes", "cdi-event")
     for fq, t in types.items():
-        for before, after, ty in re.findall(r"((?:@\w+(?:\([^)]*\))?\s+)*)@Observes\b((?:\s*@\w+(?:\([^)]*\))?)*)"
-                                            r"\s+(?:final\s+)?(\w+)", t.text):
+        for m in re.finditer(r"((?:@\w+(?:\([^)]*\))?\s+)*)@Observes\b((?:\s*@\w+(?:\([^)]*\))?)*)"
+                             r"\s+(?:final\s+)?(\w+)", t.text):
+            before, after, ty = m.groups()
+            observer = at_line(g, t, t.text[:m.start()].count("\n") + 1, "cdi-event")
             q = set(quals(before + after))
             hits = [eid for (pq, pty), eid in events.items() if pty == ty and q <= set(pq)]
             if not hits:
                 key = (tuple(sorted(q)), ty)
                 hits = [g.node("resource", "cdi", ev_name(*key), "cdi-event", f"CDI event {ev_name(*key)}")]
             for eid in hits:
-                g.edge(eid, class_id(g, t, "cdi-event"), "triggers", "cdi-event")
+                g.edge(eid, observer, "triggers", "cdi-event")
     # EJB timers: @Schedule(…) on a method → `timer Class.method (…)` triggers the class
     for fq, t in types.items():
         for args, meth in re.findall(r"@Schedule\s*\(([^)]*)\)\s*(?:@\w+(?:\([^)]*\))?\s*)*"
@@ -301,7 +345,7 @@ def enrich_java_ee(g, root):
             spec = ", ".join(re.sub(r"\s*=\s*", "=", a.strip()).replace('"', "") for a in args.split(",") if a.strip())
             tid = g.node("resource", t.path, f"timer {t.name}.{meth} ({spec})", "ejb-schedule",
                          f"EJB timer @Schedule({spec}) on {t.name}.{meth}")
-            g.edge(tid, class_id(g, t, "ejb-schedule"), "triggers", "ejb-schedule")
+            g.edge(tid, method_id(g, t, meth, "ejb-schedule"), "triggers", "ejb-schedule")
     # Batch (JSR 352): batch-jobs/J.xml → `batch-job J` calls each ref="" bean; JobOperator.start("J") calls it
     beans = {}
     for fq, t in types.items():
@@ -319,7 +363,8 @@ def enrich_java_ee(g, root):
         if "JobOperator" in t.text:
             for job in re.findall(r"\.start\s*\(\s*\"([^\"]+)\"", t.text):
                 jid = jobs.get(job) or g.node("resource", "batch", f"batch-job {job}", "jsr352", f"Batch job {job}")
-                g.edge(class_id(g, t, "jsr352"), jid, "calls", "jsr352")
+                for nid in where(g, t, rf"\.start\s*\(\s*\"{re.escape(job)}\"", "jsr352"):
+                    g.edge(nid, jid, "calls", "jsr352")
     # JSF pages → page nodes; EL bean references → routes to the @Named bean
     eps = endpoint_index(g)
     xhtml = sorted(root.rglob("*.xhtml"))
@@ -515,13 +560,20 @@ def enrich_django(g, root):
 
     # Function-level: ORM reads/writes, template renders, task enqueues (calls between project code come from
     # Graphify's language layer, ADR-0025)
+    # A class's methods get their own node when the graph knows them (Graphify, ADR-0028); the class body
+    # outside methods stays the class's.
+    known = {(n.get("filePath"), n.get("name")): n["id"] for n in g.nodes.values() if n.get("type") == "method"}
     for name, (m, top) in defs.items():
-        scopes = [top] if not isinstance(top, ast.ClassDef) else [top] + [
-            s for s in top.body if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))]
-        owner = py_node(g, m, top, "django-code")
-        for scope in scopes:
+        top_id = py_node(g, m, top, "django-code")
+        if isinstance(top, ast.ClassDef):
+            funcs = [s for s in top.body if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            scopes = [(top_id, [s for s in top.body if s not in funcs])] + [
+                (known.get((m.path, f"{top.name}.{f.name}"), top_id), [f]) for f in funcs]
+        else:
+            scopes = [(top_id, [top])]
+        for owner, stmts in scopes:
             local_types = {}
-            for node in ast.walk(scope):
+            for node in (n for st in stmts for n in ast.walk(st)):
                 if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
                     mt = model_of(node.value.func, m)
                     for tg in node.targets:
@@ -663,9 +715,14 @@ class GraphifyError(Exception):
 
 
 def merge_graphify(g, doc):
-    """Add Graphify's language-level structure (calls, implements, inherits) between top-level types and
-    functions, matched to existing nodes by (file, name). Methods count as their type. `references` and
-    `uses` (a type is mentioned) are not flow and are left out. Every edge says Graphify's confidence."""
+    """Add Graphify's language-level structure, at method level (ADR-0025, ADR-0028).
+
+    Top-level types and functions are matched to existing nodes by (file, name). A method becomes a `method`
+    node `Type.name` that its type `contains`, so a flow that enters at a method follows only what that method
+    does, while a flow that enters at the type (a page using a bean) still reaches all of it. Flow links
+    (calls, uses, implements, inherits) keep their method endpoints. An implementing type's method
+    `implements` the interface method of the same name, so a call to an interface method reaches its
+    implementations, method by method. `references` (a type is mentioned) is not flow and is left out."""
     version = (doc.get("graph") or {}).get("schema_version")
     if version not in GRAPHIFY_SCHEMAS:
         raise GraphifyError(f"Graphify graph.schema_version {version!r} is not one of {sorted(GRAPHIFY_SCHEMAS)}: "
@@ -677,39 +734,64 @@ def merge_graphify(g, doc):
             owner[link["target"]] = link["source"]
         elif link["relation"] == "contains":
             top.add(link["target"])
+    code = lambda n: n and n.get("file_type") == "code" and not n.get("external") and n.get("source_file")
 
     def type_of(nid):
         seen = set()
         while nid in owner and nid not in top and nid not in seen:
             seen.add(nid)
             nid = owner[nid]
-        n = nodes.get(nid)
-        return n if n and n.get("file_type") == "code" and not n.get("external") and n.get("source_file") else None
+        return nodes.get(nid) if code(nodes.get(nid)) else None
 
     existing = {(n.get("filePath"), n.get("name")): n["id"] for n in g.nodes.values()
-                if n.get("type") in ("class", "function", "interface")}
+                if n.get("type") in ("class", "function", "interface", "method")}
+    label = lambda n: n["label"].lstrip(".").removesuffix("()")
+    line_of = lambda n: int(re.sub(r"\D", "", str(n.get("source_location") or "")) or 0) or None
+    methods = collections.defaultdict(dict)          # type node id → {method name: method node id}
 
     def node_id(n):
-        name = n["label"].lstrip(".").removesuffix("()")
-        key = (n["source_file"], name)
+        """The graph node for a Graphify node: its method node when it is a method, else its type/function."""
+        t = type_of(n["id"])
+        if not t:
+            return None
+        key = (t["source_file"], label(t))
         if key not in existing:
-            kind = "class" if n.get("_callable_class") else "function"
-            line = int(re.sub(r"\D", "", str(n.get("source_location") or "")) or 0) or None
-            existing[key] = g.node(kind, n["source_file"], name, "graphify", line=line)
-        return existing[key]
+            kind = "class" if t.get("_callable_class") else "function"
+            existing[key] = g.node(kind, t["source_file"], label(t), "graphify", line=line_of(t))
+        tid = existing[key]
+        if t is nodes.get(n["id"]) or not code(nodes.get(n["id"])):
+            return tid
+        mkey = (n["source_file"], f"{label(t)}.{label(n)}")
+        if mkey not in existing:
+            existing[mkey] = g.node("method", n["source_file"], mkey[1], "graphify", line=line_of(n))
+            g.edge(tid, existing[mkey], "contains", "graphify", description="method")
+        methods[tid][label(n)] = existing[mkey]
+        return existing[mkey]
 
+    for nid in owner:                                  # every method, called or not
+        if code(nodes.get(nid)):
+            node_id(nodes[nid])
     interfaces = {l["source"] for l in doc.get("links", []) if l["relation"] == "inherits"
                   and nodes.get(l["target"], {}).get("label") in INTERFACE_BASES}
+    impls = []
     for link in doc.get("links", []):
         etype = GRAPHIFY_FLOW.get(link["relation"])
-        a, b = type_of(link["source"]), type_of(link["target"])
-        if not etype or not a or not b or a is b:
+        src, dst = nodes.get(link["source"]), nodes.get(link["target"])
+        if not etype or not code(src) or not code(dst):
             continue
-        if etype == "inherits" and b["id"] in interfaces:
+        a, b = node_id(src), node_id(dst)
+        if not a or not b or a == b:
+            continue
+        if etype == "inherits" and type_of(dst["id"]) and type_of(dst["id"])["id"] in interfaces:
             etype = "implements"
         where = f"{link.get('source_file', '')}:{link.get('source_location', '')}".strip(":")
-        g.edge(node_id(a), node_id(b), etype, "graphify",
-               description=f"{link['relation']} {link.get('confidence', '?')} {where}".strip())
+        g.edge(a, b, etype, "graphify", description=f"{link['relation']} {link.get('confidence', '?')} {where}".strip())
+        if etype == "implements":
+            impls.append((a, b))
+    for impl, iface in impls:                          # method-level dispatch: same-named methods
+        for name, im in methods.get(impl, {}).items():
+            if name in methods.get(iface, {}):
+                g.edge(im, methods[iface][name], "implements", "graphify", description="method of an implemented type")
 
 
 ENRICHERS = {"java-ee": enrich_java_ee, "django": enrich_django}
