@@ -167,17 +167,20 @@ FORWARD = {"routes", "calls", "contains", "inherits", "reads_from", "writes_to",
 BACKWARD = {"implements"}   # interface → implementation
 
 
-def data_path(anchor, nodes, edges, by_id):
+def anchor_nodes(anchor, nodes):
+    """Ids of the nodes an anchor names: TYPE=NAME matches a node of that type exactly; otherwise the end of
+    a node's file path or id, or its whole name."""
     ntype, sep, exact = anchor.partition("=")
     if sep and ntype.isidentifier():          # TYPE=NAME: exact name of a node of that type, e.g. endpoint=/
-        starts = [n["id"] for n in nodes if n.get("type") == ntype and n.get("name") == exact]
-    else:
-        al = anchor.lower()
-        starts = [n["id"] for n in nodes if n.get("type") not in DATA_TYPES and (
-            str(n.get("filePath", "")).lower().endswith(al) or str(n.get("name", "")).lower() == al
-            or n["id"].lower().endswith(al))]
-    if not starts:
-        return "no matching node (match a node's name, or the end of its file path or id)"
+        return [n["id"] for n in nodes if n.get("type") == ntype and n.get("name") == exact]
+    al = anchor.lower()
+    return [n["id"] for n in nodes if n.get("type") not in DATA_TYPES and (
+        str(n.get("filePath", "")).lower().endswith(al) or str(n.get("name", "")).lower() == al
+        or n["id"].lower().endswith(al))]
+
+
+def flow(edges):
+    """Adjacency of the directed flow: FORWARD edges forward, BACKWARD edges reversed."""
     adj = collections.defaultdict(list)
     for e in edges:
         s, t, et = e.get("source"), e.get("target"), e.get("type")
@@ -185,6 +188,26 @@ def data_path(anchor, nodes, edges, by_id):
             adj[s].append((t, et, "→"))
         elif et in BACKWARD:
             adj[t].append((s, et, "←"))
+    return adj
+
+
+def reachable(starts, edges):
+    """Every node the directed flow reaches from the start nodes (including them)."""
+    adj, seen = flow(edges), set(starts)
+    queue = collections.deque(starts)
+    while queue:
+        for nxt, _, _ in adj[queue.popleft()]:
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append(nxt)
+    return seen
+
+
+def data_path(anchor, nodes, edges, by_id):
+    starts = anchor_nodes(anchor, nodes)
+    if not starts:
+        return "no matching node (match a node's name, or the end of its file path or id)"
+    adj = flow(edges)
     prev = {s: None for s in starts}
     queue = collections.deque(starts)
     while queue:

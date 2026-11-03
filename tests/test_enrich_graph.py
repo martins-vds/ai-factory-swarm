@@ -1,5 +1,8 @@
 """tools/enrich_graph.py and the graph gate (ADR-0020): deterministic links Understand Anything can't infer."""
+import contextlib
+import io
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -315,6 +318,62 @@ class GraphGateTest(unittest.TestCase):
             self.repo(d, [], {}, graph=False)
             self.assertEqual(self.gate(d, "--side", "target").returncode, 0)
             self.assertEqual(self.gate(d, "--side", "target", "--require-graph").returncode, 1)
+
+    def test_target_entry_points_must_be_owned_by_a_slice(self):
+        import graph_gate
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/api/board/"], {})
+            spec = r / ".migration/slices/orders.yaml"
+            cwd = os.getcwd()
+            try:
+                os.chdir(r)
+                loose, stale = graph_gate.unowned(*graph_gate.load_graph("target"))
+                names = {n["name"] for n in loose}
+                self.assertNotIn("/api/board/", names, "the anchor itself")
+                self.assertNotIn("/api/board/rows/", names, "reached from the anchor (htmx)")
+                self.assertNotIn("/api/health/", names, "reached from the anchor's page (hx-post)")
+                self.assertEqual(names, {"/", "import_orders"})
+                spec.write_text(json.dumps({"data_paths": {"target": ["endpoint=/api/board/"]},
+                                            "entry_points": {"target": ["endpoint=/", "command=import_orders",
+                                                                        "endpoint=/gone/"]}}))
+                loose, stale = graph_gate.unowned(*graph_gate.load_graph("target"))
+                self.assertEqual(loose, [])
+                self.assertEqual(stale, ["slice orders: entry_points.target `endpoint=/gone/` matches no node"])
+            finally:
+                os.chdir(cwd)
+            r2 = self.gate(d, "--side", "target")
+            self.assertEqual(r2.returncode, 0, "outside acceptance, ownership problems are warnings")
+            self.assertIn("matches no node", r2.stderr)
+
+    def test_unowned_entry_point_fails_at_acceptance(self):
+        import graph_gate
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/"], {})
+            cwd, accepting = os.getcwd(), graph_gate.check_graph_fresh.accepting
+            try:
+                os.chdir(r)
+                graph_gate.check_graph_fresh.accepting = lambda base: True
+                with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                    code = graph_gate.main(["--side", "target", "--acceptance-since", "base"])
+            finally:
+                graph_gate.check_graph_fresh.accepting = accepting
+                os.chdir(cwd)
+            self.assertEqual(code, 1)
+            self.assertIn("endpoint=/api/board/ (src/shop/orders/interfaces/urls.py) is owned by no slice", out.getvalue())
+
+
+class SliceSchemaTest(unittest.TestCase):
+    def test_unknown_keys_and_bad_entry_points_are_errors(self):
+        import jsonschema
+        schema = json.loads((ROOT / "schemas/slice.schema.json").read_text())
+        v = jsonschema.Draft202012Validator(schema)
+        good = {"epic": 9, "data_paths": {"source": ["a.xhtml"], "target": ["endpoint=/"]},
+                "entry_points": {"target": ["endpoint=/tracking/map/", "command=seed_sample_data"]}}
+        self.assertEqual(list(v.iter_errors(good)), [])
+        self.assertTrue(list(v.iter_errors({"data_path": {"target": ["endpoint=/"]}})), "misspelt key")
+        self.assertTrue(list(v.iter_errors({"data_paths": {"targets": ["endpoint=/"]}})), "misspelt side")
+        self.assertTrue(list(v.iter_errors({"entry_points": {"target": ["/tracking/map/"]}})), "needs TYPE=NAME")
+
 
 class BootstrapGraphTest(unittest.TestCase):
     def test_profile_must_state_the_stack_packs_graph_settings(self):

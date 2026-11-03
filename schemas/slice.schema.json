@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/slice.schema.json",
+  "title": "Slice spec (.migration/slices/<slice>.yaml)",
+  "description": "One vertical slice: its epic, where its flows start in each graph, and (for a per-slice source graph) what to extract. Unknown keys are errors, so a misspelt key can't be silently ignored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "epic": { "type": "integer", "minimum": 1, "description": "The slice epic's issue number (ADR-0022, ADR-0024)." },
+    "data_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Anchors that must reach data through the directed flow (ADR-0020). TYPE=NAME matches exactly.",
+      "properties": {
+        "source": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "target": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "entry_points": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Target entry points this slice owns that its data_paths don't reach (ADR-0026).",
+      "properties": {
+        "target": { "type": "array", "items": { "type": "string", "pattern": "^(endpoint|command)=.+" } }
+      }
+    },
+    "anchors": { "type": "array", "items": { "type": "string" }, "description": "Undirected anchors reported by a per-slice graph run (findings only)." },
+    "root": { "type": "string", "description": "extract_slice.py: folder inside the source checkout." },
+    "seeds": { "type": "array", "items": { "type": "string" }, "description": "extract_slice.py: seed classes." },
+    "depth": { "type": "integer", "minimum": 0, "description": "extract_slice.py: import hops to follow." },
+    "extra": { "type": "array", "items": { "type": "string" }, "description": "extract_slice.py: extra files to copy." },
+    "faces_config": { "type": "string", "description": "extract_slice.py: JSF faces-config to trim." },
+    "bean_prefix": { "type": "string", "description": "extract_slice.py: keep managed beans with this prefix." }
+  }
+}

@@ -41,7 +41,9 @@ strategy, UI direction), `profile.context.working_budget`.
    page whose script polls or fetches all anchor a flow. Run `graph_gate.py --side source`: each anchor
    must reach a table through the directed flow. A slice that can't is either mis-anchored or exposes an
    enricher gap: say which in the plan. Add `data_paths.target` anchors (the planned target entry points)
-   for acceptance.
+   for acceptance, and list in `entry_points.target` every other target endpoint or command the slice
+   adds that those anchors don't reach (a frame, a seed command): at acceptance, an entry point no slice
+   owns fails the gate (ADR-0026). The spec is validated by `schemas/slice.schema.json`.
 7. Write the plan as a draft for review (do not publish).
 
 ## Rules
