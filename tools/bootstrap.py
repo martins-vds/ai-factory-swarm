@@ -50,7 +50,7 @@ HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "ext
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -295,7 +295,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
     for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-costs.yml",
-                 "afs-map-fog.yml"):
+                 "afs-map-fog.yml", "afs-ticket-guard.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")
