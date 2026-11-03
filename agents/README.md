@@ -30,8 +30,16 @@ edit its PR description after opening it, and it has no user token. So:
 - **Everything a remote agent must leave behind is a committed file** — return file, handoff, quirk
   drafts, run journal (`afs-migration-contract` → Durable outputs). The dispatcher reads those files,
   turns quirk drafts into issues, and links them.
-- **Verifier on someone else's PR:** dispatch it with `base_branch` set to the PR's head branch; its PR
-  targets that branch and carries its tests, run journal and `<ticket>.afs-verifier.yaml`.
+- **Verifier on someone else's PR:** open a **verification issue** for it, "Verify <ticket> (PR #N)", as a
+  sub-issue of the ticket, and assign *that* to the Copilot coding agent with `afs-verifier` and
+  `base_branch` set to the PR's head branch. Its PR targets that branch and carries its tests, run journal
+  and `<ticket>.afs-verifier.yaml`. Never re-assign the work ticket itself. Copilot connects every PR to
+  the issue it was assigned from, and merging a connected PR closes that issue *on any branch*, so a
+  re-assigned ticket closes when the Verifier's PR lands on the work branch, before the work reaches
+  `main` (pilot HR-04A/B).
+- **Merging stacked PRs:** once a Verifier PR targets a work branch, GitHub treats both as stacked and
+  refuses the plain merge endpoint. Use `PUT /repos/{owner}/{repo}/pulls/{n}/merge-async` (same
+  `merge_method`), Verifier PR first, then the work PR.
 - Copilot PRs' workflow runs may wait for approval; a push by a human or L0 runs CI on them.
 
 ## Conventions (checked by `tests/test_agents.py`)

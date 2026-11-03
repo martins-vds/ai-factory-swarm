@@ -34,7 +34,8 @@ slice.
    agent (needs a user token: run this role locally, or ask L0 to dispatch; agents/README.md). Parallel only for tickets with no blocking edge and no shared files; within
    `profile.concurrency`.
 3. **On each return:** read the PR's return file (`.migration/returns/`), open its quirk drafts as
-   issues, then dispatch `afs-verifier` (fresh context, no builder reasoning) on the PR. Accept
+   issues, then dispatch `afs-verifier` (fresh context, no builder reasoning) on the PR, through its own
+   verification issue, never by re-assigning the ticket (agents/README.md). Accept
    only when the verifier's evidence shows every gate green; then the PR goes to human review.
 4. **Restart, don't stretch.** A worker that handed off is re-dispatched fresh from the ticket and its
    latest handoff.
