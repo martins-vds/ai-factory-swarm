@@ -42,9 +42,12 @@ edit its PR description after opening it, and it has no user token. So:
   a sub-issue of the ticket) with `base_branch` set to the work PR's head branch. An `@copilot` mention on
   the PR may continue the session or may be ignored (pilot HR-04C: two mentions never started one), and
   a fresh session from the findings is the rule anyway ("restart, don't stretch").
-- **Merging stacked PRs:** once a Verifier PR targets a work branch, GitHub treats both as stacked and
-  refuses the plain merge endpoint. Use `PUT /repos/{owner}/{repo}/pulls/{n}/merge-async` (same
-  `merge_method`), Verifier PR first, then the work PR.
+- **Merging a Verifier PR into the work branch:** do it with git, never with GitHub's stacked merge.
+  `git fetch origin <verifier-branch> <work-branch>`, check out the work branch, `git merge --no-ff
+  origin/<verifier-branch>`, push. GitHub then marks the Verifier PR merged, and nothing reaches `main`.
+  **Never use `merge-async` on a PR whose base is another PR's branch:** it merges the *whole stack* into
+  the default branch (pilot HR-04C: an unverified work PR and its failing test landed on `main`). The work
+  PR reaches `main` only by its own plain merge, after its Verifier passes.
 - Copilot PRs' workflow runs may wait for approval; a push by a human or L0 runs CI on them.
 
 ## Conventions (checked by `tests/test_agents.py`)

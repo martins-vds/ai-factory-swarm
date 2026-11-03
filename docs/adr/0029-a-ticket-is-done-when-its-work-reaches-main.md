@@ -8,8 +8,10 @@ A closed ticket is read as done: its blocking edges lift, the next tickets get d
 slice-epic check (ADR-0024) counts it. On the pilot, tickets closed before their work reached `main`, twice:
 1. **HR-04A/B:** re-assigning the work ticket to the Verifier connected the Verifier's PR to it. Merging that
    PR into the work branch closed the ticket. (Fix: each Verifier gets its own issue, ai-factory-swarm#51.)
-2. **HR-04C:** the Verifier had its own issue, but merging its PR into the work branch, which GitHub treats as
-   a stacked merge (`merge-async`), still closed the work ticket, one second before the Verifier's own issue.
+2. **Correction (HR-04C):** that ticket's close was *not* early. Merging its Verifier PR through GitHub's
+   stacked merge (`merge-async`) merged the whole stack, including the work PR, into `main`, so the ticket
+   closed correctly. The harm was the unapproved, unverified merge itself, which was reverted (pilot #153).
+   The dispatch notes now forbid `merge-async` on stacked PRs (agents/README.md).
 
 GitHub decides when to close linked issues, and the rules differ by merge path. The harness can't control
 that, but it can refuse the wrong outcome.
