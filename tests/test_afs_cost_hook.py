@@ -53,6 +53,16 @@ class CostHookTest(unittest.TestCase):
         self.assertEqual(rec["diagnostics"]["event_types"]["assistant.message"], 1)
         self.assertEqual(rec["surface"], "local")
 
+    def test_record_lists_the_harness_tools_the_session_ran(self):
+        t = log(self.dir / "t/events.jsonl", [
+            {"type": "tool.execution_complete", "data": {"result": {"content": "ok\nAFS-TOOL validate.py exit=0\n"}}},
+            {"type": "tool.execution_complete", "data": {"result": {"content": "AFS-TOOL check_inputs.py exit=1"}}},
+            {"type": "tool.execution_complete", "data": {"result": {"content": "AFS-TOOL validate.py exit=0"}}}])
+        run(self.dir, {"sessionId": "h1", "transcriptPath": str(t)})
+        self.assertEqual(self.record("h1")["harness_tools"], [
+            {"tool": "check_inputs.py", "exit": 1, "count": 1}, {"tool": "validate.py", "exit": 0, "count": 2},
+            {"tool": "afs-cost-hook", "exit": 0, "count": 1}])
+
     def test_partial_record_names_the_model_and_coding_agent_does_not_wait(self):
         t = log(self.dir / "t/events.jsonl", [
             {"type": "session.start", "data": {"selectedModel": "claude-x"}},
