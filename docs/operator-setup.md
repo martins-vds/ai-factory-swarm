@@ -54,7 +54,8 @@ Understand Anything (UA) builds the graph with an LLM. For data and routing it o
 
 **The target graph analyses only `graph.target_paths`** (default `src`). Templates in a top-level
 `templates/` folder are pages too: list that folder, or the graph can't see them. `check_graph_fresh.py`
-reports every tracked Django template outside the analysed paths, and fails on it at acceptance.
+reports every tracked Django template outside the analysed paths, and fails on it at acceptance. A
+folder with templates that aren't application pages goes in `graph.target_exclude`.
 
 A stack without an enricher has only the UA column. That is a **capability gap** ("graph data links") at
 bootstrap, not something to discover at acceptance. Enricher-added nodes and edges are tagged

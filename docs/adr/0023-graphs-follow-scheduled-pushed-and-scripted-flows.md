@@ -37,8 +37,16 @@ folder, so even Track Cargo's htmx form was invisible, and nothing said so.
      `/`.
 2. **The target graph must cover every template.** `check_graph_fresh.py` reports each tracked Django
    template (an `.html` file with `{% %}` or `{{ }}`) outside the analysed paths, naming the fix (add the
-   folder to `graph.target_paths`). Like staleness, it is a warning on ordinary changes and fails at
+   folder to `graph.target_paths`). Folders that hold no application pages are listed in the profile's
+   `graph.target_exclude`; only universal non-app folders (`.github`, `.migration`, `.source`, `docs`,
+   tests, `node_modules`) are built in, never a project's own folder names. Like staleness, it is a warning on ordinary changes and fails at
    acceptance and in the graph workflow's own check (`--only`), so an incomplete graph can't be committed.
+
+3. **Rules encode frameworks, never one project.** A rule may rely on a framework's documented convention
+   (an annotation, a file location, a settings entry), and is proven on the generic fixtures, not on the
+   pilot. Example: a Django model's default table name comes from its app's label, resolved from
+   `INSTALLED_APPS` and the `AppConfig` (or `Meta.app_label`) the way Django does, not from folder names
+   such as `infrastructure`.
 
 ## Consequences
 - On the pilot's source graph, the drop-folder scanner and the admin map frame now reach the `Cargo`
