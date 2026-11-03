@@ -228,7 +228,8 @@ def enrich_java_ee(g, root):
                 e = resolve(t, cls, types, by_simple)
                 if e in tables:
                     reads.add(e)
-            declared = dict((v, ty) for ty, v in re.findall(r"\b([A-Z]\w*)(?:<[^>]*>)?\s+(\w+)\s*[,);=]", body))
+            # Declarations, including for-each loop variables (`for (Leg leg : legs)`)
+            declared = dict((v, ty) for ty, v in re.findall(r"\b([A-Z]\w*)(?:<[^>]*>)?\s+(\w+)\s*[,);=:]", body))
             for op, var in re.findall(r"\.(persist|merge|remove)\s*\(\s*(\w+)", body):
                 e = resolve(t, declared.get(var, ""), types, by_simple) if var in declared else None
                 if e in tables:
