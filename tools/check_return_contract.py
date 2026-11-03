@@ -8,7 +8,7 @@ Usage (in CI, on pull_request events, with full history):
 Applies to agent PRs only: head branch `copilot/…` or a bot/Copilot author. Others pass untouched.
 An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.yaml` (diff against
 --base). When the PR body says `Fixes #N` / `Closes #N` / `Resolves #N`, one of those files must have
-`issue: <owner>/<repo>#N`. The file's content is validated against schemas/return.schema.json by
+`issue: <owner>/<repo>#N`, or name the ticket #N is a sub-issue of (a Verifier's or a fix's own issue). The file's content is validated against schemas/return.schema.json by
 `validate.py` in the same workflow. A return contract pasted into the PR description (instead of
 linked) produces a warning, not a failure, because later sessions cannot edit the description.
 Needs git and PyYAML.
@@ -50,7 +50,24 @@ def changed_return_files(base, root="."):
     return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
 
 
-def check(body, files, root="."):
+def github_parent(number):
+    """The parent ticket of a sub-issue (a Verifier's or a fix's own issue), via the REST API in CI; else None."""
+    import urllib.request
+    repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not repo or not token:
+        return None
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/issues/{number}",
+                                 headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            url = json.load(r).get("parent_issue_url") or ""
+    except (OSError, ValueError):
+        return None
+    m = re.search(r"/issues/(\d+)$", url)
+    return m.group(1) if m else None
+
+
+def check(body, files, root=".", parent_of=lambda n: None):
     if not files:
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
@@ -65,9 +82,13 @@ def check(body, files, root="."):
             m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
             if m:
                 found.add(m.group(1))
-        if not issues & found:
+        # A Verifier or a fix runs on its own issue, a sub-issue of the ticket (agents/README.md): its PR closes
+        # that issue while the return file names the ticket. Either counts.
+        accepted = issues | {p for p in (parent_of(n) for n in issues) if p}
+        if not accepted & found:
             return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
-                           f"matching `issue:` (files: {', '.join(files)})")
+                           f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
+                           f"{', '.join(files)})")
     return True, f"return file(s): {', '.join(files)}"
 
 
@@ -86,7 +107,7 @@ def main():
     if not is_agent_pr(pr):
         print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
-    ok, msg = check(pr.get("body") or "", changed_return_files(a.base))
+    ok, msg = check(pr.get("body") or "", changed_return_files(a.base), parent_of=github_parent)
     if pasted_contract(pr.get("body") or ""):
         # A warning, not a failure: a follow-up session cannot edit the description to fix it.
         print("::warning title=Return contract pasted into the PR description::Link to "
