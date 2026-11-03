@@ -10,7 +10,7 @@ jobs:
   graphify:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
@@ -48,8 +48,17 @@ jobs:
               ls -la "out/$side-$run"
             done
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v5
+        with: { path: repo }
+      - name: Push the outputs to spike/graphify-results (artifacts aren't reachable from the analysis session)
         if: always()
-        with:
-          name: graphify-spike
-          path: out/
+        run: |
+          cd repo
+          git switch -q --orphan spike/graphify-results
+          git rm -rq --cached . 2>/dev/null || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r ../out/. .
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Graphify spike outputs (run ${{ github.run_id }})"
+          git push -qf origin spike/graphify-results
