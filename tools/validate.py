@@ -20,10 +20,13 @@ Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import shlex
+import subprocess
 import sys
+import tempfile
 
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
@@ -127,11 +130,39 @@ def scores_in(node, where=""):
                 yield from scores_in(v, path)
 
 
+def journal_as_of(ret, journal):
+    """The journal's rows as they were when the return file was last committed (ADR-0017, amended).
+
+    A ticket's journal is shared: a Verifier's later runs append to the Migrator's. Checked against the
+    journal's latest row, a Verifier's failing run invalidated the Migrator's return, and the Verifier then
+    edited that return (pilot HR-04C). A return's score must equal the last mutation run *when it was
+    written*: the journal at the commit that last changed the return, or now if the return has uncommitted
+    changes or there is no git history."""
+    def git(*a):
+        r = subprocess.run(["git", *a], capture_output=True, text=True, cwd=ret.parent)
+        return r.stdout if r.returncode == 0 else None
+    top = git("rev-parse", "--show-toplevel")
+    if top and not git("status", "--porcelain", "--", ret.name):
+        commit = (git("log", "-1", "--format=%H", "--", ret.name) or "").strip()
+        if commit:
+            rel = os.path.relpath(journal.resolve(), top.strip())
+            text = git("show", f"{commit}:{rel}")
+            if text is None:
+                return []
+            tmp = pathlib.Path(tempfile.mkstemp(suffix=".md")[1])
+            try:
+                tmp.write_text(text, encoding="utf-8")
+                return read_journal(tmp)[0]
+            finally:
+                tmp.unlink()
+    return read_journal(journal)[0] if journal.is_file() else []
+
+
 def check_return_evidence(folder, path, doc, profile, errors):
     """ADR-0017: a finished return reports every gate, and every score matches a gate run's AFS-RESULT."""
     ticket = doc.get("ticket")
     journal = folder / "evidence" / "runs" / f"{ticket}.md"
-    rows, _ = read_journal(journal) if journal.is_file() else ([], True)
+    rows = journal_as_of(path, journal)
     finished = doc.get("handoff") in (None, "", "none")
     if finished:
         for key, value in (doc.get("gates") or {}).items():
@@ -154,7 +185,7 @@ def check_return_evidence(folder, path, doc, profile, errors):
             ok = False
         if not ok:
             errors.append(f"{path}: {key}={value} does not match the last mutation gate run in {journal} "
-                          f"(score={last}); report the score afs-mutation printed")
+                          f"when this return was last committed (score={last}); report the score afs-mutation printed")
 
 
 UNCOMMITTED = (".migration/runs/",)   # gitignored: raw logs vanish with the session (ADR-0018)

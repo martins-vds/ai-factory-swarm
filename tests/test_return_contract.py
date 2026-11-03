@@ -70,6 +70,35 @@ class ReturnFileTest(unittest.TestCase):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(), self.GATES)
         self.assertEqual(self.errors(r), [])
 
+    def test_a_later_role_cannot_invalidate_a_committed_return(self):
+        """Pilot HR-04C: the Verifier's failing runs appended to the shared journal must not break the
+        Migrator's committed return; a return's score is checked as of its own last commit."""
+        import tempfile as tf
+        with tf.TemporaryDirectory() as d:
+            root = pathlib.Path(d) / ".migration"
+            (root / "returns").mkdir(parents=True)
+            (root / "evidence/runs").mkdir(parents=True)
+            (root / "profile.yaml").write_text(json.dumps({"gates": self.GATES}))
+            head = ("# Run journal\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+                    "|---|---|---|---|---|---|---|---|\n")
+            row = lambda i, code, res: f"| 2026-11-02T00:00:0{i}+00:00 | mutation | {code} | 1.0 | `{self.MUT}` | `x` |  | {res} |\n"
+            journal = root / "evidence/runs/TC-02.md"
+            journal.write_text(head + row(1, 0, "gate=mutation score=1.000 threshold=0.8"))
+            ret = root / "returns/TC-02.afs-migrator.yaml"
+            ret.write_text(RETURN)
+            git = lambda *a: subprocess.run(["git", "-C", d, *a], check=True, capture_output=True)
+            git("init", "-q")
+            git("add", "-A")
+            git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "migrator")
+            journal.write_text(journal.read_text() + row(2, 2, "gate=mutation score=n/a error=mutmut-failed"))
+            git("add", "-A")
+            git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "verifier runs")
+            run = lambda: subprocess.run([sys.executable, str(ROOT / "tools/validate.py"), str(root)],
+                                         capture_output=True, text=True)
+            self.assertEqual(self.errors(run()), [], "checked against the journal as of the return's commit")
+            ret.write_text(RETURN + "\n")                    # edited now: checked against the journal now
+            self.assertIn("does not match the last mutation gate run", run().stderr)
+
     def test_scores_must_match_the_last_trusted_mutation_run(self):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run("0.912"), self.GATES)
         self.assertIn("does not match the last mutation gate run", r.stderr)
