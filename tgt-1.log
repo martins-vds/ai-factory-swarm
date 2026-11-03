@@ -1,0 +1,34 @@
++ cd /tmp/tgt-1
++ /usr/bin/time -v /tmp/gv/bin/graphify extract . --code-only
+[graphify extract] scanning /tmp/tgt-1
+[graphify extract] --code-only: skipping 5 non-code file(s) (5 docs, 0 papers, 0 images) — no LLM extraction
+[graphify extract] found 86 code, 0 docs, 0 papers, 0 images
+[graphify extract] AST extraction on 86 code files...
+  AST cache: 0/86 files served from cache (0%); 86 to extract
+  warning: 6 code file(s) yielded no symbols (0.00 MB) — a data file, or source this extractor models no symbols for: src/cargotracker/cargo/interfaces/tracking/map/coordinates.py, src/cargotracker/cargo/interfaces/tracking/map/urls.py, src/cargotracker/cargo/models.py, src/cargotracker/handling/models.py, src/cargotracker/location/models.py (+1 more)
+[graphify extract] wrote /tmp/tgt-1/graphify-out/graph.json: 298 nodes, 872 edges, 35 communities
+[graphify extract] wrote /tmp/tgt-1/graphify-out/.graphify_analysis.json
+[graphify extract] next: run `graphify cluster-only /tmp/tgt-1` to generate GRAPH_REPORT.md and name communities
+	Command being timed: "/tmp/gv/bin/graphify extract . --code-only"
+	User time (seconds): 1.20
+	System time (seconds): 0.18
+	Percent of CPU this job got: 182%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.76
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 79728
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 36143
+	Voluntary context switches: 1981
+	Involuntary context switches: 531
+	Swaps: 0
+	File system inputs: 16
+	File system outputs: 2248
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,8 @@
+[graphify extract] scanning /tmp/fx-javaee
+[graphify extract] found 17 code, 0 docs, 0 papers, 0 images
+[graphify extract] 5 file(s) not classified (no supported extension or shebang), skipped: OrderImportJob.xml, dashboard.xhtml, layout.xhtml, live.xhtml, orders.xhtml
+[graphify extract] AST extraction on 17 code files...
+  AST cache: 0/17 files served from cache (0%); 17 to extract
+[graphify extract] wrote /tmp/fx-javaee/graphify-out/graph.json: 76 nodes, 133 edges, 9 communities
+[graphify extract] wrote /tmp/fx-javaee/graphify-out/.graphify_analysis.json
+[graphify extract] next: run `graphify cluster-only /tmp/fx-javaee` to generate GRAPH_REPORT.md and name communities

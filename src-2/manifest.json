@@ -1,0 +1,692 @@
+{
+  "pom.xml": {
+    "mtime": 1793724605.5189943,
+    "seen": 1793724606.7386415,
+    "ast_hash": "86bf8870e2be1891d811f844c8e3729d",
+    "semantic_hash": "86bf8870e2be1891d811f844c8e3729d"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/ApplicationEvents.java": {
+    "mtime": 1793724605.5193205,
+    "seen": 1793724606.738646,
+    "ast_hash": "e24feefac86f2c241f07ed3010003ea7",
+    "semantic_hash": "e24feefac86f2c241f07ed3010003ea7"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/BookingService.java": {
+    "mtime": 1793724605.5193648,
+    "seen": 1793724606.7386482,
+    "ast_hash": "e0ee063593cf24ca337beec9c223c975",
+    "semantic_hash": "e0ee063593cf24ca337beec9c223c975"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/CargoInspectionService.java": {
+    "mtime": 1793724605.5193923,
+    "seen": 1793724606.7386491,
+    "ast_hash": "a81f75066fc574c0bad851cce4095374",
+    "semantic_hash": "a81f75066fc574c0bad851cce4095374"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/HandlingEventService.java": {
+    "mtime": 1793724605.519419,
+    "seen": 1793724606.73865,
+    "ast_hash": "e28d75f20851044102883039cd1ccc58",
+    "semantic_hash": "e28d75f20851044102883039cd1ccc58"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/internal/DefaultBookingService.java": {
+    "mtime": 1793724605.5194898,
+    "seen": 1793724606.7386508,
+    "ast_hash": "634244786bd53f20c99dab8a365959ac",
+    "semantic_hash": "634244786bd53f20c99dab8a365959ac"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/internal/DefaultCargoInspectionService.java": {
+    "mtime": 1793724605.5195253,
+    "seen": 1793724606.7386518,
+    "ast_hash": "67e07986eb1060638030836e99853d33",
+    "semantic_hash": "67e07986eb1060638030836e99853d33"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/internal/DefaultHandlingEventService.java": {
+    "mtime": 1793724605.5195515,
+    "seen": 1793724606.7386525,
+    "ast_hash": "7a057d7d7e8cec4004781f704f8b0a9d",
+    "semantic_hash": "7a057d7d7e8cec4004781f704f8b0a9d"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/util/DateUtil.java": {
+    "mtime": 1793724605.51967,
+    "seen": 1793724606.7386532,
+    "ast_hash": "a1a0b069c2985c3fed9137c96cc902a1",
+    "semantic_hash": "a1a0b069c2985c3fed9137c96cc902a1"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/util/JsonMoxyConfigurationContextResolver.java": {
+    "mtime": 1793724605.519705,
+    "seen": 1793724606.738654,
+    "ast_hash": "0420ce78190201d429bbfede58d809c0",
+    "semantic_hash": "0420ce78190201d429bbfede58d809c0"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/util/LocationUtil.java": {
+    "mtime": 1793724605.519732,
+    "seen": 1793724606.7386546,
+    "ast_hash": "6c0926586feb2295908b24045a359026",
+    "semantic_hash": "6c0926586feb2295908b24045a359026"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/util/RestConfiguration.java": {
+    "mtime": 1793724605.5197587,
+    "seen": 1793724606.7386556,
+    "ast_hash": "a110b720bdf10f3c4ad696fff82a9a0e",
+    "semantic_hash": "a110b720bdf10f3c4ad696fff82a9a0e"
+  },
+  "src/main/java/org/eclipse/cargotracker/application/util/SampleDataGenerator.java": {
+    "mtime": 1793724605.5197856,
+    "seen": 1793724606.7386563,
+    "ast_hash": "8ffd5f8ba21c9a92517432efaf7d5da3",
+    "semantic_hash": "8ffd5f8ba21c9a92517432efaf7d5da3"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/Cargo.java": {
+    "mtime": 1793724605.5199776,
+    "seen": 1793724606.738657,
+    "ast_hash": "d1bee1196f17c6f2fd811b78d5e2bfcb",
+    "semantic_hash": "d1bee1196f17c6f2fd811b78d5e2bfcb"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/CargoRepository.java": {
+    "mtime": 1793724605.5200238,
+    "seen": 1793724606.7386577,
+    "ast_hash": "4030c647d9488424da46d4d342cb36ae",
+    "semantic_hash": "4030c647d9488424da46d4d342cb36ae"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/Delivery.java": {
+    "mtime": 1793724605.520052,
+    "seen": 1793724606.7386587,
+    "ast_hash": "6ed319f3b2113a5f8ba105118d171581",
+    "semantic_hash": "6ed319f3b2113a5f8ba105118d171581"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/HandlingActivity.java": {
+    "mtime": 1793724605.5200846,
+    "seen": 1793724606.7386594,
+    "ast_hash": "fce1dc9fbc6e8466002abb2c50931af7",
+    "semantic_hash": "fce1dc9fbc6e8466002abb2c50931af7"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/Itinerary.java": {
+    "mtime": 1793724605.520112,
+    "seen": 1793724606.7386599,
+    "ast_hash": "68022ef8317183c9b3bd961695c15ba0",
+    "semantic_hash": "68022ef8317183c9b3bd961695c15ba0"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/Leg.java": {
+    "mtime": 1793724605.5201392,
+    "seen": 1793724606.7386606,
+    "ast_hash": "fafd984c72a32537841c228c406c6a56",
+    "semantic_hash": "fafd984c72a32537841c228c406c6a56"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/RouteSpecification.java": {
+    "mtime": 1793724605.520166,
+    "seen": 1793724606.7386613,
+    "ast_hash": "6ab08fe08265079e8e486cd2e627e71e",
+    "semantic_hash": "6ab08fe08265079e8e486cd2e627e71e"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/RoutingStatus.java": {
+    "mtime": 1793724605.520193,
+    "seen": 1793724606.7386622,
+    "ast_hash": "ea4914bbb56d6ddf527d70d9102d6eb3",
+    "semantic_hash": "ea4914bbb56d6ddf527d70d9102d6eb3"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/TrackingId.java": {
+    "mtime": 1793724605.5202196,
+    "seen": 1793724606.738663,
+    "ast_hash": "52527adf9ba13757d88c6694cd285395",
+    "semantic_hash": "52527adf9ba13757d88c6694cd285395"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/cargo/TransportStatus.java": {
+    "mtime": 1793724605.5202646,
+    "seen": 1793724606.7386637,
+    "ast_hash": "ac17e02281081ea1daa9611ceca438c1",
+    "semantic_hash": "ac17e02281081ea1daa9611ceca438c1"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/CannotCreateHandlingEventException.java": {
+    "mtime": 1793724605.5203686,
+    "seen": 1793724606.7386644,
+    "ast_hash": "3fb953119d0d75642cd3af67590c04fa",
+    "semantic_hash": "3fb953119d0d75642cd3af67590c04fa"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/HandlingEvent.java": {
+    "mtime": 1793724605.5204043,
+    "seen": 1793724606.738665,
+    "ast_hash": "cd8d246f845600db4698cf9911403a44",
+    "semantic_hash": "cd8d246f845600db4698cf9911403a44"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/HandlingEventFactory.java": {
+    "mtime": 1793724605.5204408,
+    "seen": 1793724606.738666,
+    "ast_hash": "0250d9c856efef6fa4b3c7e001ef719a",
+    "semantic_hash": "0250d9c856efef6fa4b3c7e001ef719a"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/HandlingEventRepository.java": {
+    "mtime": 1793724605.5204678,
+    "seen": 1793724606.7386668,
+    "ast_hash": "e56db105966e669741eb9f33c900c9c9",
+    "semantic_hash": "e56db105966e669741eb9f33c900c9c9"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/HandlingHistory.java": {
+    "mtime": 1793724605.5204968,
+    "seen": 1793724606.7386675,
+    "ast_hash": "17c7c6460a01fad65423bc2910f03c2d",
+    "semantic_hash": "17c7c6460a01fad65423bc2910f03c2d"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/UnknownCargoException.java": {
+    "mtime": 1793724605.520529,
+    "seen": 1793724606.738668,
+    "ast_hash": "6170b133cef354f0409418d984eb0616",
+    "semantic_hash": "6170b133cef354f0409418d984eb0616"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/UnknownLocationException.java": {
+    "mtime": 1793724605.5205584,
+    "seen": 1793724606.738669,
+    "ast_hash": "6f034f5097341d608d4e5b4630819c31",
+    "semantic_hash": "6f034f5097341d608d4e5b4630819c31"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/handling/UnknownVoyageException.java": {
+    "mtime": 1793724605.5205853,
+    "seen": 1793724606.7386696,
+    "ast_hash": "50d71dac7e60b1cbf8f6eb37a2743336",
+    "semantic_hash": "50d71dac7e60b1cbf8f6eb37a2743336"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/location/Location.java": {
+    "mtime": 1793724605.520687,
+    "seen": 1793724606.73867,
+    "ast_hash": "df3ea4c676807ab1023d8819ae3ba8f8",
+    "semantic_hash": "df3ea4c676807ab1023d8819ae3ba8f8"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/location/LocationRepository.java": {
+    "mtime": 1793724605.5207238,
+    "seen": 1793724606.7386708,
+    "ast_hash": "cd1c5eb3167e61fe4ac4669ffe137c7d",
+    "semantic_hash": "cd1c5eb3167e61fe4ac4669ffe137c7d"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/location/SampleLocations.java": {
+    "mtime": 1793724605.5207505,
+    "seen": 1793724606.7386715,
+    "ast_hash": "5ce8a01fe13f157ee10c8a0859f8d270",
+    "semantic_hash": "5ce8a01fe13f157ee10c8a0859f8d270"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/location/UnLocode.java": {
+    "mtime": 1793724605.5207775,
+    "seen": 1793724606.7386725,
+    "ast_hash": "91a119ff089ecea518c9da123854b73f",
+    "semantic_hash": "91a119ff089ecea518c9da123854b73f"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/CarrierMovement.java": {
+    "mtime": 1793724605.5208993,
+    "seen": 1793724606.738673,
+    "ast_hash": "acdd7bafe42cf5f896a8d90d31604e0e",
+    "semantic_hash": "acdd7bafe42cf5f896a8d90d31604e0e"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/SampleVoyages.java": {
+    "mtime": 1793724605.5209343,
+    "seen": 1793724606.738674,
+    "ast_hash": "6341c0798f7e84f08df2255c3e5dbcbe",
+    "semantic_hash": "6341c0798f7e84f08df2255c3e5dbcbe"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/Schedule.java": {
+    "mtime": 1793724605.5209646,
+    "seen": 1793724606.7386746,
+    "ast_hash": "b56f4e77583e374fd90250bc7678a1df",
+    "semantic_hash": "b56f4e77583e374fd90250bc7678a1df"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/Voyage.java": {
+    "mtime": 1793724605.5209913,
+    "seen": 1793724606.738675,
+    "ast_hash": "d3a7ed9863d9412a2eec6deabd4403b6",
+    "semantic_hash": "d3a7ed9863d9412a2eec6deabd4403b6"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/VoyageNumber.java": {
+    "mtime": 1793724605.5210276,
+    "seen": 1793724606.738676,
+    "ast_hash": "5e850cb75b9a4f58c5d14b589d06296e",
+    "semantic_hash": "5e850cb75b9a4f58c5d14b589d06296e"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/model/voyage/VoyageRepository.java": {
+    "mtime": 1793724605.5210552,
+    "seen": 1793724606.7386768,
+    "ast_hash": "daa82019515512ace7cf61aa212d8361",
+    "semantic_hash": "daa82019515512ace7cf61aa212d8361"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/service/RoutingService.java": {
+    "mtime": 1793724605.521176,
+    "seen": 1793724606.7386775,
+    "ast_hash": "a15c2d71cb36e5dc2b17860dda2e7318",
+    "semantic_hash": "a15c2d71cb36e5dc2b17860dda2e7318"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/AbstractSpecification.java": {
+    "mtime": 1793724605.5212848,
+    "seen": 1793724606.738678,
+    "ast_hash": "b1b4a8cdbefef9dd34991335e668c27c",
+    "semantic_hash": "b1b4a8cdbefef9dd34991335e668c27c"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/AndSpecification.java": {
+    "mtime": 1793724605.5213194,
+    "seen": 1793724606.7386801,
+    "ast_hash": "e3f3e62bdcd3d06c80a108e10d5eb135",
+    "semantic_hash": "e3f3e62bdcd3d06c80a108e10d5eb135"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/DomainObjectUtils.java": {
+    "mtime": 1793724605.5213451,
+    "seen": 1793724606.7386808,
+    "ast_hash": "b28e159be09cef2f36f198daf61a92fa",
+    "semantic_hash": "b28e159be09cef2f36f198daf61a92fa"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/NotSpecification.java": {
+    "mtime": 1793724605.5213723,
+    "seen": 1793724606.7386816,
+    "ast_hash": "bb5304c963bbfdc597afd032719d1a57",
+    "semantic_hash": "bb5304c963bbfdc597afd032719d1a57"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/OrSpecification.java": {
+    "mtime": 1793724605.5213995,
+    "seen": 1793724606.7386823,
+    "ast_hash": "09977ab9f6463b3264caae5f291aa690",
+    "semantic_hash": "09977ab9f6463b3264caae5f291aa690"
+  },
+  "src/main/java/org/eclipse/cargotracker/domain/shared/Specification.java": {
+    "mtime": 1793724605.521427,
+    "seen": 1793724606.738683,
+    "ast_hash": "d8762a2b3fd2255a16558c6c5c1453dc",
+    "semantic_hash": "d8762a2b3fd2255a16558c6c5c1453dc"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/events/cdi/CargoInspected.java": {
+    "mtime": 1793724605.5215898,
+    "seen": 1793724606.7386837,
+    "ast_hash": "432690c81b80affdb3d897b3aaadf91b",
+    "semantic_hash": "432690c81b80affdb3d897b3aaadf91b"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/logging/LoggerProducer.java": {
+    "mtime": 1793724605.521655,
+    "seen": 1793724606.7386844,
+    "ast_hash": "324fd7f6e467bac5e2e038b44412abb1",
+    "semantic_hash": "324fd7f6e467bac5e2e038b44412abb1"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/CargoHandledConsumer.java": {
+    "mtime": 1793724605.521765,
+    "seen": 1793724606.738685,
+    "ast_hash": "3e5c517cc3d9362b411df1a45a5fcf1c",
+    "semantic_hash": "3e5c517cc3d9362b411df1a45a5fcf1c"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/DeliveredCargoConsumer.java": {
+    "mtime": 1793724605.521798,
+    "seen": 1793724606.7386856,
+    "ast_hash": "6201d65a9031e0cc29ba202fc4eb7115",
+    "semantic_hash": "6201d65a9031e0cc29ba202fc4eb7115"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/HandlingEventRegistrationAttemptConsumer.java": {
+    "mtime": 1793724605.521825,
+    "seen": 1793724606.7386866,
+    "ast_hash": "fe698c438915f75dba78d1644f493f43",
+    "semantic_hash": "fe698c438915f75dba78d1644f493f43"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/JmsApplicationEvents.java": {
+    "mtime": 1793724605.5218525,
+    "seen": 1793724606.738687,
+    "ast_hash": "47f5f7fdd582032dbc9f3143f7e0b8ce",
+    "semantic_hash": "47f5f7fdd582032dbc9f3143f7e0b8ce"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/MisdirectedCargoConsumer.java": {
+    "mtime": 1793724605.5218806,
+    "seen": 1793724606.7386878,
+    "ast_hash": "a541a29a216e8c91cf25cedb99d577ac",
+    "semantic_hash": "a541a29a216e8c91cf25cedb99d577ac"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/messaging/jms/RejectedRegistrationAttemptsConsumer.java": {
+    "mtime": 1793724605.521908,
+    "seen": 1793724606.7386885,
+    "ast_hash": "0643a824dd88923ad5e247066b8b9f95",
+    "semantic_hash": "0643a824dd88923ad5e247066b8b9f95"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/persistence/jpa/JpaCargoRepository.java": {
+    "mtime": 1793724605.5220432,
+    "seen": 1793724606.7386892,
+    "ast_hash": "6b8be4f9d4cd26aff27c759ba88bf3e4",
+    "semantic_hash": "6b8be4f9d4cd26aff27c759ba88bf3e4"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/persistence/jpa/JpaHandlingEventRepository.java": {
+    "mtime": 1793724605.5220704,
+    "seen": 1793724606.7386901,
+    "ast_hash": "af3c8248c292983cbbe2cf30bf742901",
+    "semantic_hash": "af3c8248c292983cbbe2cf30bf742901"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/persistence/jpa/JpaLocationRepository.java": {
+    "mtime": 1793724605.5221024,
+    "seen": 1793724606.7386909,
+    "ast_hash": "f7c30ed5d7764ecf16d595494c3c8711",
+    "semantic_hash": "f7c30ed5d7764ecf16d595494c3c8711"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/persistence/jpa/JpaVoyageRepository.java": {
+    "mtime": 1793724605.522129,
+    "seen": 1793724606.7386916,
+    "ast_hash": "5ef434ba1bf90554103bb96568975108",
+    "semantic_hash": "5ef434ba1bf90554103bb96568975108"
+  },
+  "src/main/java/org/eclipse/cargotracker/infrastructure/routing/ExternalRoutingService.java": {
+    "mtime": 1793724605.522224,
+    "seen": 1793724606.738692,
+    "ast_hash": "8a8d0584cb39f3a57c98900599c3612d",
+    "semantic_hash": "8a8d0584cb39f3a57c98900599c3612d"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/BookingServiceFacade.java": {
+    "mtime": 1793724605.5224614,
+    "seen": 1793724606.7386928,
+    "ast_hash": "73a202d1587a5f8392c4c433aa35ded4",
+    "semantic_hash": "73a202d1587a5f8392c4c433aa35ded4"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/CargoRoute.java": {
+    "mtime": 1793724605.5225356,
+    "seen": 1793724606.7386935,
+    "ast_hash": "6e41ad8141b1e90daf75f74ef2f89559",
+    "semantic_hash": "6e41ad8141b1e90daf75f74ef2f89559"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/CargoStatus.java": {
+    "mtime": 1793724605.5225718,
+    "seen": 1793724606.7386942,
+    "ast_hash": "aef04c0a43aac870bb08d8777295ad22",
+    "semantic_hash": "aef04c0a43aac870bb08d8777295ad22"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/Leg.java": {
+    "mtime": 1793724605.5226028,
+    "seen": 1793724606.738695,
+    "ast_hash": "f6e120238bc88c028ab7b0320bbf94f2",
+    "semantic_hash": "f6e120238bc88c028ab7b0320bbf94f2"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/Location.java": {
+    "mtime": 1793724605.5226417,
+    "seen": 1793724606.7386954,
+    "ast_hash": "e4373c8229c0f27e3b934ea0e2147137",
+    "semantic_hash": "e4373c8229c0f27e3b934ea0e2147137"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/RouteCandidate.java": {
+    "mtime": 1793724605.5226686,
+    "seen": 1793724606.738696,
+    "ast_hash": "3864ac6bda7d194cc45cd9ea80794340",
+    "semantic_hash": "3864ac6bda7d194cc45cd9ea80794340"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/dto/TrackingEvents.java": {
+    "mtime": 1793724605.5226955,
+    "seen": 1793724606.738697,
+    "ast_hash": "8cbd8e60b24f9a8b934ba29dacaae6a1",
+    "semantic_hash": "8cbd8e60b24f9a8b934ba29dacaae6a1"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/DefaultBookingServiceFacade.java": {
+    "mtime": 1793724605.5227878,
+    "seen": 1793724606.7386978,
+    "ast_hash": "dd95427d5c3985bdcf5b54acf9935255",
+    "semantic_hash": "dd95427d5c3985bdcf5b54acf9935255"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/assembler/CargoRouteDtoAssembler.java": {
+    "mtime": 1793724605.5228658,
+    "seen": 1793724606.7386985,
+    "ast_hash": "85ac27d152edae696381e55007e923ab",
+    "semantic_hash": "85ac27d152edae696381e55007e923ab"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/assembler/CargoStatusDtoAssembler.java": {
+    "mtime": 1793724605.5229023,
+    "seen": 1793724606.7386992,
+    "ast_hash": "d687a52e209864a74fcc0a0371a00a8e",
+    "semantic_hash": "d687a52e209864a74fcc0a0371a00a8e"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/assembler/ItineraryCandidateDtoAssembler.java": {
+    "mtime": 1793724605.522933,
+    "seen": 1793724606.7386997,
+    "ast_hash": "fbf3e189673e2b5fcdfc4760f914f02a",
+    "semantic_hash": "fbf3e189673e2b5fcdfc4760f914f02a"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/assembler/LocationDtoAssembler.java": {
+    "mtime": 1793724605.5229607,
+    "seen": 1793724606.7387006,
+    "ast_hash": "51b41d25324eeb707f1e919a337da2f6",
+    "semantic_hash": "51b41d25324eeb707f1e919a337da2f6"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/facade/internal/assembler/TrackingEventsDtoAssembler.java": {
+    "mtime": 1793724605.5229888,
+    "seen": 1793724606.7387013,
+    "ast_hash": "245d402bac8657972fdf84a00d568a3c",
+    "semantic_hash": "245d402bac8657972fdf84a00d568a3c"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/rest/CargoMonitoringService.java": {
+    "mtime": 1793724605.523142,
+    "seen": 1793724606.738702,
+    "ast_hash": "5b86fd5c9bbb4472af407c7b1339eddf",
+    "semantic_hash": "5b86fd5c9bbb4472af407c7b1339eddf"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/socket/RealtimeCargoTrackingService.java": {
+    "mtime": 1793724605.5232136,
+    "seen": 1793724606.7387028,
+    "ast_hash": "25b2d1f6dfa6a63c9e78651966586d1c",
+    "semantic_hash": "25b2d1f6dfa6a63c9e78651966586d1c"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/Booking.java": {
+    "mtime": 1793724605.5233126,
+    "seen": 1793724606.7387033,
+    "ast_hash": "5c4633a628ce66d3e18b0b2b57274bbf",
+    "semantic_hash": "5c4633a628ce66d3e18b0b2b57274bbf"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/CargoDetails.java": {
+    "mtime": 1793724605.5233552,
+    "seen": 1793724606.7387042,
+    "ast_hash": "2f17e6d5495ded20ea34b81d4ea00744",
+    "semantic_hash": "2f17e6d5495ded20ea34b81d4ea00744"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ChangeArrivalDeadlineDate.java": {
+    "mtime": 1793724605.5233824,
+    "seen": 1793724606.738705,
+    "ast_hash": "ce9e192fcfa69e45ea9fc786581ab69d",
+    "semantic_hash": "ce9e192fcfa69e45ea9fc786581ab69d"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ChangeArrivalDeadlineDateDialog.java": {
+    "mtime": 1793724605.5234091,
+    "seen": 1793724606.7387056,
+    "ast_hash": "6d9d4e3e10b0e51a15e9468a4506809d",
+    "semantic_hash": "6d9d4e3e10b0e51a15e9468a4506809d"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ChangeDestination.java": {
+    "mtime": 1793724605.5234368,
+    "seen": 1793724606.7387064,
+    "ast_hash": "92855154fa3a8b6f8e839eb93a25317d",
+    "semantic_hash": "92855154fa3a8b6f8e839eb93a25317d"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ChangeDestinationDialog.java": {
+    "mtime": 1793724605.523464,
+    "seen": 1793724606.7387073,
+    "ast_hash": "6176812340956ac6e0e4ca74ebd3bd4f",
+    "semantic_hash": "6176812340956ac6e0e4ca74ebd3bd4f"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/DashboardView.java": {
+    "mtime": 1793724605.5234914,
+    "seen": 1793724606.7387083,
+    "ast_hash": "fb390627c7ba58576c6dbc4d818f00c6",
+    "semantic_hash": "fb390627c7ba58576c6dbc4d818f00c6"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ItinerarySelection.java": {
+    "mtime": 1793724605.5235183,
+    "seen": 1793724606.738709,
+    "ast_hash": "537400f6e2f0542232a305f0ede5463f",
+    "semantic_hash": "537400f6e2f0542232a305f0ede5463f"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/ListCargo.java": {
+    "mtime": 1793724605.5235465,
+    "seen": 1793724606.7387094,
+    "ast_hash": "e43e5035796ed8b78ae0b58ffb6ee0d6",
+    "semantic_hash": "e43e5035796ed8b78ae0b58ffb6ee0d6"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/Registration.java": {
+    "mtime": 1793724605.5235758,
+    "seen": 1793724606.7387102,
+    "ast_hash": "e8ef04ca30689223d552bc0997f05abc",
+    "semantic_hash": "e8ef04ca30689223d552bc0997f05abc"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/booking/web/Track.java": {
+    "mtime": 1793724605.5236034,
+    "seen": 1793724606.7387116,
+    "ast_hash": "a55d55f1defccc2a3f31180ace3814df",
+    "semantic_hash": "a55d55f1defccc2a3f31180ace3814df"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/HandlingEventRegistrationAttempt.java": {
+    "mtime": 1793724605.5237038,
+    "seen": 1793724606.7387123,
+    "ast_hash": "382d71a8e5361a444d0606e0f514b339",
+    "semantic_hash": "382d71a8e5361a444d0606e0f514b339"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/EventFilesCheckpoint.java": {
+    "mtime": 1793724605.5237777,
+    "seen": 1793724606.7387128,
+    "ast_hash": "84dc097b81f72626d469b6e573c4521b",
+    "semantic_hash": "84dc097b81f72626d469b6e573c4521b"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/EventItemReader.java": {
+    "mtime": 1793724605.523818,
+    "seen": 1793724606.7387135,
+    "ast_hash": "c97a81fe9d1de3e6f884c638d2cf1330",
+    "semantic_hash": "c97a81fe9d1de3e6f884c638d2cf1330"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/EventItemWriter.java": {
+    "mtime": 1793724605.523848,
+    "seen": 1793724606.7387145,
+    "ast_hash": "3726cd413f8bb5e3ed1a757683c968c3",
+    "semantic_hash": "3726cd413f8bb5e3ed1a757683c968c3"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/EventLineParseException.java": {
+    "mtime": 1793724605.5238752,
+    "seen": 1793724606.7387152,
+    "ast_hash": "ebd5fc6e0d7cd10f1aa2b54ba4934665",
+    "semantic_hash": "ebd5fc6e0d7cd10f1aa2b54ba4934665"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/FileProcessorJobListener.java": {
+    "mtime": 1793724605.5239024,
+    "seen": 1793724606.7387156,
+    "ast_hash": "bb4113bf4cb1165c72558339ece26cb0",
+    "semantic_hash": "bb4113bf4cb1165c72558339ece26cb0"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/LineParseExceptionListener.java": {
+    "mtime": 1793724605.5239313,
+    "seen": 1793724606.7387164,
+    "ast_hash": "06ffcae73f59f15757f8c48e5fbb2b81",
+    "semantic_hash": "06ffcae73f59f15757f8c48e5fbb2b81"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/file/UploadDirectoryScanner.java": {
+    "mtime": 1793724605.5239604,
+    "seen": 1793724606.738717,
+    "ast_hash": "be89fec70082274dc366a87cbd5c6c0f",
+    "semantic_hash": "be89fec70082274dc366a87cbd5c6c0f"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/mobile/EventLogger.java": {
+    "mtime": 1793724605.5240536,
+    "seen": 1793724606.7387178,
+    "ast_hash": "d69be972ee281a067fc32376af0ad41c",
+    "semantic_hash": "d69be972ee281a067fc32376af0ad41c"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/rest/HandlingReport.java": {
+    "mtime": 1793724605.5241838,
+    "seen": 1793724606.7387185,
+    "ast_hash": "83c366cfddcb1f6fbc3d1cd17776e880",
+    "semantic_hash": "83c366cfddcb1f6fbc3d1cd17776e880"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/handling/rest/HandlingReportService.java": {
+    "mtime": 1793724605.5242183,
+    "seen": 1793724606.7387192,
+    "ast_hash": "a82313d634974c3678a8a702af7d64e1",
+    "semantic_hash": "a82313d634974c3678a8a702af7d64e1"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/tracking/web/CargoTrackingViewAdapter.java": {
+    "mtime": 1793724605.5243728,
+    "seen": 1793724606.73872,
+    "ast_hash": "7b1e5d00e85dc0245e1157de727c988b",
+    "semantic_hash": "7b1e5d00e85dc0245e1157de727c988b"
+  },
+  "src/main/java/org/eclipse/cargotracker/interfaces/tracking/web/Track.java": {
+    "mtime": 1793724605.5244043,
+    "seen": 1793724606.7387204,
+    "ast_hash": "d7e54e53fdd44c230af96ae1da0c5647",
+    "semantic_hash": "d7e54e53fdd44c230af96ae1da0c5647"
+  },
+  "src/main/java/org/eclipse/pathfinder/api/GraphTraversalService.java": {
+    "mtime": 1793724605.5245337,
+    "seen": 1793724606.7387214,
+    "ast_hash": "3bb723215f1141ed0b543a87cbd81c5f",
+    "semantic_hash": "3bb723215f1141ed0b543a87cbd81c5f"
+  },
+  "src/main/java/org/eclipse/pathfinder/api/TransitEdge.java": {
+    "mtime": 1793724605.5245643,
+    "seen": 1793724606.738722,
+    "ast_hash": "d25a22c70c669271eb22c92f5d255e5d",
+    "semantic_hash": "d25a22c70c669271eb22c92f5d255e5d"
+  },
+  "src/main/java/org/eclipse/pathfinder/api/TransitPath.java": {
+    "mtime": 1793724605.5245981,
+    "seen": 1793724606.7387228,
+    "ast_hash": "6bf821f08ec2b32cd88e4295a300b595",
+    "semantic_hash": "6bf821f08ec2b32cd88e4295a300b595"
+  },
+  "src/main/java/org/eclipse/pathfinder/internal/GraphDao.java": {
+    "mtime": 1793724605.5246885,
+    "seen": 1793724606.7387235,
+    "ast_hash": "4b53789ba390c8f270fa5ae1a44e46fb",
+    "semantic_hash": "4b53789ba390c8f270fa5ae1a44e46fb"
+  },
+  "src/test/java/org/eclipse/cargotracker/application/BookingServiceTest.java": {
+    "mtime": 1793724605.5271509,
+    "seen": 1793724606.7387245,
+    "ast_hash": "3f4a76b3733bfe89b7e17e485ddbb2c3",
+    "semantic_hash": "3f4a76b3733bfe89b7e17e485ddbb2c3"
+  },
+  "src/test/java/org/eclipse/cargotracker/application/BookingServiceTestDataGenerator.java": {
+    "mtime": 1793724605.5271914,
+    "seen": 1793724606.7387252,
+    "ast_hash": "a7fa907dd19fffd28404f81750a788dd",
+    "semantic_hash": "a7fa907dd19fffd28404f81750a788dd"
+  },
+  "src/test/java/org/eclipse/cargotracker/application/BookingServiceTestRestConfiguration.java": {
+    "mtime": 1793724605.5272193,
+    "seen": 1793724606.7387257,
+    "ast_hash": "65f1172c7014cbae66a58c44ed3d6119",
+    "semantic_hash": "65f1172c7014cbae66a58c44ed3d6119"
+  },
+  "src/test/java/org/eclipse/cargotracker/application/HandlingEventServiceTest.java": {
+    "mtime": 1793724605.5272615,
+    "seen": 1793724606.7387264,
+    "ast_hash": "8d63736524837950e686ea99e2aaf910",
+    "semantic_hash": "8d63736524837950e686ea99e2aaf910"
+  },
+  "src/test/java/org/eclipse/cargotracker/domain/model/cargo/CargoTest.java": {
+    "mtime": 1793724605.5273938,
+    "seen": 1793724606.738727,
+    "ast_hash": "fa63b928264f612bee5e7b4cc0384d08",
+    "semantic_hash": "fa63b928264f612bee5e7b4cc0384d08"
+  },
+  "src/test/java/org/eclipse/cargotracker/domain/model/cargo/ItineraryTest.java": {
+    "mtime": 1793724605.5274382,
+    "seen": 1793724606.738728,
+    "ast_hash": "499b2fc79f8fd3ef8cd9cca3930b5352",
+    "semantic_hash": "499b2fc79f8fd3ef8cd9cca3930b5352"
+  },
+  "src/test/java/org/eclipse/cargotracker/domain/model/cargo/RouteSpecificationTest.java": {
+    "mtime": 1793724605.5274677,
+    "seen": 1793724606.7387288,
+    "ast_hash": "98a0fc8df27de36bc1518f0e4b24be9c",
+    "semantic_hash": "98a0fc8df27de36bc1518f0e4b24be9c"
+  },
+  "src/test/java/org/eclipse/cargotracker/domain/model/handling/HandlingEventTest.java": {
+    "mtime": 1793724605.527538,
+    "seen": 1793724606.7387295,
+    "ast_hash": "f03035692ffa2c6d0c08b2964f4d1dd0",
+    "semantic_hash": "f03035692ffa2c6d0c08b2964f4d1dd0"
+  },
+  "src/test/java/org/eclipse/cargotracker/domain/model/handling/HandlingHistoryTest.java": {
+    "mtime": 1793724605.527572,
+    "seen": 1793724606.73873,
+    "ast_hash": "c6ed4d0fbb00677fb5a7dc0ab81a4836",
+    "semantic_hash": "c6ed4d0fbb00677fb5a7dc0ab81a4836"
+  },
+  "src/test/java/org/eclipse/cargotracker/infrastructure/routing/ExternalRoutingServiceTest.java": {
+    "mtime": 1793724605.527671,
+    "seen": 1793724606.7387307,
+    "ast_hash": "7c0a2dc45fb2ff43b41a68a7170687cb",
+    "semantic_hash": "7c0a2dc45fb2ff43b41a68a7170687cb"
+  },
+  "src/test/java/org/eclipse/cargotracker/scenario/CargoLifecycleScenarioTest.java": {
+    "mtime": 1793724605.5277264,
+    "seen": 1793724606.7387316,
+    "ast_hash": "e33f613ceb23dc6942a6997ce04244a7",
+    "semantic_hash": "e33f613ceb23dc6942a6997ce04244a7"
+  }
+}

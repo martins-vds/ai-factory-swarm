@@ -1,0 +1,522 @@
+{
+  "communities": {
+    "0": [
+      "src_cargotracker_cargo_domain_delivery_delivery",
+      "src_cargotracker_cargo_domain_delivery_delivery_after_load",
+      "src_cargotracker_cargo_domain_delivery_delivery_after_receive",
+      "src_cargotracker_cargo_domain_delivery_delivery_after_unload",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_current_voyage",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_eta",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_last_known_location",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_misdirection_status",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_next_expected_activity",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_routing_status",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_time",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_transport_status",
+      "src_cargotracker_cargo_domain_delivery_delivery_calculate_unloaded_at_destination",
+      "src_cargotracker_cargo_domain_delivery_delivery_derived_from",
+      "src_cargotracker_cargo_domain_delivery_delivery_is_on_track",
+      "src_cargotracker_cargo_domain_delivery_delivery_validate_derivation_inputs",
+      "src_cargotracker_cargo_domain_delivery_py_datetime",
+      "src_cargotracker_cargo_domain_delivery_py_strenum",
+      "src_cargotracker_cargo_domain_delivery_routingstatus",
+      "src_cargotracker_cargo_domain_delivery_transportstatus",
+      "src_cargotracker_cargo_domain_handling_activity_handlingactivity",
+      "src_cargotracker_cargo_domain_handling_activity_handlingactivity_post_init",
+      "src_cargotracker_cargo_domain_itinerary_itinerary",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_claim_matches_destination",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_init",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_is_expected",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_load_matches_leg",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_receive_matches_first_leg",
+      "src_cargotracker_cargo_domain_itinerary_itinerary_unload_matches_leg",
+      "src_cargotracker_cargo_domain_route_specification_routespecification",
+      "src_cargotracker_cargo_domain_route_specification_routespecification_is_satisfied_by",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_as_utc_datetime",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_find",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_find_all",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_location_record",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_queryset",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_to_domain",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_to_location",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_to_voyage",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_upsert",
+      "src_cargotracker_cargo_infrastructure_repository_djangocargorepository_voyage_record",
+      "src_cargotracker_cargo_infrastructure_repository_py_date",
+      "src_cargotracker_cargo_infrastructure_repository_py_datetime"
+    ],
+    "1": [
+      "collections_abc",
+      "django",
+      "django_http",
+      "django_shortcuts",
+      "django_urls",
+      "django_views_decorators_clickjacking",
+      "httprequest",
+      "httpresponse",
+      "src_cargotracker_cargo_application_map_status",
+      "src_cargotracker_cargo_application_map_status_map_status_code",
+      "src_cargotracker_cargo_composition",
+      "src_cargotracker_cargo_composition_compose_tracking_view",
+      "src_cargotracker_cargo_domain_cargo_cargo",
+      "src_cargotracker_cargo_domain_cargo_cargo_eq",
+      "src_cargotracker_cargo_domain_cargo_cargo_hash",
+      "src_cargotracker_cargo_domain_cargo_cargo_post_init",
+      "src_cargotracker_cargo_domain_repository_cargorepository_find_all",
+      "src_cargotracker_cargo_interfaces_forms",
+      "src_cargotracker_cargo_interfaces_forms_trackingform",
+      "src_cargotracker_cargo_interfaces_tracking_eta_format_eta",
+      "src_cargotracker_cargo_interfaces_tracking_history",
+      "src_cargotracker_cargo_interfaces_tracking_history_get_event_description",
+      "src_cargotracker_cargo_interfaces_tracking_history_get_history_rows",
+      "src_cargotracker_cargo_interfaces_tracking_map_adapter",
+      "src_cargotracker_cargo_interfaces_tracking_map_adapter_map_frame_url",
+      "src_cargotracker_cargo_interfaces_tracking_map_coordinates",
+      "src_cargotracker_cargo_interfaces_tracking_map_urls",
+      "src_cargotracker_cargo_interfaces_tracking_map_views",
+      "src_cargotracker_cargo_interfaces_tracking_map_views_location_data",
+      "src_cargotracker_cargo_interfaces_tracking_map_views_map_frame",
+      "src_cargotracker_cargo_interfaces_tracking_next_activity",
+      "src_cargotracker_cargo_interfaces_tracking_next_activity_get_next_activity_text",
+      "src_cargotracker_cargo_interfaces_tracking_status_text",
+      "src_cargotracker_cargo_interfaces_tracking_status_text_get_status_text",
+      "src_cargotracker_cargo_interfaces_tracking_status_text_in_port_status_text",
+      "src_cargotracker_cargo_interfaces_tracking_status_text_onboard_status_text",
+      "src_cargotracker_cargo_interfaces_tracking_views",
+      "src_cargotracker_cargo_interfaces_tracking_views_create_tracking_view",
+      "src_cargotracker_cargo_interfaces_tracking_views_create_tracking_view_track",
+      "src_cargotracker_urls",
+      "src_cargotracker_urls_rationale_1",
+      "urllib_parse",
+      "xframe_options_sameorigin"
+    ],
+    "2": [
+      "atomic",
+      "basecommand",
+      "django_core_management_base",
+      "django_utils",
+      "src_cargotracker_cargo_application_sample_data_sampledataseeder",
+      "src_cargotracker_cargo_application_sample_data_sampledataseeder_init",
+      "src_cargotracker_cargo_application_sample_data_sampledataseeder_seed_cargos",
+      "src_cargotracker_cargo_application_tracking",
+      "src_cargotracker_cargo_application_tracking_trackinglookup",
+      "src_cargotracker_cargo_application_tracking_trackinglookup_find_cargo",
+      "src_cargotracker_cargo_application_tracking_trackinglookup_find_handling_history",
+      "src_cargotracker_cargo_application_tracking_trackinglookup_init",
+      "src_cargotracker_cargo_domain_repository",
+      "src_cargotracker_cargo_domain_repository_cargorepository",
+      "src_cargotracker_cargo_domain_repository_cargorepository_find",
+      "src_cargotracker_cargo_domain_repository_cargorepository_upsert",
+      "src_cargotracker_cargo_domain_repository_py_protocol",
+      "src_cargotracker_cargo_domain_tracking_id",
+      "src_cargotracker_cargo_domain_tracking_id_trackingid",
+      "src_cargotracker_cargo_domain_tracking_id_trackingid_post_init",
+      "src_cargotracker_cargo_domain_tracking_id_trackingid_str",
+      "src_cargotracker_cargo_management_commands_seed_sample_data",
+      "src_cargotracker_cargo_management_commands_seed_sample_data_command",
+      "src_cargotracker_cargo_management_commands_seed_sample_data_command_handle",
+      "src_cargotracker_handling_domain_handling_event_handlingevent",
+      "src_cargotracker_handling_domain_handling_history_handlinghistory",
+      "src_cargotracker_handling_domain_handling_history_handlinghistory_init",
+      "src_cargotracker_handling_domain_handling_history_handlinghistory_most_recent_event",
+      "src_cargotracker_handling_domain_repository",
+      "src_cargotracker_handling_domain_repository_handlingeventrepository",
+      "src_cargotracker_handling_domain_repository_handlingeventrepository_lookup_handling_history_of_cargo",
+      "src_cargotracker_handling_domain_repository_handlingeventrepository_store",
+      "src_cargotracker_handling_domain_repository_handlingeventrepository_upsert",
+      "src_cargotracker_handling_domain_repository_py_protocol",
+      "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository",
+      "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository_lookup_handling_history_of_cargo",
+      "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository_store",
+      "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository_to_domain",
+      "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository_upsert"
+    ],
+    "3": [
+      "calendar",
+      "re",
+      "src_cargotracker_cargo_application_sample_data",
+      "src_cargotracker_cargo_application_sample_data_add_months",
+      "src_cargotracker_cargo_application_sample_data_at_day_offset",
+      "src_cargotracker_cargo_application_sample_data_cargo_from_seed",
+      "src_cargotracker_cargo_application_sample_data_cargoseed",
+      "src_cargotracker_cargo_application_sample_data_eventseed",
+      "src_cargotracker_cargo_application_sample_data_legseed",
+      "src_cargotracker_cargo_application_sample_data_py_date",
+      "src_cargotracker_cargo_application_sample_data_py_datetime",
+      "src_cargotracker_cargo_application_sample_data_sampledataseeder_seed",
+      "src_cargotracker_cargo_domain_leg_leg",
+      "src_cargotracker_location_domain_location_location",
+      "src_cargotracker_location_domain_location_location_post_init",
+      "src_cargotracker_location_domain_location_location_str",
+      "src_cargotracker_location_domain_repository",
+      "src_cargotracker_location_domain_repository_locationrepository",
+      "src_cargotracker_location_domain_repository_locationrepository_find",
+      "src_cargotracker_location_domain_repository_locationrepository_find_all",
+      "src_cargotracker_location_domain_repository_locationrepository_upsert",
+      "src_cargotracker_location_domain_repository_py_protocol",
+      "src_cargotracker_location_domain_un_locode",
+      "src_cargotracker_location_domain_un_locode_unlocode",
+      "src_cargotracker_location_domain_un_locode_unlocode_post_init",
+      "src_cargotracker_location_domain_un_locode_unlocode_str",
+      "src_cargotracker_location_infrastructure_models",
+      "src_cargotracker_location_infrastructure_models_locationrecord",
+      "src_cargotracker_location_infrastructure_models_locationrecord_meta",
+      "src_cargotracker_location_infrastructure_repository",
+      "src_cargotracker_location_infrastructure_repository_djangolocationrepository",
+      "src_cargotracker_location_infrastructure_repository_djangolocationrepository_find",
+      "src_cargotracker_location_infrastructure_repository_djangolocationrepository_find_all",
+      "src_cargotracker_location_infrastructure_repository_djangolocationrepository_to_domain",
+      "src_cargotracker_location_infrastructure_repository_djangolocationrepository_upsert",
+      "src_cargotracker_location_models",
+      "src_cargotracker_voyage_domain_repository_voyagerepository_upsert"
+    ],
+    "4": [
+      "src_cargotracker_voyage_domain_carrier_movement",
+      "src_cargotracker_voyage_domain_carrier_movement_carriermovement",
+      "src_cargotracker_voyage_domain_carrier_movement_carriermovement_post_init",
+      "src_cargotracker_voyage_domain_repository",
+      "src_cargotracker_voyage_domain_repository_py_protocol",
+      "src_cargotracker_voyage_domain_repository_voyagerepository",
+      "src_cargotracker_voyage_domain_repository_voyagerepository_find",
+      "src_cargotracker_voyage_domain_repository_voyagerepository_find_all",
+      "src_cargotracker_voyage_domain_schedule",
+      "src_cargotracker_voyage_domain_schedule_schedule",
+      "src_cargotracker_voyage_domain_schedule_schedule_post_init",
+      "src_cargotracker_voyage_domain_voyage_builder",
+      "src_cargotracker_voyage_domain_voyage_builder_py_datetime",
+      "src_cargotracker_voyage_domain_voyage_builder_voyagebuilder",
+      "src_cargotracker_voyage_domain_voyage_builder_voyagebuilder_add_movement",
+      "src_cargotracker_voyage_domain_voyage_builder_voyagebuilder_build",
+      "src_cargotracker_voyage_domain_voyage_builder_voyagebuilder_init",
+      "src_cargotracker_voyage_domain_voyage_number",
+      "src_cargotracker_voyage_domain_voyage_number_voyagenumber",
+      "src_cargotracker_voyage_domain_voyage_number_voyagenumber_post_init",
+      "src_cargotracker_voyage_domain_voyage_number_voyagenumber_str",
+      "src_cargotracker_voyage_domain_voyage_voyage",
+      "src_cargotracker_voyage_domain_voyage_voyage_eq",
+      "src_cargotracker_voyage_domain_voyage_voyage_hash",
+      "src_cargotracker_voyage_domain_voyage_voyage_post_init",
+      "src_cargotracker_voyage_domain_voyage_voyage_str",
+      "src_cargotracker_voyage_infrastructure_models",
+      "src_cargotracker_voyage_infrastructure_models_voyagerecord",
+      "src_cargotracker_voyage_infrastructure_models_voyagerecord_meta",
+      "src_cargotracker_voyage_infrastructure_repository",
+      "src_cargotracker_voyage_infrastructure_repository_djangovoyagerepository",
+      "src_cargotracker_voyage_infrastructure_repository_djangovoyagerepository_find",
+      "src_cargotracker_voyage_infrastructure_repository_djangovoyagerepository_find_all",
+      "src_cargotracker_voyage_infrastructure_repository_djangovoyagerepository_to_domain",
+      "src_cargotracker_voyage_infrastructure_repository_djangovoyagerepository_upsert",
+      "src_cargotracker_voyage_models"
+    ],
+    "5": [
+      "dataclasses",
+      "datetime",
+      "enum",
+      "src_cargotracker_cargo_domain_cargo",
+      "src_cargotracker_cargo_domain_dates",
+      "src_cargotracker_cargo_domain_dates_as_utc",
+      "src_cargotracker_cargo_domain_dates_py_datetime",
+      "src_cargotracker_cargo_domain_delivery",
+      "src_cargotracker_cargo_domain_delivery_delivery_post_init",
+      "src_cargotracker_cargo_domain_handling_activity",
+      "src_cargotracker_cargo_domain_itinerary",
+      "src_cargotracker_cargo_domain_leg",
+      "src_cargotracker_cargo_domain_leg_leg_post_init",
+      "src_cargotracker_cargo_domain_route_specification",
+      "src_cargotracker_cargo_domain_route_specification_routespecification_post_init",
+      "src_cargotracker_cargo_interfaces_tracking_eta",
+      "src_cargotracker_handling_domain_handling_event",
+      "src_cargotracker_handling_domain_handling_event_handlingevent_post_init",
+      "src_cargotracker_handling_domain_handling_history",
+      "src_cargotracker_location_domain_location",
+      "src_cargotracker_voyage_domain_voyage",
+      "typing"
+    ],
+    "6": [
+      "django_db_models",
+      "src_cargotracker_cargo_infrastructure_models",
+      "src_cargotracker_cargo_infrastructure_models_cargorecord",
+      "src_cargotracker_cargo_infrastructure_models_cargorecord_meta",
+      "src_cargotracker_cargo_infrastructure_models_legrecord",
+      "src_cargotracker_cargo_infrastructure_models_legrecord_meta",
+      "src_cargotracker_cargo_infrastructure_repository",
+      "src_cargotracker_cargo_models",
+      "src_cargotracker_handling_domain_handling_event_handlingeventtype",
+      "src_cargotracker_handling_domain_handling_event_handlingeventtype_requires_voyage",
+      "src_cargotracker_handling_domain_handling_event_py_strenum",
+      "src_cargotracker_handling_infrastructure_models",
+      "src_cargotracker_handling_infrastructure_models_handlingeventrecord",
+      "src_cargotracker_handling_infrastructure_models_handlingeventrecord_meta",
+      "src_cargotracker_handling_infrastructure_repository",
+      "src_cargotracker_handling_models"
+    ],
+    "7": [
+      "django_apps",
+      "src_cargotracker_cargo_apps",
+      "src_cargotracker_cargo_apps_cargoconfig",
+      "src_cargotracker_cargo_apps_py_appconfig",
+      "src_cargotracker_handling_apps",
+      "src_cargotracker_handling_apps_handlingconfig",
+      "src_cargotracker_handling_apps_py_appconfig",
+      "src_cargotracker_location_apps",
+      "src_cargotracker_location_apps_locationconfig",
+      "src_cargotracker_location_apps_py_appconfig",
+      "src_cargotracker_voyage_apps",
+      "src_cargotracker_voyage_apps_py_appconfig",
+      "src_cargotracker_voyage_apps_voyageconfig"
+    ],
+    "8": [
+      "django_db",
+      "django_db_models_deletion",
+      "src_cargotracker_cargo_migrations_0001_initial",
+      "src_cargotracker_cargo_migrations_0001_initial_migration",
+      "src_cargotracker_cargo_migrations_0002_remove_cargorecord_last_event_id_and_more",
+      "src_cargotracker_cargo_migrations_0002_remove_cargorecord_last_event_id_and_more_migration",
+      "src_cargotracker_handling_migrations_0001_initial",
+      "src_cargotracker_handling_migrations_0001_initial_migration",
+      "src_cargotracker_location_migrations_0001_initial",
+      "src_cargotracker_location_migrations_0001_initial_migration",
+      "src_cargotracker_voyage_migrations_0001_initial",
+      "src_cargotracker_voyage_migrations_0001_initial_migration"
+    ],
+    "9": [
+      "django_core_asgi",
+      "django_core_wsgi",
+      "os",
+      "pathlib",
+      "src_cargotracker_asgi",
+      "src_cargotracker_asgi_rationale_1",
+      "src_cargotracker_settings",
+      "src_cargotracker_settings_postgres_database_configuration",
+      "src_cargotracker_settings_rationale_1",
+      "src_cargotracker_wsgi",
+      "src_cargotracker_wsgi_rationale_1"
+    ],
+    "10": [
+      "src_cargotracker_cargo_application_init"
+    ],
+    "11": [
+      "src_cargotracker_cargo_domain_init"
+    ],
+    "12": [
+      "src_cargotracker_cargo_infrastructure_init"
+    ],
+    "13": [
+      "src_cargotracker_cargo_init"
+    ],
+    "14": [
+      "src_cargotracker_cargo_interfaces_init"
+    ],
+    "15": [
+      "src_cargotracker_cargo_interfaces_tracking_init"
+    ],
+    "16": [
+      "src_cargotracker_cargo_interfaces_tracking_map_init"
+    ],
+    "17": [
+      "src_cargotracker_cargo_management_commands_init"
+    ],
+    "18": [
+      "src_cargotracker_cargo_management_init"
+    ],
+    "19": [
+      "src_cargotracker_cargo_migrations_init"
+    ],
+    "20": [
+      "src_cargotracker_handling_domain_init"
+    ],
+    "21": [
+      "src_cargotracker_handling_infrastructure_init"
+    ],
+    "22": [
+      "src_cargotracker_handling_init"
+    ],
+    "23": [
+      "src_cargotracker_handling_migrations_init"
+    ],
+    "24": [
+      "src_cargotracker_init"
+    ],
+    "25": [
+      "src_cargotracker_location_application_init"
+    ],
+    "26": [
+      "src_cargotracker_location_domain_init"
+    ],
+    "27": [
+      "src_cargotracker_location_infrastructure_init"
+    ],
+    "28": [
+      "src_cargotracker_location_init"
+    ],
+    "29": [
+      "src_cargotracker_location_interfaces_init"
+    ],
+    "30": [
+      "src_cargotracker_location_migrations_init"
+    ],
+    "31": [
+      "src_cargotracker_voyage_domain_init"
+    ],
+    "32": [
+      "src_cargotracker_voyage_infrastructure_init"
+    ],
+    "33": [
+      "src_cargotracker_voyage_init"
+    ],
+    "34": [
+      "src_cargotracker_voyage_migrations_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.10465116279069768,
+    "1": 0.08970099667774087,
+    "2": 0.12280701754385964,
+    "3": 0.11561561561561562,
+    "4": 0.12857142857142856,
+    "5": 0.2727272727272727,
+    "6": 0.19166666666666668,
+    "7": 0.15384615384615385,
+    "8": 0.19696969696969696,
+    "9": 0.18181818181818182,
+    "10": 1.0,
+    "11": 1.0,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0,
+    "34": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_cargotracker_location_domain_location_location",
+      "label": "Location",
+      "degree": 44
+    },
+    {
+      "id": "src_cargotracker_cargo_domain_cargo_cargo",
+      "label": "Cargo",
+      "degree": 40
+    },
+    {
+      "id": "src_cargotracker_voyage_domain_voyage_voyage",
+      "label": "Voyage",
+      "degree": 40
+    },
+    {
+      "id": "src_cargotracker_cargo_infrastructure_repository_djangocargorepository",
+      "label": "DjangoCargoRepository",
+      "degree": 36
+    },
+    {
+      "id": "src_cargotracker_cargo_domain_delivery_delivery",
+      "label": "Delivery",
+      "degree": 31
+    },
+    {
+      "id": "src_cargotracker_cargo_domain_itinerary_itinerary",
+      "label": "Itinerary",
+      "degree": 27
+    },
+    {
+      "id": "src_cargotracker_handling_domain_handling_event_handlingevent",
+      "label": "HandlingEvent",
+      "degree": 25
+    },
+    {
+      "id": "src_cargotracker_handling_infrastructure_repository_djangohandlingeventrepository",
+      "label": "DjangoHandlingEventRepository",
+      "degree": 25
+    },
+    {
+      "id": "src_cargotracker_cargo_domain_tracking_id_trackingid",
+      "label": "TrackingId",
+      "degree": 24
+    },
+    {
+      "id": "src_cargotracker_voyage_domain_voyage_number_voyagenumber",
+      "label": "VoyageNumber",
+      "degree": 24
+    }
+  ],
+  "surprises": [
+    {
+      "source": "_EventSeed",
+      "target": "HandlingEventType",
+      "source_files": [
+        "src/cargotracker/cargo/application/sample_data.py",
+        "src/cargotracker/handling/domain/handling_event.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities; peripheral node `_EventSeed` unexpectedly reaches hub `HandlingEventType`"
+    },
+    {
+      "source": "_cargo_from_seed()",
+      "target": "Delivery",
+      "source_files": [
+        "src/cargotracker/cargo/application/sample_data.py",
+        "src/cargotracker/cargo/domain/delivery.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "_cargo_from_seed()",
+      "target": "HandlingHistory",
+      "source_files": [
+        "src/cargotracker/cargo/application/sample_data.py",
+        "src/cargotracker/handling/domain/handling_history.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "SampleDataSeeder",
+      "target": "Delivery",
+      "source_files": [
+        "src/cargotracker/cargo/application/sample_data.py",
+        "src/cargotracker/cargo/domain/delivery.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "SampleDataSeeder",
+      "target": "Location",
+      "source_files": [
+        "src/cargotracker/cargo/application/sample_data.py",
+        "src/cargotracker/location/domain/location.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

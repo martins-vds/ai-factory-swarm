@@ -1,0 +1,9 @@
+[graphify extract] scanning /tmp/fx-django
+[graphify extract] --code-only: skipping 4 non-code file(s) (4 docs, 0 papers, 0 images) — no LLM extraction
+[graphify extract] found 22 code, 0 docs, 0 papers, 0 images
+[graphify extract] AST extraction on 22 code files...
+  AST cache: 0/22 files served from cache (0%); 22 to extract
+  warning: 3 code file(s) yielded no symbols (0.00 MB) — a data file, or source this extractor models no symbols for: src/shop/orders/interfaces/urls.py, src/shop/settings.py, src/shop/urls.py
+[graphify extract] wrote /tmp/fx-django/graphify-out/graph.json: 58 nodes, 80 edges, 13 communities
+[graphify extract] wrote /tmp/fx-django/graphify-out/.graphify_analysis.json
+[graphify extract] next: run `graphify cluster-only /tmp/fx-django` to generate GRAPH_REPORT.md and name communities
