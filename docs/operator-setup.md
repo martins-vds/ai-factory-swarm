@@ -46,8 +46,8 @@ Understand Anything (UA) builds the graph with an LLM. For data and routing it o
 | `reads_from` / `writes_to` | never | `java-ee`: EntityManager queries, `find`, `persist`/`merge`/`remove` · `django`: `Model.objects.*`, `.save()`/`.delete()` |
 | `endpoint` nodes | OpenAPI / Swagger specs only | `java-ee`: JAX-RS `@Path` + verbs · `django`: `urls.py` `path()`/`include()` |
 | `page` nodes and `routes` | infrastructure routing config only | `java-ee`: JSF `*.xhtml`, EL `#{bean…}` → `@Named` bean, `ui:include`/templates · `django`: views → `render(template)` |
-| `calls` between classes | sparse (LLM-chosen) | `java-ee`: `@Inject`/`@EJB` fields · `django`: imports, typed parameters and `self.` attributes |
-| interface → implementation | partial | `implements` from `implements`/Protocol/ABC bases |
+| `calls` between types and functions | sparse (LLM-chosen) | **Graphify** (ADR-0025, any language it parses): calls, instantiation and typed parameters · `java-ee`: CDI `@Inject`/`@EJB` wiring |
+| interface → implementation | partial | **Graphify**: `implements`, and `inherits` from a `Protocol`/`ABC` base |
 | asynchronous hops | never | `java-ee`: JMS producers → queue → `@MessageDriven` consumers; CDI `Event<T>.fire` → `cdi-event` → `@Observes` · `django`: `f.defer()`/`.delay()` → `task` → the task function |
 | scheduled and batch entry points | never | `java-ee`: `@Schedule` → `timer`; `JobOperator.start("J")` → `batch-job J` → its XML `ref=""` beans · `django`: `management/commands/<name>.py` → `command` |
 | push and script calls from pages | never | `java-ee`: `@ServerEndpoint` → `WS /path` · both: page scripts' `fetch(url)`, `new WebSocket(…"/path")` and htmx `hx-get`/`hx-post`… (`{% url 'ns:name' %}` or a literal path) → `routes` to the matching endpoint; `{% include %}`/`{% extends %}` → `contains` |

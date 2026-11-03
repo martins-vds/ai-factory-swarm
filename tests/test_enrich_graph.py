@@ -14,8 +14,11 @@ import enrich_graph  # noqa: E402
 
 
 def enrich(kind, base=None):
+    """The fixture graph as the workflow builds it: Graphify's language layer first, then the enricher."""
     g = enrich_graph.Graph(base or {"project": {}, "nodes": [], "edges": []})
-    enrich_graph.ENRICHERS[kind](g, FIX / ("javaee" if kind == "java-ee" else "django"))
+    folder = "javaee" if kind == "java-ee" else "django"
+    enrich_graph.merge_graphify(g, json.loads((FIX / f"{folder}.graphify.json").read_text()))
+    enrich_graph.ENRICHERS[kind](g, FIX / folder)
     return g
 
 
@@ -179,6 +182,58 @@ class AppLabelTest(unittest.TestCase):
             self.assertEqual(edges(g, "defines_schema"), {("Thing", "legacy_thing"), ("Pinned", "PINNED")})
 
 
+class GraphifyMergeTest(unittest.TestCase):
+    def doc(self, links, version=1):
+        nodes = [{"id": "f", "label": "a.py", "file_type": "code", "source_file": "a.py"},
+                 {"id": "A", "label": "Repo", "_callable_class": True, "file_type": "code", "source_file": "a.py"},
+                 {"id": "A.m", "label": ".find()", "file_type": "code", "source_file": "a.py", "source_location": "L4"},
+                 {"id": "B", "label": "SqlRepo", "_callable_class": True, "file_type": "code", "source_file": "b.py"},
+                 {"id": "v", "label": "view()", "file_type": "code", "source_file": "c.py"},
+                 {"id": "P", "label": "Protocol", "file_type": "concept", "external": True}]
+        return {"graph": {"schema_version": version}, "nodes": nodes,
+                "links": [{"source": "f", "target": "A", "relation": "contains"},
+                          {"source": "A", "target": "A.m", "relation": "method"}] + links}
+
+    def test_methods_count_as_their_type_and_only_flow_relations_merge(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        enrich_graph.merge_graphify(g, self.doc([
+            {"source": "v", "target": "A.m", "relation": "calls", "confidence": "INFERRED", "source_file": "c.py",
+             "source_location": "L9"},
+            {"source": "v", "target": "B", "relation": "uses", "confidence": "EXTRACTED"},
+            {"source": "B", "target": "A", "relation": "inherits", "confidence": "EXTRACTED"},
+            {"source": "A", "target": "P", "relation": "inherits", "confidence": "EXTRACTED"},
+            {"source": "B", "target": "v", "relation": "references", "confidence": "EXTRACTED"}]))
+        self.assertEqual(edges(g, "calls"), {("view", "Repo"), ("view", "SqlRepo")})
+        self.assertEqual(edges(g, "implements"), {("SqlRepo", "Repo")}, "a Protocol-based base is an interface")
+        self.assertEqual(edges(g, "inherits"), set(), "external bases and references are not merged")
+        desc = {e["description"] for e in g.doc["edges"]}
+        self.assertIn("afs-enriched:graphify — calls INFERRED c.py:L9", desc)
+        self.assertIn("afs-enriched:graphify — uses EXTRACTED", desc)
+
+    def test_existing_nodes_are_reused(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [
+            {"id": "llm-repo", "type": "class", "name": "Repo", "filePath": "a.py"}], "edges": []})
+        enrich_graph.merge_graphify(g, self.doc([{"source": "v", "target": "A", "relation": "calls"}]))
+        self.assertEqual([e["target"] for e in g.doc["edges"]], ["llm-repo"])
+
+    def test_unknown_schema_version_is_refused(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        with self.assertRaisesRegex(enrich_graph.GraphifyError, "schema_version 2"):
+            enrich_graph.merge_graphify(g, self.doc([], version=2))
+
+
+class GateTest(unittest.TestCase):
+    def test_calling_an_entity_is_not_data_access(self):
+        nodes = [{"id": i, "type": t, "name": i} for i, t in
+                 (("ep", "endpoint"), ("svc", "class"), ("Cargo", "class"), ("cargo", "table"), ("repo", "class"))]
+        e = lambda s, t, k: {"source": s, "target": t, "type": k}
+        edges = [e("ep", "svc", "routes"), e("svc", "Cargo", "calls"), e("Cargo", "cargo", "defines_schema")]
+        by_id = {n["id"]: n for n in nodes}
+        self.assertTrue(check_graph.data_path("endpoint=ep", nodes, edges, by_id).startswith("**NO PATH**"))
+        edges += [e("svc", "repo", "calls"), e("repo", "cargo", "reads_from")]
+        self.assertIn("→reads_from `cargo`", check_graph.data_path("endpoint=ep", nodes, edges, by_id))
+
+
 class PageLinkTest(unittest.TestCase):
     def test_suffix_match_and_verbs(self):
         eps = [("GET", "/cargo", "a"), ("POST", "/cargo", "b"), (None, "/", "c"), ("WS", "/tracking", "d"),
@@ -199,11 +254,18 @@ class CliTest(unittest.TestCase):
             kg = pathlib.Path(d) / "kg.json"
             kg.write_text(json.dumps({"project": {"name": "x"}, "nodes": [], "edges": []}))
             r = subprocess.run([sys.executable, str(ROOT / "tools/enrich_graph.py"), str(kg), "--root",
-                                str(FIX / "django"), "--enricher", "django"], capture_output=True, text=True)
+                                str(FIX / "django"), "--graphify", str(FIX / "django.graphify.json"),
+                                "--enricher", "django"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertIn("AFS-RESULT gate=graph-enrich enrichers=django", r.stdout)
+            self.assertIn("AFS-RESULT gate=graph-enrich enrichers=graphify,django", r.stdout)
             doc = json.loads(kg.read_text())
-            self.assertEqual(doc["project"]["afsEnrichment"]["enrichers"], ["django"])
+            self.assertEqual(doc["project"]["afsEnrichment"]["enrichers"], ["graphify", "django"])
+            bad = pathlib.Path(d) / "gf.json"
+            bad.write_text(json.dumps({"graph": {"schema_version": 99}, "nodes": [], "links": []}))
+            r = subprocess.run([sys.executable, str(ROOT / "tools/enrich_graph.py"), str(kg), "--root",
+                                str(FIX / "django"), "--graphify", str(bad)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("schema_version 99", r.stderr)
 
     def test_check_graph_gate_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:

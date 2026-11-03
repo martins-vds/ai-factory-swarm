@@ -56,6 +56,16 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {{ node-version: "22" }}
+      # ADR-0025: Graphify (the language-level layer) in its own Python 3.12 venv, every package hash-pinned
+      # (.migration/harness/tools/locks/graphify.lock). Set up before the job's Python, which takes PATH after it.
+      - uses: actions/setup-python@v5
+        id: graphify-python
+        with: {{ python-version: "3.12" }}
+      - name: Install Graphify (hash-pinned)
+        run: |
+          "${{{{ steps.graphify-python.outputs.python-path }}}}" -m venv "$RUNNER_TEMP/graphify-venv"
+          "$RUNNER_TEMP/graphify-venv/bin/pip" install -q --require-hashes --no-deps \
+            -r .migration/harness/tools/locks/graphify.lock
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
       - name: Install Copilot CLI {copilot_cli_version}, SDK {copilot_sdk_version}, Understand Anything ({ua_commit_short})
@@ -96,14 +106,16 @@ jobs:
           [ "$SIDE" = target ] && anchors="" || anchors=$(python -c "import yaml,sys;s=yaml.safe_load(open(sys.argv[1])) if sys.argv[1]!='full' else {{}};print(' '.join('--anchor '+x for x in s.get('anchors',[])))" \
             "$([ "$SCOPE" = full ] && echo full || echo .migration/slices/$SCOPE.yaml)")
           dom=""; [ -f "$out/domain-graph.json" ] && dom="--domain $out/domain-graph.json"
-          # Enrichment (ADR-0020): the profile's harness enrichers add what Understand Anything can't infer
-          # (ORM tables, reads/writes, endpoints, pages, routes), from the same folder it analysed.
+          # Enrichment, two layers. ADR-0025: Graphify's deterministic language-level structure (calls, uses,
+          # implements, inherits), extracted from a copy of the analysed folder so its output isn't analysed.
+          # ADR-0020: the profile's framework enrichers (ORM tables, reads/writes, endpoints, pages, routes, …).
+          gf="$RUNNER_TEMP/graphify-in"; rm -rf "$gf"; cp -r "$RUNNER_TEMP/analyze" "$gf"; rm -rf "$gf/.git"
+          ( cd "$gf" && GRAPHIFY_BACKEND=none "$RUNNER_TEMP/graphify-venv/bin/graphify" extract . --code-only ) > "$RUNNER_TEMP/graphify.log" 2>&1 \
+            || {{ tail -40 "$RUNNER_TEMP/graphify.log"; echo "::error::Graphify failed (ADR-0025)"; exit 1; }}
           enrichers=$(python -c "import yaml,sys;g=yaml.safe_load(open('.migration/profile.yaml')).get('graph') or {{}};print(' '.join('--enricher '+e for e in (g.get('enrich') or {{}}).get(sys.argv[1]) or []))" "$SIDE")
-          if [ -n "$enrichers" ]; then
-            python .migration/harness/tools/enrich_graph.py "$out/knowledge-graph.json" --root "$RUNNER_TEMP/analyze" $enrichers
-          else
-            echo "::warning::No graph.enrich.$SIDE in the profile: the graph has only what Understand Anything infers (ADR-0020)."
-          fi
+          [ -n "$enrichers" ] || echo "::warning::No graph.enrich.$SIDE in the profile: no framework links (routes, data access) beyond what Understand Anything infers (ADR-0020)."
+          python .migration/harness/tools/enrich_graph.py "$out/knowledge-graph.json" --root "$RUNNER_TEMP/analyze" \
+            --graphify "$gf/graphify-out/graph.json" $enrichers
           # Identity (ADR-0019): what this graph describes, replacing the throwaway commit id in the JSONs.
           if [ "$SIDE" = source ]; then id="${{{{ steps.lock.outputs.sha }}}}"; else id="${{{{ github.sha }}}}"; fi
           echo "AFS_GRAPH_ID=$id" >> "$GITHUB_ENV"

@@ -11,8 +11,8 @@ Reads knowledge-graph.json (and domain-graph.json if given), then reports:
 Gate mode (ADR-0020): with --gate, exit 1 when a --require-node/--require-edge type is absent or a
 --data-path anchor has no *directed* path to data. A data path follows how the code actually flows:
 routes, calls, contains, inherits, publishes, triggers, reads_from and writes_to forward, and implements
-backwards (from an
-interface to its implementation). The stack pack says which types its enrichers guarantee, and each
+backwards (from an interface to its implementation). The last hop is always a read or a write: calling an
+entity class's methods does not reach its table. The stack pack says which types its enrichers guarantee, and each
 slice spec names its anchors (`data_paths`). Without --gate the exit code is 0 (a findings report).
 Standard library only.
 
@@ -160,7 +160,9 @@ def main():
     return 0
 
 
-FORWARD = {"routes", "calls", "contains", "inherits", "reads_from", "writes_to", "defines_schema",
+# Data is reached by reading or writing it. `defines_schema` (entity class → its table) is not a step: code
+# that calls an entity's methods works on an object in memory, not on the database (ADR-0025).
+FORWARD = {"routes", "calls", "contains", "inherits", "reads_from", "writes_to",
            "publishes", "triggers"}     # asynchronous hops: producer → queue → consumer
 BACKWARD = {"implements"}   # interface → implementation
 
