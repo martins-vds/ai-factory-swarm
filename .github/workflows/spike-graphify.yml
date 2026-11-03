@@ -1,0 +1,55 @@
+# Throwaway spike (issue #38): run Graphify on the pilot's source and target and upload its graphs.
+# Lives only on the spike/graphify branch; never merged.
+name: Spike Graphify
+
+on:
+  push:
+    branches: [spike/graphify]
+
+jobs:
+  graphify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install Graphify (isolated venv)
+        run: |
+          python -m venv /tmp/gv
+          /tmp/gv/bin/pip install -q graphifyy
+          mkdir -p out
+          /tmp/gv/bin/pip show graphifyy | tee out/version.txt
+          /tmp/gv/bin/graphify --help > out/help.txt 2>&1 || true
+          /tmp/gv/bin/graphify extract --help > out/help-extract.txt 2>&1 || true
+          cat out/help.txt out/help-extract.txt
+      - name: Fetch the code
+        run: |
+          git clone -q https://github.com/eclipse-ee4j/cargotracker /tmp/cargotracker
+          git -C /tmp/cargotracker checkout -q f3beacf78de4f6d34edc4971ac87e38a5c6fe59d
+          mkdir -p /tmp/src && git -C /tmp/cargotracker archive HEAD | tar -x -C /tmp/src
+          git clone -q https://github.com/martins-vds/ai-factory-pilot-target /tmp/pilot
+          mkdir -p /tmp/tgt && git -C /tmp/pilot archive HEAD -- src templates | tar -x -C /tmp/tgt
+          git -C /tmp/pilot rev-parse HEAD > out/pilot-commit.txt
+      - name: Extract (twice per side, to check determinism)
+        env:
+          GRAPHIFY_BACKEND: none
+        run: |
+          set -x
+          for side in src tgt; do
+            for run in 1 2; do
+              rm -rf "/tmp/$side-$run" && cp -r "/tmp/$side" "/tmp/$side-$run"
+              ( cd "/tmp/$side-$run" && /usr/bin/time -v /tmp/gv/bin/graphify extract . --code-only ) \
+                > "out/$side-$run.log" 2>&1 || echo "exit $?" >> "out/$side-$run.log"
+              tail -25 "out/$side-$run.log"
+              mkdir -p "out/$side-$run"
+              find "/tmp/$side-$run" -path '*graphify-out*' -type f \( -name '*.json' -o -name '*.md' \) \
+                -exec cp {} "out/$side-$run/" \;
+              ls -la "out/$side-$run"
+            done
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: graphify-spike
+          path: out/
