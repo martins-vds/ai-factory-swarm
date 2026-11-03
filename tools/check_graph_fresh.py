@@ -9,7 +9,7 @@ by the afs-understand workflow, and the graph JSONs carry the same identity in `
                    (code changes make it stale; test-only changes don't, because tests live outside src/),
                    and complete when no tracked Django template (an .html file with {% %} or {{ }}) lies
                    outside those paths: such pages are invisible to the graph (add their folder to the
-                   profile's graph.target_paths)
+                   profile's graph.target_paths, or a non-app folder to graph.target_exclude)
 
 A graph written before ADR-0019 (no `source_sha` / `tree.*` lines) is reported as unstamped, i.e. stale.
 
@@ -75,15 +75,23 @@ def check_source(folder, pinned):
     return problems
 
 
-NOT_APP = {".github", ".migration", ".source", "docs", "tests", "test", "node_modules", "characterization"}
+NOT_APP = {".github", ".migration", ".source", "docs", "tests", "test", "node_modules"}
 
 
-def outside_templates(paths):
+def target_exclude(profile=".migration/profile.yaml"):
+    """The profile's graph.target_exclude: folders of this repo that hold no application pages."""
+    p = pathlib.Path(profile)
+    doc = yaml.safe_load(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    return [x.rstrip("/") for x in ((doc or {}).get("graph") or {}).get("target_exclude") or []]
+
+
+def outside_templates(paths, exclude=()):
     """Tracked Django templates that no analysed path covers (the graph can't see those pages)."""
     out = []
+    under = lambda f, folders: any(f == p or f.startswith(p.rstrip("/") + "/") for p in folders)
     for f in (git("ls-files", "*.html") or "").splitlines():
         parts = pathlib.PurePosixPath(f).parts
-        if NOT_APP & set(parts) or any(f == p or f.startswith(p.rstrip("/") + "/") for p in paths):
+        if NOT_APP & set(parts) or under(f, paths) or under(f, exclude):
             continue
         try:
             text = pathlib.Path(f).read_text(encoding="utf-8", errors="ignore")
@@ -100,8 +108,8 @@ def check_target(folder):
     if not trees:
         return [f"{folder}: unstamped (no tree.<path> lines in SNAPSHOT.txt); rebuild it with afs-understand side=target"]
     problems = [f"{folder}: {f}: a Django template outside the analysed paths ({', '.join(sorted(trees))}); add its "
-                f"folder to graph.target_paths in .migration/profile.yaml, then rebuild with afs-understand side=target"
-                for f in outside_templates(trees)]
+                f"folder to graph.target_paths (or, if it holds no app pages, graph.target_exclude) in .migration/profile.yaml, then rebuild with afs-understand side=target"
+                for f in outside_templates(trees, target_exclude())]
     for path, recorded in sorted(trees.items()):
         now = git("rev-parse", f"HEAD:{path}")
         if now != recorded:
