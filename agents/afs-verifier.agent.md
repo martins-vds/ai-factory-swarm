@@ -41,6 +41,10 @@ file, its ticket and the ledger entries it touches, the profile (gates, threshol
 5. **Ledger:** entries validate; statuses and evidence are true.
 6. Report. Do not fix production code — hand findings back.
 
+**Your files only:** add your tests, your journal rows and `<ticket>.afs-verifier.yaml`. Never edit another
+role's return file. Each return's scores are checked against the journal as of its own last commit, so your
+later runs can't invalidate it; a claim you dispute is a finding.
+
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
 (`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
