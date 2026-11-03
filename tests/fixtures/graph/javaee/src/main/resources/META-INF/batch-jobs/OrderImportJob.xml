@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<job id="OrderImportJob" xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="1.0">
+	<step id="ImportLines">
+		<chunk item-count="12">
+			<reader ref="OrderLineReader" />
+			<writer ref="OrderLineWriter" />
+		</chunk>
+	</step>
+</job>

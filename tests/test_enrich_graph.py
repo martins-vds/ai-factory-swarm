@@ -63,6 +63,31 @@ class JavaEETest(unittest.TestCase):
         self.assertIn("→triggers `OrderConsumer`", jms)
         self.assertTrue(path(self.g, "templates/layout.xhtml").startswith("**NO PATH**"))
 
+    def test_websocket_endpoint_and_cdi_events(self):
+        self.assertIn(("WS /live", "LivePush"), edges(self.g, "routes"))
+        self.assertIn(("OrderChecker", "cdi-event @OrderChecked Order"), edges(self.g, "publishes"))
+        triggers = edges(self.g, "triggers")
+        self.assertIn(("cdi-event @OrderChecked Order", "LivePush"), triggers)
+        self.assertNotIn(("cdi-event @OrderChecked Order", "AuditTrail"), triggers, "different event type")
+
+    def test_schedule_and_batch_job(self):
+        self.assertIn(("timer Nightly.run (minute=*/2, hour=*)", "Nightly"), edges(self.g, "triggers"))
+        calls = edges(self.g, "calls")
+        self.assertIn(("Nightly", "batch-job OrderImportJob"), calls)
+        self.assertIn(("batch-job OrderImportJob", "OrderLineReader"), calls)
+        self.assertIn(("batch-job OrderImportJob", "OrderLineWriter"), calls)
+
+    def test_page_scripts_route_to_endpoints(self):
+        routes = edges(self.g, "routes")
+        self.assertIn(("src/main/webapp/public/live.xhtml", "POST /orders/report"), routes)
+        self.assertIn(("src/main/webapp/public/live.xhtml", "WS /live"), routes)
+
+    def test_directed_paths_through_async_hops(self):
+        timer = path(self.g, "resource=timer Nightly.run (minute=*/2, hour=*)")
+        self.assertIn("→calls `batch-job OrderImportJob`", timer)
+        self.assertIn("→triggers `OrderConsumer`", timer)
+        self.assertIn("→publishes", path(self.g, "public/live.xhtml"))
+
     def test_existing_nodes_are_reused_and_edges_carry_provenance(self):
         cid = "class:src/main/java/demo/infra/JpaOrderRepository.java:JpaOrderRepository"
         base = {"project": {}, "nodes": [{"id": cid, "type": "class", "name": "JpaOrderRepository", "summary": "llm",
@@ -102,6 +127,37 @@ class DjangoTest(unittest.TestCase):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/"))
         self.assertIn("←implements `DjangoOrderRepository` →reads_from", path(self.g, "orders/interfaces/views.py"))
         self.assertTrue(path(self.g, "endpoint=/api/health/").startswith("**NO PATH**"))
+
+    def test_management_command_and_task(self):
+        self.assertIn(("import_orders", "Command"), edges(self.g, "routes"))
+        self.assertIn(("task shop.orders.tasks.record_note", "record_note"), edges(self.g, "triggers"))
+        self.assertIn(("Command", "task shop.orders.tasks.record_note"), edges(self.g, "publishes"))
+        self.assertIn("→publishes `task shop.orders.tasks.record_note` →triggers `record_note`",
+                      path(self.g, "command=import_orders"))
+
+    def test_templates_route_to_endpoints(self):
+        routes, board = edges(self.g, "routes"), "src/shop/orders/templates/orders/board.html"
+        self.assertIn((board, "/api/board/rows/"), routes, "hx-get with {% url 'ns:name' %}")
+        self.assertIn((board, "/api/health/"), routes, "hx-post with a literal path")
+        self.assertIn((board, "src/shop/orders/templates/orders/list.html"), edges(self.g, "contains"))
+
+    def test_polled_partial_reaches_data(self):
+        self.assertIn("→routes `/api/board/rows/`", path(self.g, "endpoint=/api/board/"))
+        self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/api/board/"))
+
+
+class PageLinkTest(unittest.TestCase):
+    def test_suffix_match_and_verbs(self):
+        eps = [("GET", "/cargo", "a"), ("POST", "/cargo", "b"), (None, "/", "c"), ("WS", "/tracking", "d"),
+               (None, "/board/<int:pk>/", "e")]
+        self.assertEqual(enrich_graph.match_endpoints("/app/rest/cargo", "GET", eps), ["a"])
+        self.assertEqual(enrich_graph.match_endpoints("/app/rest/cargo?x=1", "POST", eps), ["b"])
+        self.assertEqual(enrich_graph.match_endpoints("/x/tracking", "WS", eps), ["d"])
+        self.assertEqual(enrich_graph.match_endpoints("/x/tracking", "GET", eps), [], "a socket is not GET")
+        self.assertEqual(enrich_graph.match_endpoints("/", "GET", eps), ["c"])
+        self.assertEqual(enrich_graph.match_endpoints("/other", "GET", eps), [], "/ matches only exactly")
+        self.assertEqual(enrich_graph.match_endpoints("/board/7/", "GET", eps), ["e"])
+        self.assertEqual(enrich_graph.match_endpoints("/rest/acargo", "GET", eps), [], "segment boundary")
 
 
 class CliTest(unittest.TestCase):
@@ -153,7 +209,7 @@ class GraphGateTest(unittest.TestCase):
             r = self.gate(d, "--side", "target")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("verdict=pass", r.stdout)
-            self.assertIn("reaching_data=1", r.stdout)
+            self.assertIn("reaching_data=4", r.stdout)
         with tempfile.TemporaryDirectory() as d:
             self.repo(d, ["endpoint=/api/health/"], {"nodes": ["screen"]})
             r = self.gate(d, "--side", "target")

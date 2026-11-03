@@ -10,10 +10,18 @@ description `afs-enriched:<rule>`, so they can be told from the LLM's.
 Enrichers (the stack pack names which ones a migration uses):
   java-ee   JPA @Entity/@Table → table; EntityManager queries/find → reads_from; persist/merge/remove →
             writes_to; JAX-RS @Path + verbs → endpoint, routes; JSF *.xhtml → page, EL #{bean.x} →
-            routes to the @Named bean; @Inject fields → calls; implements → implements
+            routes to the @Named bean; @Inject fields → calls; implements → implements; JMS producers →
+            publishes → queue → triggers → @MessageDriven; @ServerEndpoint → `WS` endpoint; CDI
+            Event<T>.fire → publishes → `cdi-event` → triggers → @Observes; @Schedule → `timer` → triggers;
+            JobOperator.start("J") → calls → `batch-job J` → calls → the job XML's ref="" beans
   django    urls.py path()/include() → endpoint, routes to the view; models.Model → table; ORM
             Model.objects.* / .save() / .delete() → reads_from / writes_to; render(template) →
-            page; calls to project functions/classes → calls
+            page; calls to project functions/classes → calls; management/commands/<name>.py → `command`
+            routes Command; @app.task/@shared_task → `task` triggers it, f.defer()/.delay() → publishes;
+            {% include/extends %} → contains
+  both      page/template scripts and htmx: fetch(url), new WebSocket(…"/path"), hx-get/post/…="url" or
+            "{% url 'ns:name' %}" → routes to the matching endpoint (path suffix at a segment boundary,
+            same verb; `/` only exactly)
 
 Usage:
   enrich_graph.py <knowledge-graph.json> --root <analysed folder> --enricher java-ee [--enricher django]
@@ -65,6 +73,66 @@ class Graph:
 
 def rel(path, root):
     return path.relative_to(root).as_posix()
+
+
+# ------------------------------------------------------------------------------------- page → endpoint
+
+HX_ATTR = re.compile(r"\bhx-(get|post|put|patch|delete)\s*=\s*(\"[^\"]*\"|'[^']*')", re.I)
+FETCH = re.compile(r"\bfetch\s*\(\s*(['\"`])([^'\"`]+)\1\s*(?:,\s*\{([^}]*)\})?")
+PATH_LITERAL = re.compile(r"(['\"])(/[^'\"\s]*)\1")
+
+
+def script_links(text):
+    """(verb, url) pairs a page or template calls: fetch(), WebSocket path literals and htmx attributes."""
+    out = []
+    for q, url, opts in FETCH.findall(text):
+        m = re.search(r"method\s*:\s*['\"](\w+)", opts or "")
+        out.append(((m.group(1) if m else "GET").upper(), url))
+    if re.search(r"\bnew\s+WebSocket\s*\(", text):
+        out += [("WS", u) for _, u in PATH_LITERAL.findall(text) if len(u) > 1]
+    out += [(verb.upper(), val[1:-1]) for verb, val in HX_ATTR.findall(text)]
+    return out
+
+
+def endpoint_index(g):
+    """(verb or None, path, node id) for every endpoint node: `GET /x`, `WS /x` or a bare `/x`."""
+    eps = []
+    for n in g.nodes.values():
+        if n.get("type") == "endpoint":
+            verb, _, path = n["name"].rpartition(" ")
+            eps.append((verb or None, path, n["id"]))
+    return eps
+
+
+def match_endpoints(url, verb, eps):
+    """Endpoints a URL literal reaches: the endpoint path is a suffix of the URL at a segment boundary
+    (context and application paths come first in the URL), `{x}`/`<x>` parameters match one segment,
+    and the verb agrees (a bare Django route accepts any HTTP verb, never a socket). `/` matches only `/`."""
+    url = re.split(r"[?#]", url, maxsplit=1)[0]
+    norm = lambda u: u.rstrip("/") or "/"
+    url = norm(url)
+    out = []
+    for ev, path, eid in eps:
+        if not (ev == verb if ev else verb != "WS"):
+            continue
+        p = norm(path)
+        if p == "/":
+            if url == "/":
+                out.append(eid)
+            continue
+        pat = "/".join("[^/]+" if re.fullmatch(r"<[^>]+>|\{[^}]+\}", seg) else re.escape(seg)
+                       for seg in p.split("/"))
+        if re.fullmatch(".*" + pat, url):
+            out.append(eid)
+    return out
+
+
+def link_page(g, pid, text, eps, rule, resolve_named=None):
+    for verb, url in script_links(text):
+        named = resolve_named(url) if resolve_named else None
+        targets = [named] if named else match_endpoints(url, verb, eps) if url.startswith("/") else []
+        for eid in targets:
+            g.edge(pid, eid, "routes", rule, description=f"{verb} {url}")
 
 
 # --------------------------------------------------------------------------------------------- Java EE
@@ -201,12 +269,63 @@ def enrich_java_ee(g, root):
             for lookup in re.findall(r"destinationLookup\"\s*,\s*propertyValue\s*=\s*\"([^\"]+)\"", t.text):
                 qid = g.node("resource", "jms", lookup, "jms", f"JMS destination {lookup}")
                 g.edge(qid, class_id(g, t, "jms"), "triggers", "jms")
-    # JSF pages → page nodes; EL bean references → routes to the @Named bean
+    # WebSocket endpoints: @ServerEndpoint("/x") → endpoint `WS /x`, routes to the class
+    for fq, t in types.items():
+        m = re.search(r"@ServerEndpoint\s*\(\s*(?:value\s*=\s*)?\"([^\"]+)\"", t.text)
+        if m:
+            eid = g.node("endpoint", t.path, f"WS {m.group(1)}", "websocket", f"WebSocket {m.group(1)} ({t.name})")
+            g.edge(eid, class_id(g, t, "websocket"), "routes", "websocket")
+    # CDI events: an `@Inject [@Q…] Event<T>` field publishes to `cdi-event [@Q…] T`; a method parameter
+    # `@Observes [@Q…] T` is triggered by every event of type T whose qualifiers include the observer's.
+    not_qualifiers = {"Inject", "Any", "Default", "Observes", "Named"}
+    quals = lambda anns: tuple(sorted(set(re.findall(r"@(\w+)", anns)) - not_qualifiers))
+    ev_name = lambda q, ty: " ".join(["cdi-event", *[f"@{x}" for x in q], ty])
+    events = {}
+    for fq, t in types.items():
+        for anns, ty in re.findall(r"((?:@\w+(?:\([^)]*\))?\s*)+)(?:private|protected|public)?\s*(?:final\s+)?"
+                                   r"Event\s*<\s*(\w+)[^>]*>\s+\w+\s*;", t.text):
+            if "@Inject" in anns:
+                key = (quals(anns), ty)
+                events[key] = g.node("resource", "cdi", ev_name(*key), "cdi-event", f"CDI event {ev_name(*key)}")
+                g.edge(class_id(g, t, "cdi-event"), events[key], "publishes", "cdi-event")
+    for fq, t in types.items():
+        for before, after, ty in re.findall(r"((?:@\w+(?:\([^)]*\))?\s+)*)@Observes\b((?:\s*@\w+(?:\([^)]*\))?)*)"
+                                            r"\s+(?:final\s+)?(\w+)", t.text):
+            q = set(quals(before + after))
+            hits = [eid for (pq, pty), eid in events.items() if pty == ty and q <= set(pq)]
+            if not hits:
+                key = (tuple(sorted(q)), ty)
+                hits = [g.node("resource", "cdi", ev_name(*key), "cdi-event", f"CDI event {ev_name(*key)}")]
+            for eid in hits:
+                g.edge(eid, class_id(g, t, "cdi-event"), "triggers", "cdi-event")
+    # EJB timers: @Schedule(…) on a method → `timer Class.method (…)` triggers the class
+    for fq, t in types.items():
+        for args, meth in re.findall(r"@Schedule\s*\(([^)]*)\)\s*(?:@\w+(?:\([^)]*\))?\s*)*"
+                                     r"(?:public|protected|private)?\s*(?:\w+\s+)*?\w+\s+(\w+)\s*\(", t.text):
+            spec = ", ".join(re.sub(r"\s*=\s*", "=", a.strip()).replace('"', "") for a in args.split(",") if a.strip())
+            tid = g.node("resource", t.path, f"timer {t.name}.{meth} ({spec})", "ejb-schedule",
+                         f"EJB timer @Schedule({spec}) on {t.name}.{meth}")
+            g.edge(tid, class_id(g, t, "ejb-schedule"), "triggers", "ejb-schedule")
+    # Batch (JSR 352): batch-jobs/J.xml → `batch-job J` calls each ref="" bean; JobOperator.start("J") calls it
     beans = {}
     for fq, t in types.items():
         m = re.search(r"@Named(?![\w])\s*(?:\(\s*(?:value\s*=\s*)?\"([^\"]+)\"\s*\))?", t.text)
         if m:
             beans[m.group(1) or t.name[0].lower() + t.name[1:]] = t
+    jobs = {}
+    for f in sorted(root.rglob("batch-jobs/*.xml")):
+        path = rel(f, root)
+        jid = jobs[f.stem] = g.node("resource", path, f"batch-job {f.stem}", "jsr352", f"Batch job {f.stem}")
+        for ref in re.findall(r"\bref\s*=\s*\"([^\"]+)\"", f.read_text(encoding="utf-8", errors="ignore")):
+            if ref in beans:
+                g.edge(jid, class_id(g, beans[ref], "jsr352"), "calls", "jsr352")
+    for fq, t in types.items():
+        if "JobOperator" in t.text:
+            for job in re.findall(r"\.start\s*\(\s*\"([^\"]+)\"", t.text):
+                jid = jobs.get(job) or g.node("resource", "batch", f"batch-job {job}", "jsr352", f"Batch job {job}")
+                g.edge(class_id(g, t, "jsr352"), jid, "calls", "jsr352")
+    # JSF pages → page nodes; EL bean references → routes to the @Named bean
+    eps = endpoint_index(g)
     xhtml = sorted(root.rglob("*.xhtml"))
     for f in xhtml:
         text = f.read_text(encoding="utf-8", errors="ignore")
@@ -220,6 +339,7 @@ def enrich_java_ee(g, root):
             g.edge(fid, pid, "contains", "jsf-page")
         for b in sorted(refs):
             g.edge(pid, class_id(g, beans[b], "jsf-el"), "routes", "jsf-el", description=f"#{{{b}…}}")
+        link_page(g, pid, text, eps, "page-script")
         # Facelets composition: ui:include src / ui:composition|ui:decorate template → the page contains it
         for ref in re.findall(r"<ui:(?:include|composition|decorate)\b[^>]*\b(?:src|template)\s*=\s*\"([^\"#$]+)\"", text):
             hit = next((x for x in xhtml if x.as_posix().endswith("/" + ref.lstrip("/"))), None)
@@ -233,6 +353,8 @@ def enrich_java_ee(g, root):
 READ_METHODS = {"get", "filter", "exclude", "all", "first", "last", "values", "values_list", "count", "exists",
                 "select_related", "prefetch_related", "order_by", "in_bulk", "aggregate", "annotate", "iterator",
                 "only", "defer", "distinct", "latest", "earliest", "get_or_create", "update_or_create"}
+TASK_DECORATORS = {"task", "shared_task", "actor", "periodic", "db_task", "db_periodic_task"}
+TASK_ENQUEUE = {"defer", "defer_async", "delay", "apply_async", "send", "send_with_options", "schedule"}
 WRITE_METHODS = {"create", "bulk_create", "update", "delete", "bulk_update", "get_or_create", "update_or_create"}
 
 
@@ -379,6 +501,23 @@ def enrich_django(g, root):
             return attr_types.get(cls, {}).get(recv.attr)
         return None
 
+    # Task-queue tasks (Celery, Procrastinate, Huey, Dramatiq): @app.task / @shared_task / @actor → `task`
+    # node triggers the function; f.defer() / .delay() / .apply_async() / .send() publish to it.
+    tasks = {}
+    for name, (m, node) in defs.items():
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                (getattr(d.func if isinstance(d, ast.Call) else d, "attr", None)
+                 or getattr(d.func if isinstance(d, ast.Call) else d, "id", None)) in TASK_DECORATORS
+                for d in node.decorator_list):
+            tasks[name] = g.node("task", m.path, f"task {name}", "python-task", f"Queued task {name}", node.lineno)
+            g.edge(tasks[name], py_node(g, m, node, "python-task"), "triggers", "python-task")
+    # Management commands: <app>/management/commands/<name>.py → `command <name>` routes its Command class
+    for name, (m, node) in defs.items():
+        cm = re.search(r"/management/commands/(\w+)\.py$", "/" + m.path)
+        if cm and isinstance(node, ast.ClassDef) and node.name == "Command":
+            cid = g.node("command", m.path, cm.group(1), "django-command", f"manage.py {cm.group(1)}")
+            g.edge(cid, py_node(g, m, node, "django-command"), "routes", "django-command")
+
     # Function-level: ORM reads/writes, calls to project code, template renders
     for name, (m, top) in defs.items():
         scopes = [top] if not isinstance(top, ast.ClassDef) else [top] + [
@@ -434,6 +573,9 @@ def enrich_django(g, root):
                         g.edge(owner, g.node("page", page, page, "django-template", f"Template {tmpl}"),
                                "routes", "django-template")
                     continue
+                if isinstance(f, ast.Attribute) and f.attr in TASK_ENQUEUE and dotted_of(f.value, m) in tasks:
+                    g.edge(owner, tasks[dotted_of(f.value, m)], "publishes", "python-task")
+                    continue
                 # Calls through annotated parameters / attributes (constructor injection)
                 tt = typed_target(f, m, params, cls)
                 if tt in defs:
@@ -456,9 +598,16 @@ def enrich_django(g, root):
                 return node.value.elts
         return []
 
-    seen = set()
+    seen, url_names = set(), {}
 
-    def walk(m, prefix):
+    def app_name(m):
+        for node in m.tree.body:
+            if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "app_name" for t in node.targets) \
+                    and isinstance(node.value, ast.Constant):
+                return node.value.value
+        return None
+
+    def walk(m, prefix, ns=()):
         if (m.dotted, prefix) in seen:
             return
         seen.add((m.dotted, prefix))
@@ -471,7 +620,10 @@ def enrich_django(g, root):
             if isinstance(view, ast.Call) and getattr(view.func, "id", getattr(view.func, "attr", "")) == "include":
                 arg = view.args[0] if view.args else None
                 if isinstance(arg, ast.Constant) and arg.value in mods:
-                    walk(mods[arg.value], route)
+                    sub = mods[arg.value]
+                    kw = {k.arg: k.value.value for k in view.keywords if isinstance(k.value, ast.Constant)}
+                    space = kw.get("namespace") or app_name(sub)
+                    walk(sub, route, ns + ((space,) if space else ()))
                 continue
             if isinstance(view, ast.Call) and isinstance(view.func, ast.Attribute) and view.func.attr == "as_view":
                 view = view.func.value
@@ -480,6 +632,10 @@ def enrich_django(g, root):
             target = dotted_of(view, m)
             eid = g.node("endpoint", m.path, "/" + route.lstrip("/"), "django-url", f"URL /{route.lstrip('/')}",
                          call.lineno)
+            uname = next((k.value.value for k in call.keywords if k.arg == "name" and isinstance(k.value, ast.Constant)),
+                         None)
+            if uname:
+                url_names[":".join([*ns, uname])] = eid
             if target in defs:
                 tm, tn = defs[target]
                 g.edge(eid, py_node(g, tm, tn, "django-url"), "routes", "django-url")
@@ -495,6 +651,27 @@ def enrich_django(g, root):
     for m in roots:
         if m.dotted not in included:
             walk(m, "")
+
+    # Templates: htmx / fetch calls → routes to endpoints ({% url 'ns:name' %} or a literal path);
+    # {% include %} / {% extends %} → contains
+    eps = endpoint_index(g)
+    templates = sorted(p for p in root.rglob("*.html") if "tests" not in p.relative_to(root).parts)
+
+    def named(url):
+        m = re.fullmatch(r"\s*\{%\s*url\s+['\"]([^'\"]+)['\"][^%]*%\}\s*", url)
+        return url_names.get(m.group(1)) if m else None
+
+    for f in templates:
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        page = rel(f, root)
+        pid = g.node("page", page, page, "django-template", f"Template {page}")
+        link_page(g, pid, text, eps, "template-script", named)
+        for ref in re.findall(r"\{%\s*(?:include|extends)\s+['\"]([^'\"]+)['\"]", text):
+            hit = next((p for p in templates if p.as_posix().endswith("/" + ref)), None)
+            if hit:
+                sub = rel(hit, root)
+                g.edge(pid, g.node("page", sub, sub, "django-template", f"Template {sub}"), "contains",
+                       "django-include")
 
 
 ENRICHERS = {"java-ee": enrich_java_ee, "django": enrich_django}
