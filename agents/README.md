@@ -38,6 +38,10 @@ edit its PR description after opening it, and it has no user token. So:
   re-assigned ticket closes when the Verifier's PR lands on the work branch, before the work reaches
   `main` (pilot HR-04A/B). A stacked merge can still close the work ticket; the AFS ticket guard reopens
   any ticket whose fixing PR into `main` is still open (ADR-0029).
+- **Changes after a review:** dispatch a fresh worker on its own fix issue ("Fix <ticket> findings (PR #N)",
+  a sub-issue of the ticket) with `base_branch` set to the work PR's head branch. An `@copilot` mention on
+  the PR may continue the session or may be ignored (pilot HR-04C: two mentions never started one), and
+  a fresh session from the findings is the rule anyway ("restart, don't stretch").
 - **Merging stacked PRs:** once a Verifier PR targets a work branch, GitHub treats both as stacked and
   refuses the plain merge endpoint. Use `PUT /repos/{owner}/{repo}/pulls/{n}/merge-async` (same
   `merge_method`), Verifier PR first, then the work PR.
