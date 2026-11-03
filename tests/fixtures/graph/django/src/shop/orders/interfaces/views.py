@@ -11,4 +11,3 @@ def create_order_view(lookup: OrderLookup):
 
 def health(request):
     return render(request, 'orders/health.html')
-
