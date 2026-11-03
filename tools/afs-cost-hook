@@ -33,6 +33,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -85,6 +86,9 @@ def wait_for_shutdown(log, grace, interval=0.5):
         time.sleep(interval)
 
 
+TOOL_MARK = re.compile(r"AFS-TOOL (\S+) exit=(-?\d+)")
+
+
 def summarize(log):
     events = []
     for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -133,9 +137,17 @@ def summarize(log):
     for e in events:
         if isinstance(e.get("data"), dict):
             data_keys[e.get("type")] |= set(e["data"])
+    # ADR-0027: the harness tools this session ran, from their `AFS-TOOL <tool> exit=<code>` lines in tool
+    # output. Sessions are where agents run tools outside CI; this record is the only trace that is kept.
+    ran = collections.Counter()
+    for e in events:
+        if e.get("type") == "tool.execution_complete":
+            for tool, code in TOOL_MARK.findall(json.dumps(e.get("data") or {})):
+                ran[(tool, int(code))] += 1
     stamps = [e.get("timestamp") for e in events if isinstance(e.get("timestamp"), str)]
     window = {"started_at": min(stamps) if stamps else None, "ended_at": max(stamps) if stamps else None}
-    return ({m: dict(c) for m, c in models.items()}, source, {**extra, **window},
+    tools = [{"tool": t, "exit": c, "count": n} for (t, c), n in sorted(ran.items())]
+    return ({m: dict(c) for m, c in models.items()}, source, {**extra, **window, "harness_tools": tools},
             {"event_types": dict(kinds.most_common()), "usage_fields": fields, "events": len(events),
              "data_keys": {k: sorted(v) for k, v in sorted(data_keys.items(), key=lambda kv: str(kv[0]))}})
 
@@ -179,6 +191,9 @@ def main(argv=None):
             record.update(models={}, usage_source=None, diagnostics={"payload_keys": sorted(p)})
     except Exception as exc:          # never fail the session over cost accounting
         record["error"] = f"{type(exc).__name__}: {exc}"
+    # The hook is a harness tool too: it lists its own run (exit 1 if it hit an error).
+    record.setdefault("harness_tools", []).append({"tool": "afs-cost-hook", "exit": 1 if "error" in record else 0,
+                                                   "count": 1})
     out = pathlib.Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{sid}.json"

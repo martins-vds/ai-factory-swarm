@@ -13,6 +13,8 @@ The evidence is what the repo kept:
   * every version of every return file and ledger entry in git history (a status passed through counts);
   * run journals (`.migration/evidence/runs/*.md`, all versions): a row whose command runs a harness tool,
     with its exit code;
+  * agent sessions: the session hook's committed record (`.migration/costs/*.json`) lists the `AFS-TOOL`
+    lines the session's tools printed, the hook itself included;
   * workflow runs (GitHub): the `AFS-TOOL <tool> exit=<code>` lines every tool prints when it ends
     (afs_trace.py) in the job logs. For older runs without them, only the steps whose `run:` calls a
     tool, counted as unconfirmed: a step may call a tool on a branch that didn't run;
@@ -91,7 +93,9 @@ def universe():
     roles = next(v for p, v in enums(ret) if p and p[-1] == "role")
     ledger = {k: [x for x in v["enum"] if x is not None] for k, v in led.get("properties", {}).items()
               if isinstance(v, dict) and "enum" in v}
-    tools = sorted(p.name for p in (HARNESS / "tools").iterdir() if p.is_file() and not p.name.startswith("."))
+    # A tool is a file whose entry point is afs_trace.run (tests/test_trace.py enforces it); libraries are not.
+    tools = sorted(p.name for p in (HARNESS / "tools").iterdir() if p.is_file() and not p.name.startswith(".")
+                   and "afs_trace.run(" in p.read_text(encoding="utf-8", errors="ignore").rsplit("__main__", 1)[-1])
     wf = {}
     for p in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
         text = p.read_text(encoding="utf-8")
@@ -121,7 +125,7 @@ def history(folder):
     for line in git("log", "--all", "--format=%H", "--name-only", "--diff-filter=AM", "--", folder).splitlines():
         if re.fullmatch(r"[0-9a-f]{40}", line):
             commit = line
-        elif line.endswith((".yaml", ".yml")):
+        elif line.endswith((".yaml", ".yml", ".json")):
             try:
                 doc = yaml.safe_load(git("show", f"{commit}:{line}"))
             except yaml.YAMLError:
@@ -198,6 +202,11 @@ def main(argv=None):
             if re.search(rf"harness/tools/{re.escape(t)}\b", cmd):
                 (passed if code == 0 else failed)[t] += 1
                 where[t].add("journal")
+    for rec in history(".migration/costs"):        # agent sessions: the session hook's record (ADR-0027)
+        for r in rec.get("harness_tools") or []:
+            if r.get("tool") in u["tools"]:
+                (passed if r.get("exit") == 0 else failed)[r["tool"]] += r.get("count", 1)
+                where[r["tool"]].add("agent session")
     steps = step_tools(u["workflows"], u["tools"])
     wf_conclusions = {}
     if not a.offline and a.repo:

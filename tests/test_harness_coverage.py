@@ -18,8 +18,10 @@ class CoverageTest(unittest.TestCase):
         h = self.d / ".migration/harness"
         shutil.copytree(ROOT / "schemas", h / "schemas")
         (h / "tools").mkdir(parents=True)
-        for t in ("validate.py", "crap.py", "never.py"):
-            (h / "tools" / t).write_text("# a harness tool\n")
+        entry = 'def main():\n    return 0\n\n\nif __name__ == "__main__":\n    import afs_trace\n    afs_trace.run(main)\n'
+        for t in ("validate.py", "crap.py", "never.py", "check_inputs.py"):
+            (h / "tools" / t).write_text(entry)
+        (h / "tools" / "afs_trace.py").write_text("def run(main):\n    pass\n")      # a library, not a tool
 
     def tearDown(self):
         shutil.rmtree(self.d)
@@ -51,6 +53,9 @@ class CoverageTest(unittest.TestCase):
                      ".migration/evidence/runs/T-1.md": head + row.format(g="crap", code=1, t="crap.py")
                      + row.format(g="crap", code=0, t="crap.py") + row.format(g="validate", code=0, t="validate.py")},
                     "second")
+        self.commit({".migration/costs/s1.json": '{"schema": "afs-cost/1", "harness_tools": ['
+                     '{"tool": "check_inputs.py", "exit": 1, "count": 1}, {"tool": "check_inputs.py", "exit": 0, '
+                     '"count": 2}, {"tool": "not-a-tool", "exit": 0, "count": 1}]}'}, "agent session")
         out = self.report()
         self.assertIn("✅ `afs-verifier`: 2 return file version(s)", out)
         self.assertIn("❌ `afs-planner`: 0 return file version(s)", out)
@@ -63,6 +68,8 @@ class CoverageTest(unittest.TestCase):
         self.assertIn("✅ `crap.py`: passed 1, failed 1 (journal)", out)
         self.assertIn("⚠️ `validate.py`: passed 1, failed 0 (journal)", out, "never seen failing")
         self.assertIn("❌ `never.py`: passed 0, failed 0", out)
+        self.assertIn("✅ `check_inputs.py`: passed 2, failed 1 (agent session)", out, "runs recorded by the session hook")
+        self.assertNotIn("afs_trace.py", out, "a library is not a tool")
         self.assertRegex(out, r"\*\*\d+ of \d+ paths exercised; \d+ to go\.\*\*")
 
 
