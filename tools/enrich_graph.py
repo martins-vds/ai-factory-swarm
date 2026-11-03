@@ -424,12 +424,54 @@ def dotted_of(expr, m):
     return ".".join([head, *reversed(parts)])
 
 
+def class_constants(cls):
+    """name → constant value of a class body's simple assignments (`name = 'x'`)."""
+    return {t.id: x.value.value for x in cls.body if isinstance(x, ast.Assign) and isinstance(x.value, ast.Constant)
+            for t in x.targets if isinstance(t, ast.Name)}
+
+
+def app_labels(mods, defs):
+    """(app module, label) for each INSTALLED_APPS entry found in the analysed code, longest module first.
+
+    An entry is an AppConfig class (its `name` and `label`) or an app module (the AppConfig in its apps.py
+    whose `name` is that module, else the module's last component), as Django resolves them."""
+    entries = []
+    for m in mods.values():
+        for node in m.tree.body:
+            value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
+            names = [getattr(t, "id", "") for t in (node.targets if isinstance(node, ast.Assign) else
+                                                     [getattr(node, "target", None)])]
+            if "INSTALLED_APPS" in names and isinstance(value, (ast.List, ast.Tuple)):
+                entries += [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    out = []
+    for entry in entries:
+        config = defs.get(entry)
+        if not (config and isinstance(config[1], ast.ClassDef)):
+            config = next(((cm, cn) for d, (cm, cn) in defs.items() if d.startswith(f"{entry}.apps.") and
+                           isinstance(cn, ast.ClassDef) and class_constants(cn).get("name") == entry), None)
+        attrs = class_constants(config[1]) if config else {}
+        module = attrs.get("name") or entry
+        out.append((module, attrs.get("label") or module.rsplit(".", 1)[-1]))
+    return sorted(out, key=lambda x: -len(x[0]))
+
+
+def app_label_of(dotted, labels):
+    """The label of the installed app containing a module; without settings, the module's own package
+    (Django would refuse a model outside an installed app, so this only happens when settings aren't analysed)."""
+    for module, label in labels:
+        if dotted == module or dotted.startswith(module + "."):
+            return label
+    parts = dotted.split(".")
+    return parts[-2] if len(parts) > 1 else parts[0]
+
+
 def enrich_django(g, root):
     mods = py_index(root)
     if not mods:
         return
     defs = defined(mods)
-    # Models → tables
+    labels = app_labels(mods, defs)
+    # Models → tables (Django's default name: <app label>_<model name>)
     models = {}
     for name, (m, node) in defs.items():
         if not isinstance(node, ast.ClassDef):
@@ -441,17 +483,11 @@ def enrich_django(g, root):
                 isinstance(x, ast.Assign) and any(getattr(tg, "id", "") == "abstract" for tg in x.targets)
                 for x in s.body) for s in node.body):
             continue
-        table = None
+        meta = {}
         for s in node.body:
             if isinstance(s, ast.ClassDef) and s.name == "Meta":
-                for x in s.body:
-                    if isinstance(x, ast.Assign) and any(getattr(tg, "id", "") == "db_table" for tg in x.targets) \
-                            and isinstance(x.value, ast.Constant):
-                        table = x.value.value
-        if not table:
-            app = next((p for p in reversed(m.dotted.split(".")[:-1]) if p not in ("models", "infrastructure",
-                                                                                     "persistence", "db")), "app")
-            table = f"{app}_{node.name.lower()}"
+                meta = class_constants(s)
+        table = meta.get("db_table") or f"{meta.get('app_label') or app_label_of(m.dotted, labels)}_{node.name.lower()}"
         tid = g.node("table", m.path, table, "django-model", f"Table {table} mapped by Django model {node.name}",
                      node.lineno)
         g.edge(py_node(g, m, node, "django-model"), tid, "defines_schema", "django-model")

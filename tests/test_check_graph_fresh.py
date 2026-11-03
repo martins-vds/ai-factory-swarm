@@ -96,6 +96,8 @@ class FreshnessTest(unittest.TestCase):
         self.assertIn("graph.target_paths", r.stderr)
         self.assertNotIn("docs/page.html", r.stderr)
         self.assertNotIn("static/plain.html", r.stderr)
+        (self.repo / ".migration/profile.yaml").write_text("graph:\n  target_exclude: [templates/]\n")
+        self.assertNotIn("track.html", self.run_tool("--require", "target").stderr, "excluded by the profile")
 
     def test_missing_graph_fails_only_when_required(self):
         self.assertEqual(self.run_tool().returncode, 0)

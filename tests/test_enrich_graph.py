@@ -146,6 +146,39 @@ class DjangoTest(unittest.TestCase):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/api/board/"))
 
 
+class AppLabelTest(unittest.TestCase):
+    def labels(self, files):
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in files.items():
+                p = pathlib.Path(d) / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text)
+            mods = enrich_graph.py_index(pathlib.Path(d))
+            return enrich_graph.app_labels(mods, enrich_graph.defined(mods))
+
+    def test_label_from_config_class_module_entry_or_last_component(self):
+        labels = self.labels({
+            "proj/settings.py": "INSTALLED_APPS = ['a.billing.apps.BillingConfig', 'a.ship', 'a.misc']\n",
+            "a/billing/apps.py": "class BillingConfig:\n    name = 'a.billing'\n    label = 'invoices'\n",
+            "a/ship/apps.py": "class ShipConfig:\n    name = 'a.ship'\n    label = 'shipping'\n",
+        })
+        self.assertEqual(dict(labels), {"a.billing": "invoices", "a.ship": "shipping", "a.misc": "misc"})
+        self.assertEqual(enrich_graph.app_label_of("a.billing.infrastructure.models", labels), "invoices")
+        self.assertEqual(enrich_graph.app_label_of("a.misc.models", labels), "misc")
+        self.assertEqual(enrich_graph.app_label_of("other.store.models", labels), "store", "no settings: own package")
+
+    def test_meta_app_label_and_db_table_win(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "a/x/models.py"
+            f.parent.mkdir(parents=True)
+            f.write_text("from django.db import models\n\n\nclass Thing(models.Model):\n    class Meta:\n"
+                         "        app_label = 'legacy'\n\n\nclass Pinned(models.Model):\n    class Meta:\n"
+                         "        db_table = 'PINNED'\n")
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.enrich_django(g, pathlib.Path(d))
+            self.assertEqual(edges(g, "defines_schema"), {("Thing", "legacy_thing"), ("Pinned", "PINNED")})
+
+
 class PageLinkTest(unittest.TestCase):
     def test_suffix_match_and_verbs(self):
         eps = [("GET", "/cargo", "a"), ("POST", "/cargo", "b"), (None, "/", "c"), ("WS", "/tracking", "d"),

@@ -83,7 +83,8 @@
             "target": { "$ref": "#/$defs/graphTypes" }
           }
         },
-        "target_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "default": ["src"], "description": "Target folders the target graph analyses; check_graph_fresh compares their git tree hashes (ADR-0019). Keep tests out, so test-only changes don't make the graph stale." }
+        "target_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "default": ["src"], "description": "Target folders the target graph analyses; check_graph_fresh compares their git tree hashes (ADR-0019). Keep tests out, so test-only changes don't make the graph stale." },
+        "target_exclude": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Folders of the target repo that hold no application pages (e.g. tooling, characterization harnesses). check_graph_fresh skips their templates when it checks that target_paths covers every page (ADR-0023). .github, .migration, .source, docs, tests and node_modules are always skipped." }
       }
     },
     "risk_map": {
