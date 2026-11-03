@@ -48,7 +48,8 @@ import validate  # noqa: E402
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
-                 "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs"]
+                 "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
+                 "fog_rewalk.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -63,6 +64,7 @@ LABELS = [
     ("wayfinder:prototype", "c5def5", "Decision ticket: prototype"),
     ("wayfinder:grilling", "c5def5", "Decision ticket: needs a human ruling (incl. quirks)"),
     ("wayfinder:task", "c5def5", "Decision ticket: task"),
+    ("afs:slice", "5319e7", "Slice epic: closing it opens a fog re-walk task on the decision map (ADR-0022)"),
     ("ready-for-agent", "0e8a16", "Slice ticket an agent can claim"),
     ("afs:capability-gap", "d93f0b", "Capability gap found by bootstrap; blocks Phase 2"),
 ]
@@ -291,7 +293,8 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                project_marker="manage.py", copilot_cli_version=COPILOT_CLI_VERSION,
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
-    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-costs.yml"):
+    for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-costs.yml",
+                 "afs-map-fog.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")

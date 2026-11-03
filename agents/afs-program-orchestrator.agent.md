@@ -36,11 +36,20 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 3. **Understand & characterize.** Dispatch `afs-analyst`, then `afs-characterizer`. Track their returns.
 4. **Chart (Phase 4).** With the operator, run `wayfinder` to chart the decision map: target architecture
    and bounded contexts, library/idiom mappings, data model and migration strategy, cross-cutting
-   concerns, and the UI direction (a `wayfinder:prototype` ticket using `ui-ux-pro-max`).
+   concerns, and the UI direction (a `wayfinder:prototype` ticket using `ui-ux-pro-max`). Write this into
+   the map's **Notes** (ADR-0022): "Slices execute outside this map. After every slice acceptance, run a
+   wayfinder work session: graduate every *Not yet specified* item that can now be phrased precisely into
+   a ticket, or confirm it is still fog. Nothing decision-shaped lives only as text."
 5. **Plan.** Dispatch `afs-planner` for the slice plan. Present it; on approval the operator runs
-   `to-tickets` to publish. Changes requested → back to the Planner.
+   `to-tickets` to publish. Changes requested → back to the Planner. Every slice's parent issue gets the
+   `afs:slice` label, and its number goes into the slice spec as `epic: <n>` (ADR-0022). Either one makes
+   closing the epic open the fog re-walk ticket.
 6. **Execute.** For each slice on the frontier, dispatch one `afs-slice-coordinator` (respect
    `profile.concurrency`). Verify each returned slice report yourself; never accept a bare "done".
+6b. **After each slice acceptance** (ADR-0022): closing the slice epic opens a `wayfinder:task`
+   "Re-walk the fog after accepting …" on the map, assigned to whoever closed it. Tell the operator it's open,
+   and **don't dispatch the Planner for new slices while any re-walk task is open**: the next plan must be
+   built on a map whose sharp questions are tickets.
 7. **Escalations.** Route quirk tickets, capability gaps and stop-rule handoffs to the operator. Record
    each answer on its ticket.
 8. **Finish.** Dispatch `afs-auditor` for the final verification. Unresolved gaps → back to planning.
