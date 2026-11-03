@@ -25,6 +25,16 @@ jobs:
       - run: pip install -q {pip_packages}
       - name: Migration state is valid
         run: python .migration/harness/tools/validate.py .migration
+      - name: Session records are append-only
+        if: github.event_name == 'pull_request'
+        run: |
+          # ADR-0021: the session hook commits one record per agent session. A PR may add records, never
+          # change or delete one: they are the only trace of what sessions cost and which tools they ran.
+          changed=$(git diff --name-only --diff-filter=DMR "origin/${{{{ github.base_ref }}}}...HEAD" -- .migration/costs/)
+          if [ -n "$changed" ]; then
+            for f in $changed; do echo "::error file=$f::A session record was changed or deleted; records are append-only (ADR-0021)"; done
+            exit 1
+          fi
       - name: No unopened quirk drafts
         run: |
           # Quirk drafts are an outbox: the orchestrator opens each as an issue, links it in the ledger and
