@@ -178,7 +178,10 @@ def main(argv=None):
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        import afs_trace
+        afs_trace.run(main)
+    except SystemExit:
+        raise
     except Exception as exc:      # last resort: a hook must not break the session
         print(f"afs-cost-hook: {exc}", file=sys.stderr)
         sys.exit(0)

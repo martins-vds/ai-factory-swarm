@@ -177,7 +177,12 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except BrokenPipeError:  # e.g. piped into `head`
-        sys.stderr.close()
+    import afs_trace
+
+    def entry():
+        try:
+            return main()
+        except BrokenPipeError:  # e.g. piped into `head`
+            sys.stderr.close()
+            return 0
+    afs_trace.run(entry)

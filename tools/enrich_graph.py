@@ -751,4 +751,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import afs_trace
+    afs_trace.run(main)
