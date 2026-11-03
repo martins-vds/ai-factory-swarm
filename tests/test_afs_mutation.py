@@ -57,6 +57,26 @@ class AfsMutationTest(unittest.TestCase):
         self.assertEqual((killed, survived, skipped), (2, 1, 1))
         self.assertEqual(locs, ["src/a.py:5 Mutant #3"])
 
+    def test_survivors_are_written_for_the_ticket(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            cwd = os.getcwd()
+            try:
+                os.chdir(d)
+                with unittest.mock.patch.dict(os.environ, {"AFS_TICKET": "HR-04D"}):
+                    self.assertIsNone(m.write_survivors(["src/a.py:5 Mutant #3"], 0.5, 0.8, 1, 1, "main"),
+                                      "no .migration/: nothing to write")
+                    os.mkdir(".migration")
+                    path = m.write_survivors(["src/a.py:5 Mutant #3", "src/b.py:9 Mutant #7"], 0.5, 0.8, 2, 2, "main")
+                    text = path.read_text()
+                self.assertEqual(path.as_posix(), ".migration/evidence/mutants/HR-04D.md")
+                self.assertIn("- `src/b.py:9 Mutant #7`", text)
+                self.assertIn("score 0.500, threshold 0.8", text)
+                with unittest.mock.patch.dict(os.environ, {"AFS_TICKET": "adhoc"}):
+                    self.assertIsNone(m.write_survivors([], 1.0, 0.8, 1, 0, "main"), "no ticket: nothing to write")
+            finally:
+                os.chdir(cwd)
+
     def test_default_excludes(self):
         ex = m.DEFAULT_EXCLUDE
         self.assertFalse(m.keep("src/app/migrations/0001_initial.py", ex))
