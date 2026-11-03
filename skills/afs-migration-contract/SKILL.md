@@ -68,6 +68,11 @@ session is a **committed file on your branch**, in the same PR as the work:
 | Handoff | `.migration/handoffs/<ticket>.md` | `afs-handoff` |
 | Quirk ticket draft | `.migration/quirks/<short-id>.md` | `afs-quirk-ticket` |
 | Gate runs | `.migration/evidence/runs/<ticket>.md` (written by `afs-run`) | `afs-evidence` |
+| Session record | `.migration/costs/<session>.json` (written by the session hook, ADR-0021) | none: expected in every agent PR |
+
+**Session records are expected, never edited.** The harness's session hook commits one record per agent
+session (cost and the harness tools it ran). It belongs in the PR even though no ticket names it; never
+remove or edit one, and never ask another agent to. CI fails a PR that changes or deletes an existing one.
 
 **Return file.** Every PR you open commits `.migration/returns/<ticket>.<role>.yaml`: `role` (your agent
 name, e.g. `afs-migrator`), `ticket` (e.g. `TC-03`), `issue` (`owner/repo#N` of the ticket), then every
