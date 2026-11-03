@@ -48,7 +48,7 @@ jobs:
           mkdir -p /tmp/tgt && git -C /tmp/pilot archive HEAD -- src templates | tar -x -C /tmp/tgt
           git -C /tmp/pilot rev-parse HEAD > out/pilot-commit.txt
       - uses: actions/checkout@v5
-        with: { path: harness, ref: main }
+        with: { path: harness, ref: harness/method-level-flow }
       - name: Extract the harness test fixtures
         env:
           GRAPHIFY_BACKEND: none
