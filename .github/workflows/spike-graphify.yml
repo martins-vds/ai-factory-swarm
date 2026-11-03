@@ -23,6 +23,22 @@ jobs:
           /tmp/gv/bin/graphify --help > out/help.txt 2>&1 || true
           /tmp/gv/bin/graphify extract --help > out/help-extract.txt 2>&1 || true
           cat out/help.txt out/help-extract.txt
+      - name: Hash-pinned lock for graphifyy and its dependencies
+        run: |
+          mkdir -p /tmp/wheels
+          /tmp/gv/bin/pip download -q graphifyy==0.9.101 -d /tmp/wheels
+          /tmp/gv/bin/pip freeze > out/freeze.txt
+          python - <<'PY' > out/graphify.lock
+          import hashlib, pathlib, re
+          for w in sorted(pathlib.Path("/tmp/wheels").iterdir()):
+              m = re.match(r"([A-Za-z0-9_.]+?)-(\d[^-]*)-", w.name) or re.match(r"(.+)-(\d[\w.]*)\.tar\.gz$", w.name)
+              name, ver = m.group(1).replace("_", "-").lower(), m.group(2)
+              print(f"{name}=={ver} --hash=sha256:{hashlib.sha256(w.read_bytes()).hexdigest()}")
+          PY
+          cat out/graphify.lock
+          ls /tmp/wheels
+          python -m venv /tmp/gv2 && /tmp/gv2/bin/pip install -q --require-hashes --no-deps -r out/graphify.lock \
+            && /tmp/gv2/bin/graphify --help > /dev/null && echo "lock installs" | tee out/lock-ok.txt
       - name: Fetch the code
         run: |
           git clone -q https://github.com/eclipse-ee4j/cargotracker /tmp/cargotracker
@@ -31,6 +47,18 @@ jobs:
           git clone -q https://github.com/martins-vds/ai-factory-pilot-target /tmp/pilot
           mkdir -p /tmp/tgt && git -C /tmp/pilot archive HEAD -- src templates | tar -x -C /tmp/tgt
           git -C /tmp/pilot rev-parse HEAD > out/pilot-commit.txt
+      - uses: actions/checkout@v5
+        with: { path: harness, ref: main }
+      - name: Extract the harness test fixtures
+        env:
+          GRAPHIFY_BACKEND: none
+        run: |
+          for fx in javaee django; do
+            rm -rf "/tmp/fx-$fx" && cp -r "harness/tests/fixtures/graph/$fx" "/tmp/fx-$fx"
+            find "/tmp/fx-$fx" -name __pycache__ -prune -exec rm -rf {} +
+            ( cd "/tmp/fx-$fx" && /tmp/gv/bin/graphify extract . --code-only ) > "out/fx-$fx.log" 2>&1
+            cp "/tmp/fx-$fx/graphify-out/graph.json" "out/fx-$fx.graph.json"
+          done
       - name: Extract (twice per side, to check determinism)
         env:
           GRAPHIFY_BACKEND: none
