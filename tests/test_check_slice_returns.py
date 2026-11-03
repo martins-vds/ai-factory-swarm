@@ -55,7 +55,7 @@ class ProblemsTest(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(d)
-                self.assertEqual(csr.rule_since(), "2026-11-03T04:00:00+00:00", "first install, not the upgrade")
+                self.assertEqual(csr.utc(csr.rule_since()), csr.utc("2026-11-03T04:00:00Z"), "first install, not the upgrade")
             finally:
                 os.chdir(cwd)
 
