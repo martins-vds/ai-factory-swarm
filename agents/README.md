@@ -36,7 +36,8 @@ edit its PR description after opening it, and it has no user token. So:
   and `<ticket>.afs-verifier.yaml`. Never re-assign the work ticket itself. Copilot connects every PR to
   the issue it was assigned from, and merging a connected PR closes that issue *on any branch*, so a
   re-assigned ticket closes when the Verifier's PR lands on the work branch, before the work reaches
-  `main` (pilot HR-04A/B).
+  `main` (pilot HR-04A/B). A stacked merge can still close the work ticket; the AFS ticket guard reopens
+  any ticket whose fixing PR into `main` is still open (ADR-0029).
 - **Merging stacked PRs:** once a Verifier PR targets a work branch, GitHub treats both as stacked and
   refuses the plain merge endpoint. Use `PUT /repos/{owner}/{repo}/pulls/{n}/merge-async` (same
   `merge_method`), Verifier PR first, then the work PR.
