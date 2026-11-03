@@ -46,7 +46,8 @@ class JavaEETest(unittest.TestCase):
     def test_repository_reads_and_writes(self):
         self.assertEqual(edges(self.g, "reads_from"), {("JpaOrderRepository", "orders"),
                                                        ("JpaOrderRepository", "Customer")})
-        self.assertEqual(edges(self.g, "writes_to"), {("JpaOrderRepository", "orders")})
+        self.assertEqual(edges(self.g, "writes_to"), {("JpaOrderRepository", "orders"),
+                                                      ("JpaOrderRepository", "Customer")}, "incl. a for-each variable")
 
     def test_named_query_annotation_is_not_a_cdi_bean(self):
         self.assertNotIn("Unused", {t for _, t in edges(self.g, "routes")})

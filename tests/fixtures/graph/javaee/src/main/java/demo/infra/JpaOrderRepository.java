@@ -16,7 +16,10 @@ public class JpaOrderRepository implements OrderRepository {
         return entityManager.createNamedQuery("Order.findAll", Order.class).getSingleResult();
     }
 
-    public void store(Order order) {
+    public void store(Order order, java.util.List<Customer> buyers) {
+        for (Customer buyer : buyers) {
+            entityManager.persist(buyer);     // a for-each variable: still a write
+        }
         entityManager.persist(order);
     }
 }

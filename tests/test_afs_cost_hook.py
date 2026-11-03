@@ -53,6 +53,22 @@ class CostHookTest(unittest.TestCase):
         self.assertEqual(rec["diagnostics"]["event_types"]["assistant.message"], 1)
         self.assertEqual(rec["surface"], "local")
 
+    def test_partial_record_names_the_model_and_coding_agent_does_not_wait(self):
+        t = log(self.dir / "t/events.jsonl", [
+            {"type": "session.start", "data": {"selectedModel": "claude-x"}},
+            {"type": "assistant.message", "data": {"outputTokens": 5, "model": "claude-y"}},
+            {"type": "assistant.message", "data": {"outputTokens": 7}}])
+        env = {k: v for k, v in os.environ.items() if k != "AFS_COST_GRACE"}
+        r = subprocess.run([sys.executable, str(HOOK), "--event", "sessionEnd"], cwd=self.dir, capture_output=True,
+                           text=True, input=json.dumps({"sessionId": "m1", "transcriptPath": str(t)}),
+                           env={**env, "GITHUB_ACTIONS": "true"}, timeout=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = self.record("m1")
+        self.assertEqual(rec["models"]["claude-y"]["output"], 5, "a message's own model")
+        self.assertEqual(rec["models"]["claude-x"]["output"], 7, "else the session's selected model")
+        self.assertNotIn("unknown", rec["models"])
+        self.assertTrue(str(rec["shutdown_wait_s"]).startswith("skipped"))
+
     def test_time_window_data_keys_and_runner_surface(self):
         t = log(self.dir / "t/events.jsonl", [
             {"type": "session.start", "timestamp": "2026-11-02T21:36:40Z", "data": {"selectedModel": "m", "cwd": "/x"}},

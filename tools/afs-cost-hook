@@ -17,7 +17,8 @@ coding-agent session Copilot's own final commit ("Apply remaining changes") pick
 pushing from the hook would race with it); locally the agent or operator commits it with the work.
 
 Spike result (M5, coding agent): reading the log immediately found no session.shutdown and no
-assistant.usage, so only output tokens were known. The CLI writes session.shutdown (the authoritative
+assistant.usage, so only output tokens were known. Confirmed live (HR-02, FIX-109): waiting 20 s didn't help
+either; the coding agent writes session.shutdown after the hooks, so the hook no longer waits there. The CLI writes session.shutdown (the authoritative
 per-model totals) about a second after agentStop, so the hook now polls for it for up to --grace
 seconds (`shutdown_wait_s` records how long it took, or null). The record therefore also keeps the session's time window
 (`started_at`, `ended_at`) so billed AI credits can be attributed by `afs-costs` (ADR-0021 phase 1.1),
@@ -115,13 +116,16 @@ def summarize(log):
             models[model]["requests"] += 1
         source = "assistant.usage" if usage_events else None
     if not models:
-        model = "unknown"
+        # The model: each message's own `model`, else the latest model change, else the session's selection.
+        model = next(((e.get("data") or {}).get("selectedModel") for e in events
+                      if e.get("type") == "session.start" and (e.get("data") or {}).get("selectedModel")), "unknown")
         for e in events:
             if e.get("type") == "session.model_change":
                 model = (e.get("data") or {}).get("newModel") or model
             if e.get("type") == "assistant.message":
-                models[model]["output"] += number((e.get("data") or {}).get("outputTokens"))
-                models[model]["requests"] += 1
+                d = e.get("data") or {}
+                models[d.get("model") or model]["output"] += number(d.get("outputTokens"))
+                models[d.get("model") or model]["requests"] += 1
         source = "assistant.message (output only, partial)" if models else None
     fields = sorted({k for e in events if e.get("type") in ("session.shutdown", "assistant.usage")
                      for k in (e.get("data") or {})})
@@ -161,7 +165,13 @@ def main(argv=None):
         log = find_log(p)
         record["log"] = str(log) if log else None
         if log:
-            record["shutdown_wait_s"] = wait_for_shutdown(log, a.grace)
+            # Coding-agent sessions write session.shutdown only after the sessionEnd hooks return, so a hook
+            # can never see it there (M5: every coding-agent session waited the full grace for nothing). Input
+            # tokens for those sessions come from the billing records instead (afs-costs, ADR-0021).
+            if remote and "AFS_COST_GRACE" not in os.environ:
+                record["shutdown_wait_s"] = "skipped: the coding agent writes session.shutdown after session hooks"
+            else:
+                record["shutdown_wait_s"] = wait_for_shutdown(log, a.grace)
             models, source, extra, diag = summarize(log)
             record.update(models=models, usage_source=source, **{k: v for k, v in extra.items()},
                           diagnostics=diag)
