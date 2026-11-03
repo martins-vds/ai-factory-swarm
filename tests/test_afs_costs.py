@@ -51,6 +51,17 @@ class CostsTest(unittest.TestCase):
         self.assertIn("AFS-RESULT gate=costs sessions=3 billed_days=1 credits=1000 agent_credits=800 actions_minutes=95",
                       r.stdout)
 
+    def test_overlapping_records_of_one_session_count_once(self):
+        c = self.dir / ".migration/costs"
+        for sid, out, at in (("call_x", 500, "2026-11-02T22:00:00+00:00"), ("s9", 900, "2026-11-02T22:05:00+00:00")):
+            (c / f"{sid}.json").write_text(json.dumps({
+                "schema": "afs-cost/1", "session_id": sid, "branch": "copilot/tc-15d-x", "recorded_at": at,
+                "log": "/runner/.copilot/session-state/s9/events.jsonl", "ended_at": "2026-11-02T22:05:00Z",
+                "models": {"m": {"output": out}}}))
+        r = run(self.dir, "report", env={"GITHUB_REPOSITORY": "o/pilot"})
+        self.assertIn("| TC-15d | 1 | 900 |", r.stdout, "the latest snapshot of the session, once")
+        self.assertIn("sessions=4", r.stdout)
+
     def test_fetch_without_config_or_token_only_warns(self):
         (self.dir / ".migration/profile.yaml").write_text("harness_version: 0.2.0\n")
         r = run(self.dir, "fetch", "--date", "2026-11-02")

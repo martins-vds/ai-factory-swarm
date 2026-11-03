@@ -176,6 +176,13 @@ def main(argv=None):
     try:
         log = find_log(p)
         record["log"] = str(log) if log else None
+        # One record per session: name it after the session that owns the log, not the payload's id. A
+        # sub-agent's agentStop carries a tool-call id (`call_…`) but reads the same, growing session log;
+        # keyed by the payload it wrote one overlapping record per sub-agent (pilot HR-04C: 4 for 1 session).
+        if log and log.parent.parent.name == "session-state":
+            if log.parent.name != sid:
+                record["trigger_id"] = sid
+            sid = record["session_id"] = log.parent.name
         if log:
             # Coding-agent sessions write session.shutdown only after the sessionEnd hooks return, so a hook
             # can never see it there (M5: every coding-agent session waited the full grace for nothing). Input
