@@ -49,7 +49,8 @@ HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "ext
                  "understand.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
-                 "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock"]
+                 "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
+                 "afs_trace.py", "harness_coverage.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"

@@ -207,4 +207,5 @@ def data_path(anchor, nodes, edges, by_id):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import afs_trace
+    afs_trace.run(main)

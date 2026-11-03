@@ -64,7 +64,7 @@ class ReturnFileTest(unittest.TestCase):
 
     def errors(self, r):
         """validate.py's errors, ignoring the minimal test profile's own schema errors."""
-        return [l for l in r.stderr.splitlines() if "profile.yaml" not in l]
+        return [l for l in r.stderr.splitlines() if "profile.yaml" not in l and not l.startswith("AFS-TOOL ")]
 
     def test_validate_accepts_a_complete_return_file(self):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(), self.GATES)

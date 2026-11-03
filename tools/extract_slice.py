@@ -135,4 +135,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import afs_trace
+    afs_trace.run(main)
