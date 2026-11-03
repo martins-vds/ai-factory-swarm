@@ -46,8 +46,9 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
    closing the epic open the fog re-walk ticket.
 6. **Execute.** For each slice on the frontier, dispatch one `afs-slice-coordinator` (respect
    `profile.concurrency`). Verify each returned slice report yourself; never accept a bare "done".
-6b. **After each slice acceptance** (ADR-0022): closing the slice epic opens a `wayfinder:task`
-   "Re-walk the fog after accepting …" on the map, assigned to whoever closed it. Tell the operator it's open,
+6b. **After each slice acceptance** (ADR-0022, ADR-0024): closing the slice epic first checks that every
+   ticket under it is closed and has its return file; if not, the epic is reopened with the list. Then it
+   opens a `wayfinder:task` "Re-walk the fog after accepting …" on the map, assigned to whoever closed it. Tell the operator it's open,
    and **don't dispatch the Planner for new slices while any re-walk task is open**: the next plan must be
    built on a map whose sharp questions are tickets.
 7. **Escalations.** Route quirk tickets, capability gaps and stop-rule handoffs to the operator. Record

@@ -10,7 +10,8 @@ current *Not yet specified* list.
   fog_rewalk.py --repo owner/repo --epic 9 --closed-by alice      (the AFS map fog workflow runs this)
   fog_rewalk.py --print --map-body FILE --epic-title "Slice: X"   (render the ticket body only; tests)
 
-Uses `gh api`. Does nothing when the repo has no open `wayfinder:map` issue. Exit 0 unless the API fails.
+Uses `gh api`. Does nothing when the repo has no open `wayfinder:map` issue, when the epic is still open, or
+when the map already has this re-walk ticket (so a re-run is safe). Exit 0 unless the API fails.
 """
 import argparse
 import json
@@ -90,12 +91,19 @@ def main(argv=None):
     if not is_slice_epic(a.epic, [lbl["name"] for lbl in epic.get("labels", [])]):
         print(f"#{a.epic} is not a slice epic (no afs:slice label, not named by a slice spec); nothing to do.")
         return 0
+    if epic.get("state") != "closed":
+        print(f"#{a.epic} is still open; the re-walk follows acceptance. Nothing to do.")
+        return 0
     maps = gh(f"{R}/issues?labels=wayfinder:map&state=open&per_page=10") or []
     if not maps:
         print("::notice::No open wayfinder:map issue; nothing to re-walk.")
         return 0
     for m in maps:
         title, body = ticket(epic["title"], epic["html_url"], fog_items(m.get("body")))
+        existing = [i for i in gh(f"{R}/issues/{m['number']}/sub_issues?per_page=100") or [] if i["title"] == title]
+        if existing:
+            print(f"map #{m['number']} already has {existing[0]['html_url']}; not opening another")
+            continue
         issue = gh(f"{R}/issues", "-X", "POST",
                    data={"title": title, "body": body, "labels": ["wayfinder:task"],
                          **({"assignees": [a.closed_by]} if a.closed_by else {})})
