@@ -90,7 +90,14 @@ def sessions():
         rec["output"] = sum(v.get("output", 0) for v in (rec.get("models") or {}).values())
         rec["day"] = (rec.get("ended_at") or rec.get("recorded_at") or "")[:10]
         out.append(rec)
-    return out
+    # One session, one row: records written before the hook keyed them by session (sub-agent stops wrote
+    # `call_…` records reading the same log) share a log path. Keep each session's latest snapshot.
+    latest = {}
+    for rec in out:
+        key = rec.get("log") or rec.get("session_id")
+        if key not in latest or (rec.get("recorded_at") or "") >= (latest[key].get("recorded_at") or ""):
+            latest[key] = rec
+    return sorted(latest.values(), key=lambda r: r.get("recorded_at") or "")
 
 
 def report(a):

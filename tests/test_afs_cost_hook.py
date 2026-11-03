@@ -53,6 +53,18 @@ class CostHookTest(unittest.TestCase):
         self.assertEqual(rec["diagnostics"]["event_types"]["assistant.message"], 1)
         self.assertEqual(rec["surface"], "local")
 
+    def test_sub_agent_stops_update_the_one_session_record(self):
+        t = log(self.dir / "session-state/sess-1/events.jsonl", [
+            {"type": "assistant.message", "data": {"outputTokens": 5, "model": "m"}}])
+        run(self.dir, {"sessionId": "call_abc", "transcriptPath": str(t)}, event="agentStop")
+        log(t, [{"type": "assistant.message", "data": {"outputTokens": 5, "model": "m"}},
+                {"type": "assistant.message", "data": {"outputTokens": 7, "model": "m"}}])
+        run(self.dir, {"sessionId": "sess-1", "transcriptPath": str(t)}, event="sessionEnd")
+        files = sorted(p.name for p in (self.dir / ".migration/costs").iterdir())
+        self.assertEqual(files, ["sess-1.json"], "one record per session, whatever id the payload carries")
+        rec = self.record("sess-1")
+        self.assertEqual((rec["event"], rec["models"]["m"]["output"]), ("sessionEnd", 12), "the last snapshot wins")
+
     def test_record_lists_the_harness_tools_the_session_ran(self):
         t = log(self.dir / "t/events.jsonl", [
             {"type": "tool.execution_complete", "data": {"result": {"content": "ok\nAFS-TOOL validate.py exit=0\n"}}},

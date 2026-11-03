@@ -202,7 +202,12 @@ def main(argv=None):
             if re.search(rf"harness/tools/{re.escape(t)}\b", cmd):
                 (passed if code == 0 else failed)[t] += 1
                 where[t].add("journal")
-    for rec in history(".migration/costs"):        # agent sessions: the session hook's record (ADR-0027)
+    latest = {}                                       # one session, one record: the latest snapshot of its log
+    for rec in history(".migration/costs"):
+        key = rec.get("log") or rec.get("session_id")
+        if key not in latest or str(rec.get("recorded_at") or "") >= str(latest[key].get("recorded_at") or ""):
+            latest[key] = rec
+    for rec in latest.values():                       # agent sessions: the session hook's record (ADR-0027)
         for r in rec.get("harness_tools") or []:
             if r.get("tool") in u["tools"]:
                 (passed if r.get("exit") == 0 else failed)[r["tool"]] += r.get("count", 1)
