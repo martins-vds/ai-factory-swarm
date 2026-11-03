@@ -36,7 +36,9 @@ strategy, UI direction), `profile.context.working_budget`.
    reason (a human approves it later).
 6. **Data-path anchors (ADR-0020).** For every slice, write `.migration/slices/<slice>.yaml` with
    `data_paths.source`: the slice's entry points in the source graph (pages, endpoints, `TYPE=NAME` for
-   exact matches, e.g. `endpoint=POST /handling/reports`). Run `graph_gate.py --side source`: each anchor
+   exact matches, e.g. `endpoint=POST /handling/reports`). Entry points need not be screens: a timer
+   (`resource=timer Class.method (…)`), a batch job, a management command (`command=<name>`) or a
+   page whose script polls or fetches all anchor a flow. Run `graph_gate.py --side source`: each anchor
    must reach a table through the directed flow. A slice that can't is either mis-anchored or exposes an
    enricher gap: say which in the plan. Add `data_paths.target` anchors (the planned target entry points)
    for acceptance.

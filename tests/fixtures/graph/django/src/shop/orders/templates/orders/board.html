@@ -1,0 +1,4 @@
+{% extends "orders/base.html" %}
+<div hx-get="{% url 'orders:board-rows' %}" hx-trigger="every 10s"></div>
+<button hx-post="/api/health/">ping</button>
+{% include "orders/list.html" %}

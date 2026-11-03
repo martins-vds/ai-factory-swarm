@@ -81,6 +81,22 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("src/ changed since the graph was built", r.stderr)
 
+    def test_templates_outside_the_analysed_paths_make_the_target_graph_incomplete(self):
+        self.target_graph()
+        (self.repo / "templates/tracking").mkdir(parents=True)
+        (self.repo / "templates/tracking/track.html").write_text("<form hx-post=\"{% url 'track' %}\"></form>\n")
+        (self.repo / "docs").mkdir()
+        (self.repo / "docs/page.html").write_text("{% not analysed: docs are excluded %}\n")
+        (self.repo / "static").mkdir()
+        (self.repo / "static/plain.html").write_text("<p>no template tags</p>\n")
+        self.commit("graph, templates outside src")
+        r = self.run_tool("--require", "target")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("templates/tracking/track.html: a Django template outside the analysed paths (src)", r.stderr)
+        self.assertIn("graph.target_paths", r.stderr)
+        self.assertNotIn("docs/page.html", r.stderr)
+        self.assertNotIn("static/plain.html", r.stderr)
+
     def test_missing_graph_fails_only_when_required(self):
         self.assertEqual(self.run_tool().returncode, 0)
         r = self.run_tool("--require", "source,target")

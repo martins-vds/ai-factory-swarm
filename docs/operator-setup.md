@@ -48,7 +48,13 @@ Understand Anything (UA) builds the graph with an LLM. For data and routing it o
 | `page` nodes and `routes` | infrastructure routing config only | `java-ee`: JSF `*.xhtml`, EL `#{bean…}` → `@Named` bean, `ui:include`/templates · `django`: views → `render(template)` |
 | `calls` between classes | sparse (LLM-chosen) | `java-ee`: `@Inject`/`@EJB` fields · `django`: imports, typed parameters and `self.` attributes |
 | interface → implementation | partial | `implements` from `implements`/Protocol/ABC bases |
-| asynchronous hops | never | `java-ee`: JMS producers → queue → `@MessageDriven` consumers |
+| asynchronous hops | never | `java-ee`: JMS producers → queue → `@MessageDriven` consumers; CDI `Event<T>.fire` → `cdi-event` → `@Observes` · `django`: `f.defer()`/`.delay()` → `task` → the task function |
+| scheduled and batch entry points | never | `java-ee`: `@Schedule` → `timer`; `JobOperator.start("J")` → `batch-job J` → its XML `ref=""` beans · `django`: `management/commands/<name>.py` → `command` |
+| push and script calls from pages | never | `java-ee`: `@ServerEndpoint` → `WS /path` · both: page scripts' `fetch(url)`, `new WebSocket(…"/path")` and htmx `hx-get`/`hx-post`… (`{% url 'ns:name' %}` or a literal path) → `routes` to the matching endpoint; `{% include %}`/`{% extends %}` → `contains` |
+
+**The target graph analyses only `graph.target_paths`** (default `src`). Templates in a top-level
+`templates/` folder are pages too: list that folder, or the graph can't see them. `check_graph_fresh.py`
+reports every tracked Django template outside the analysed paths, and fails on it at acceptance.
 
 A stack without an enricher has only the UA column. That is a **capability gap** ("graph data links") at
 bootstrap, not something to discover at acceptance. Enricher-added nodes and edges are tagged
