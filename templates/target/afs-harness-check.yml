@@ -82,6 +82,8 @@ jobs:
         with: {{ python-version: "{python_version}" }}
       - run: pip install -q pyyaml
       - name: Check for .migration/returns/<ticket>.<role>.yaml
+        env:
+          GITHUB_TOKEN: ${{{{ github.token }}}}      # reads a sub-issue's parent ticket
         run: python .migration/harness/tools/check_return_contract.py --base "origin/${{{{ github.base_ref }}}}"
 
   gates:

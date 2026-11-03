@@ -180,6 +180,10 @@ class ReturnFileTest(unittest.TestCase):
             ok, msg = crc.check("Fixes #23", files, repo)
             self.assertFalse(ok)
             self.assertIn("#23", msg)
+            # A fix or Verifier on its own issue (#147, a sub-issue of ticket #22) names the ticket.
+            parent = {"147": "22"}.get
+            self.assertTrue(crc.check("Fixes #147", files, repo, parent_of=parent)[0], "the parent ticket counts")
+            self.assertFalse(crc.check("Fixes #148", files, repo, parent_of=parent)[0], "no parent: no match")
 
     def test_pasted_contract_is_detected(self):
         self.assertTrue(crc.pasted_contract("Done.\n\n```yaml\n" + RETURN + "```\n"))
