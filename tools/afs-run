@@ -155,7 +155,8 @@ def main(argv=None):
     start = time.monotonic()
     with open(log_path, "wb") as log:
         try:
-            code = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT)
+            # The command knows its ticket (afs-mutation writes the ticket's survivor list, ADR-0018).
+            code = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT, env={**os.environ, "AFS_TICKET": ticket})
         except FileNotFoundError:
             log.write(f"afs-run: command not found: {cmd[0]}\n".encode())
             code = 127

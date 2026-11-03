@@ -68,6 +68,7 @@ session is a **committed file on your branch**, in the same PR as the work:
 | Handoff | `.migration/handoffs/<ticket>.md` | `afs-handoff` |
 | Quirk ticket draft | `.migration/quirks/<short-id>.md` | `afs-quirk-ticket` |
 | Gate runs | `.migration/evidence/runs/<ticket>.md` (written by `afs-run`) | `afs-evidence` |
+| Surviving mutants | `.migration/evidence/mutants/<ticket>.md` (written by `afs-mutation`) | `afs-handoff`: cite it |
 | Session record | `.migration/costs/<session>.json` (written by the session hook, ADR-0021) | none: expected in every agent PR |
 
 **Session records are expected, never edited.** The harness's session hook commits one record per agent

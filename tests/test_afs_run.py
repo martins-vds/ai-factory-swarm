@@ -27,6 +27,13 @@ class AfsRunTest(unittest.TestCase):
         path = pathlib.Path(self.runs, ticket, "runs.jsonl")
         return [json.loads(l) for l in path.read_text().splitlines()]
 
+    def test_the_command_knows_its_ticket(self):
+        r = afs(self.runs, sys.executable, "-c", "import os; print('ticket=' + os.environ['AFS_TICKET'])",
+                ticket="HR-04D")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        log = next(pathlib.Path(self.runs, "HR-04D").glob("*.log")).read_text()
+        self.assertIn("ticket=HR-04D", log)
+
     def test_success_keeps_full_log_and_short_summary(self):
         script = "for i in $(seq 1 500); do echo line $i; done"
         r = afs(self.runs, "bash", "-c", script, extra=("--name", "loop"))

@@ -29,6 +29,9 @@ Usage (run it through afs-run so the run lands in the journal):
 * Threshold: --threshold, else profile.thresholds.mutation_score_min, else 0.8.
 * Exit 0 when score >= threshold or there is no changed code to mutate; 1 below the threshold; 2 on
   a usage or tool error. Prints one summary line and the surviving mutants' locations.
+* Survivors are evidence (ADR-0018): run for a ticket (`AFS_TICKET`, which `afs-run` sets) in a repo with
+  `.migration/`, it also writes **every** surviving mutant to `.migration/evidence/mutants/<ticket>.md`
+  (overwritten each run), so the next session or a handoff can act on them without re-running the gate.
 """
 import argparse
 import fnmatch
@@ -317,7 +320,25 @@ def main():
     print(f"  tests: {selection}; runner for {paths[0]}: {runners[paths[0]][:300]}")
     for loc in locations[:30]:
         print(f"  survived: {loc}")
+    write_survivors(locations, score, threshold, killed, survived, base)
     return 0 if ok else 1
+
+
+def write_survivors(locations, score, threshold, killed, survived, base):
+    """Commit-ready list of every surviving mutant for the ticket (the raw log is not committed)."""
+    ticket = os.environ.get("AFS_TICKET", "")
+    if not ticket or ticket == "adhoc" or not os.path.isdir(".migration"):
+        return None
+    folder = pathlib.Path(".migration/evidence/mutants")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{re.sub(r'[^A-Za-z0-9._-]', '-', ticket)}.md"
+    lines = [f"# Surviving mutants: {ticket}", "",
+             f"Written by `afs-mutation` on its last run (base `{base}`): score {score:.3f}, threshold {threshold}, "
+             f"killed {killed}, survived {survived}. Each line is a mutant no test killed: add a test that fails "
+             "on it, or simplify the code if it is equivalent.", ""]
+    lines += [f"- `{loc}`" for loc in locations] or ["- none"]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 if __name__ == "__main__":
