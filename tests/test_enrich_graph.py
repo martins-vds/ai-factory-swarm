@@ -4,6 +4,7 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -164,6 +165,138 @@ class DjangoTest(unittest.TestCase):
     def test_polled_partial_reaches_data(self):
         self.assertIn("→routes `/api/board/rows/`", path(self.g, "endpoint=/api/board/"))
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/api/board/"))
+
+
+class DjangoHttpMethodsTest(unittest.TestCase):
+    def graph(self, views=None, composition=None, pages=None):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            shutil.copytree(FIX / "django", root, dirs_exist_ok=True)
+            for name, text in {"src/shop/orders/interfaces/views.py": views,
+                               "src/shop/orders/composition.py": composition,
+                               **(pages or {})}.items():
+                if text is not None:
+                    f = root / name
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(text)
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.merge_graphify(g, json.loads((FIX / "django.graphify.json").read_text()))
+            enrich_graph.enrich_django(g, root)
+            before = json.dumps(g.doc, sort_keys=True)
+            enrich_graph.enrich_django(g, root)
+            self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "enrichment stays idempotent")
+            return g
+
+    def factory(self, decorators, imports="", extra=""):
+        return (
+            "from django.views.decorators.http import require_POST, require_GET, require_safe, require_http_methods\n"
+            f"{imports}\n"
+            "def create_order_view(lookup):\n"
+            f"{extra}"
+            + "".join(f"    @{d}\n" for d in decorators)
+            + "    def view(request):\n"
+              "        return lookup.find(request.GET.get('id'))\n"
+              "    return view\n\n"
+              "def health(request):\n"
+              "    return None\n"
+        )
+
+    def test_returned_post_view_through_composition_preserves_exact_anchor_and_data_flow(self):
+        g = self.graph(self.factory(["require_POST"]))
+        self.assertIn(("POST /", "compose_order_view"), edges(g, "routes"))
+        self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=POST /"))
+        self.assertTrue(path(g, "endpoint=GET /").startswith("no matching node"))
+        self.assertTrue(path(g, "endpoint=/").startswith("no matching node"), "no unrestricted duplicate")
+        self.assertNotIn(("POST /", "health"), edges(g, "routes"))
+
+    def test_graph_gate_passes_post_anchor_but_rejects_wrong_method(self):
+        g = self.graph(self.factory(["require_POST"]))
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / ".migration/graphs/target/full").mkdir(parents=True)
+            (root / ".migration/slices").mkdir()
+            (root / ".migration/graphs/target/full/knowledge-graph.json").write_text(json.dumps(g.doc))
+            (root / ".migration/profile.yaml").write_text(json.dumps({
+                "graph": {"require": {"target": {"nodes": ["endpoint", "table"], "edges": ["reads_from"]}}}
+            }))
+            spec = root / ".migration/slices/orders.yaml"
+            for method, code in (("POST", 0), ("GET", 1)):
+                spec.write_text(json.dumps({"data_paths": {"target": [f"endpoint={method} /"]}}))
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "tools/graph_gate.py"), "--side", "target", "--require-graph"],
+                    cwd=root, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+                self.assertIn("verdict=pass" if code == 0 else "no matching node", result.stdout)
+
+    def test_aliases_safe_and_literal_method_lists(self):
+        cases = [
+            (["only_post"], "from django.views.decorators.http import require_POST as only_post", {"POST"}),
+            (["http.require_safe"], "from django.views.decorators import http", {"GET", "HEAD"}),
+            (["require_GET"], "", {"GET"}),
+            (["require_http_methods(['POST', 'PATCH'])"], "", {"POST", "PATCH"}),
+            (["require_http_methods(('GET', 'POST'))", "require_GET"], "", {"GET"}),
+            (["require_GET", "require_POST"], "", set()),
+        ]
+        for decorators, imports, methods in cases:
+            with self.subTest(decorators=decorators):
+                g = self.graph(self.factory(decorators, imports))
+                names = {n["name"] for n in g.doc["nodes"] if n.get("type") == "endpoint"
+                         and n.get("filePath") == "src/shop/urls.py"}
+                self.assertEqual(names, {f"{method} /" for method in methods})
+
+    def test_direct_decorated_view_is_not_treated_as_a_factory(self):
+        g = self.graph(
+            "from django.views.decorators.http import require_POST\n"
+            "@require_POST\n"
+            "def health(request):\n"
+            "    return render(request, 'orders/health.html')\n"
+        )
+        self.assertIn(("POST /api/health/", "health"), edges(g, "routes"))
+        self.assertTrue(path(g, "endpoint=GET /api/health/").startswith("no matching node"))
+
+    def test_unrelated_nested_decorators_do_not_restrict_returned_view(self):
+        g = self.graph(self.factory([], extra="    @require_POST\n    def unused(request):\n        pass\n"))
+        self.assertIn(("/", "compose_order_view"), edges(g, "routes"))
+
+    def test_unknown_dynamic_or_lookalike_decorators_do_not_invent_methods(self):
+        cases = [
+            (["require_http_methods(METHODS)"], ""),
+            (["require_POST"], "from custom import require_POST"),
+            (["require_http_methods(['post'])"], ""),
+        ]
+        for decorators, imports in cases:
+            with self.subTest(decorators=decorators, imports=imports):
+                g = self.graph(self.factory(decorators, imports))
+                self.assertIn(("/", "compose_order_view"), edges(g, "routes"))
+                self.assertTrue(path(g, "endpoint=POST /").startswith("no matching node"))
+
+    def test_recursive_and_conflicting_factory_returns_stay_unknown(self):
+        for composition in (
+            "def compose_order_view():\n    return compose_order_view()\n",
+            "def compose_order_view():\n    return external_factory()\n",
+            "from shop.orders.interfaces.views import create_order_view, health\n"
+            "def compose_order_view():\n"
+            "    if condition:\n        return create_order_view(None)\n"
+            "    return health\n",
+        ):
+            with self.subTest(composition=composition):
+                g = self.graph(self.factory(["require_POST"]), composition)
+                self.assertIn(("/", "compose_order_view"), edges(g, "routes"))
+                self.assertTrue(path(g, "endpoint=POST /").startswith("no matching node"))
+
+    def test_templates_match_named_and_literal_routes_by_method(self):
+        pages = {}
+        for method in ("get", "post", "patch"):
+            for kind, url in (("named", "{% url 'orders' %}"), ("literal", "/")):
+                pages[f"src/shop/orders/templates/orders/{kind}-{method}.html"] = f'<div hx-{method}="{url}"></div>'
+        g = self.graph(self.factory(["require_http_methods(['POST', 'PATCH'])"]), pages=pages)
+        routes = edges(g, "routes")
+        for method in ("GET", "POST", "PATCH"):
+            for kind in ("named", "literal"):
+                page = f"src/shop/orders/templates/orders/{kind}-{method.lower()}.html"
+                for endpoint_method in ("POST", "PATCH"):
+                    self.assertEqual((page, f"{endpoint_method} /") in routes, method == endpoint_method)
 
 
 class AppLabelTest(unittest.TestCase):
