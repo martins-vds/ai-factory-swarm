@@ -48,6 +48,10 @@ edit its PR description after opening it, and it has no user token. So:
   **Never use `merge-async` on a PR whose base is another PR's branch:** it merges the *whole stack* into
   the default branch (pilot HR-04C: an unverified work PR and its failing test landed on `main`). The work
   PR reaches `main` only by its own plain merge, after its Verifier passes.
+- **Before trusting stacked-PR CI:** after a merge or revert on the default branch, bring every open
+  work branch up to date, then merge each updated base into its stacked PR's head and push. Updating
+  only the base does not trigger fresh head CI, and rerunning an old workflow reuses its old merge
+  commit. `check_stack_base.py` blocks the other harness-check jobs until both ancestry checks pass.
 - Copilot PRs' workflow runs may wait for approval; a push by a human or L0 runs CI on them.
 
 ## Conventions (checked by `tests/test_agents.py`)
