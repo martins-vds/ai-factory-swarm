@@ -21,7 +21,8 @@ Framework enrichers (the stack pack names which ones a migration uses):
             publishes → queue → triggers → @MessageDriven; @ServerEndpoint → `WS` endpoint; CDI
             Event<T>.fire → publishes → `cdi-event` → triggers → @Observes; @Schedule → `timer` → triggers;
             JobOperator.start("J") → calls → `batch-job J` → calls → the job XML's ref="" beans
-  django    urls.py path()/include() → endpoint, routes to the view; models.Model → table; ORM
+  django    urls.py path()/include() → endpoint, routes to the view; HTTP method decorators (including
+            returned factory views) → verb-qualified endpoints; models.Model → table; ORM
             Model.objects.* / .save() / .delete() → reads_from / writes_to; render(template) →
             page; management/commands/<name>.py → `command`
             routes Command; @app.task/@shared_task → `task` triggers it, f.defer()/.delay() → publishes;
@@ -138,7 +139,10 @@ def match_endpoints(url, verb, eps):
 def link_page(g, pid, text, eps, rule, resolve_named=None):
     for verb, url in script_links(text):
         named = resolve_named(url) if resolve_named else None
-        targets = [named] if named else match_endpoints(url, verb, eps) if url.startswith("/") else []
+        if named is not None:
+            targets = [eid for ev, _, eid in eps if eid in named and (ev == verb if ev else verb != "WS")]
+        else:
+            targets = match_endpoints(url, verb, eps) if url.startswith("/") else []
         for eid in targets:
             g.edge(pid, eid, "routes", rule, description=f"{verb} {url}")
 
@@ -506,6 +510,56 @@ def app_label_of(dotted, labels):
     return parts[-2] if len(parts) > 1 else parts[0]
 
 
+def django_http_methods(decorator, m):
+    """Only explicit Django decorators establish a method restriction; unknown code stays unknown."""
+    func = decorator.func if isinstance(decorator, ast.Call) else decorator
+    name = dotted_of(func, m)
+    fixed = {"django.views.decorators.http.require_GET": {"GET"},
+             "django.views.decorators.http.require_POST": {"POST"},
+             "django.views.decorators.http.require_safe": {"GET", "HEAD"}}
+    if name in fixed and not isinstance(decorator, ast.Call):
+        return fixed[name]
+    if name == "django.views.decorators.http.require_http_methods" and isinstance(decorator, ast.Call) \
+            and len(decorator.args) == 1 and not decorator.keywords \
+            and isinstance(decorator.args[0], (ast.List, ast.Tuple)):
+        values = decorator.args[0].elts
+        if all(isinstance(v, ast.Constant) and isinstance(v.value, str) and
+               re.fullmatch(r"[A-Z]+", v.value) for v in values):
+            return {v.value for v in values}
+    return None
+
+
+def django_view_methods(view, m, defs, seen=frozenset(), local=None):
+    """Follow statically returned callables through factories, never calls inside the request handler."""
+    invoked = isinstance(view, ast.Call)
+    expr = view.func if invoked else view
+    target = (local or {}).get(expr.id) if isinstance(expr, ast.Name) else None
+    target = target or defs.get(dotted_of(expr, m))
+    if not target:
+        return None
+    tm, node = target
+    key = (tm.path, node.lineno, invoked)
+    if key in seen or not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return None
+    if not invoked:
+        restrictions = [methods for d in node.decorator_list
+                        if (methods := django_http_methods(d, tm)) is not None]
+        return set.intersection(*restrictions) if restrictions else None
+
+    pending, returns = list(node.body), []
+    while pending:
+        stmt = pending.pop()
+        if isinstance(stmt, ast.Return):
+            returns.append(stmt.value)
+        elif not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            pending.extend(ast.iter_child_nodes(stmt))
+    nested = {n.name: (tm, n) for n in node.body
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    methods = [django_view_methods(value, tm, defs, seen | {key}, nested) for value in returns]
+    # Differing or unresolved return branches cannot prove one restriction for the route.
+    return methods[0] if methods and methods[0] is not None and all(x == methods[0] for x in methods) else None
+
+
 def enrich_django(g, root):
     mods = py_index(root)
     if not mods:
@@ -653,20 +707,24 @@ def enrich_django(g, root):
                     space = kw.get("namespace") or app_name(sub)
                     walk(sub, route, ns + ((space,) if space else ()))
                 continue
+            methods = django_view_methods(view, m, defs)
             if isinstance(view, ast.Call) and isinstance(view.func, ast.Attribute) and view.func.attr == "as_view":
                 view = view.func.value
             elif isinstance(view, ast.Call):
                 view = view.func          # a factory / composition root that builds the view: route to it
             target = dotted_of(view, m)
-            eid = g.node("endpoint", m.path, "/" + route.lstrip("/"), "django-url", f"URL /{route.lstrip('/')}",
-                         call.lineno)
+            url = "/" + route.lstrip("/")
+            names = [f"{method} {url}" for method in sorted(methods)] if methods is not None else [url]
+            endpoints = [g.node("endpoint", m.path, name, "django-url", f"URL {name}", call.lineno)
+                         for name in names]
             uname = next((k.value.value for k in call.keywords if k.arg == "name" and isinstance(k.value, ast.Constant)),
                          None)
             if uname:
-                url_names[":".join([*ns, uname])] = eid
+                url_names[":".join([*ns, uname])] = endpoints
             if target in defs:
                 tm, tn = defs[target]
-                g.edge(eid, py_node(g, tm, tn, "django-url"), "routes", "django-url")
+                for eid in endpoints:
+                    g.edge(eid, py_node(g, tm, tn, "django-url"), "routes", "django-url")
 
     roots = [m for m in mods.values() if m.path.endswith("urls.py")]
     included = set()

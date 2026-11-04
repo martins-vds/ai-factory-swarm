@@ -24,6 +24,12 @@ dashboard.xhtml → …`).
    queue → consumer. `django` covers models, ORM reads and writes, `urls.py` (with includes and factory
    views), templates, imports, and calls through annotated parameters and attributes. Every added node and
    edge is tagged `afs-enriched:<rule>`. Re-running is idempotent.
+   Django's explicit `require_GET`, `require_POST`, `require_safe`, and literal `require_http_methods`
+   decorators produce verb-qualified endpoint names (for example `POST /reports`), including when a
+   composition root returns a decorated factory view. Restrictions are intersected when stacked.
+   Unresolved/dynamic factories or method declarations retain a bare URL; they do not prove a
+   verb-qualified anchor. Named-template and literal HTTP links respect known restrictions. Exact anchor
+   matching is unchanged: a POST-only route cannot satisfy a GET anchor.
 2. **Directed data paths.** `check_graph.py --data-path` follows the flow as the code runs: routes,
    calls, contains, inherits, publishes, triggers, reads_from and writes_to forward, and implements
    backwards (interface → implementation). `TYPE=NAME` anchors match exactly. With `--gate`, a missing
