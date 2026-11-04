@@ -52,6 +52,11 @@ edit its PR description after opening it, and it has no user token. So:
   work branch up to date, then merge each updated base into its stacked PR's head and push. Updating
   only the base does not trigger fresh head CI, and rerunning an old workflow reuses its old merge
   commit. `check_stack_base.py` blocks the other harness-check jobs until both ancestry checks pass.
+- **Superseded returns:** a later run may update the same ticket/role return to its own issue and PR.
+  Keep that provenance intact. The return-contract check can use a schema-valid committed version
+  from this PR's own base-to-head history, at a still-changed return path with the same ticket/role,
+  to prove this PR's original attribution. It prints the proof commit; it does not treat an old
+  verdict as current acceptance. Never remove a closing reference merely to silence the check.
 - Copilot PRs' workflow runs may wait for approval; a push by a human or L0 runs CI on them.
 
 ## Conventions (checked by `tests/test_agents.py`)

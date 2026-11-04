@@ -9,9 +9,11 @@ Applies to agent PRs only: head branch `copilot/…` or a bot/Copilot author. Ot
 An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.yaml` (diff against
 --base). When the PR body says `Fixes #N` / `Closes #N` / `Resolves #N`, one of those files must have
 `issue: <owner>/<repo>#N`, or name the ticket #N is a sub-issue of (a Verifier's or a fix's own issue). The file's content is validated against schemas/return.schema.json by
-`validate.py` in the same workflow. A return contract pasted into the PR description (instead of
+`validate.py` in the same workflow. If a later run supersedes that return, a schema-valid committed
+version in this PR's history may establish attribution for the same ticket/role and this exact PR.
+That proves attribution only, not a passing verdict. A return contract pasted into the PR description (instead of
 linked) produces a warning, not a failure, because later sessions cannot edit the description.
-Needs git and PyYAML.
+Needs git, PyYAML and jsonschema.
 """
 import argparse
 import json
@@ -22,6 +24,7 @@ import subprocess
 import sys
 
 import yaml
+from jsonschema import Draft202012Validator
 
 AGENT_AUTHORS = {"Copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
 CLOSES = re.compile(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)")
@@ -67,18 +70,68 @@ def github_parent(number):
     return m.group(1) if m else None
 
 
-def check(body, files, root=".", parent_of=lambda n: None):
+def superseded_attribution(base, current, accepted, pr_url, root):
+    """Find this PR's own valid return before a later run replaced its attribution."""
+    identity = re.fullmatch(r"https?://[^/]+/([^/]+/[^/]+)/pull/(\d+)", pr_url.rstrip("/"))
+    if not identity:
+        return None, ["the event has no canonical PR URL"]
+    repo, number = identity.groups()
+    pr_refs = {pr_url.rstrip("/"), f"{repo}#{number}"}
+    issues = {f"{repo}#{n}" for n in accepted}
+    schema = pathlib.Path(__file__).resolve().parent.parent / "schemas/return.schema.json"
+    validator = Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))
+    rejected = []
+    for path, latest in current.items():
+        if not validator.is_valid(latest):
+            rejected.append(f"{path}: current return is not schema-valid")
+            continue
+        commits = subprocess.run(
+            ["git", "-C", str(root), "log", "--format=%H", "--no-merges", "--diff-filter=AM",
+             f"{base}..HEAD", "--", path], capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+        for commit in commits:
+            text = subprocess.run(
+                ["git", "-C", str(root), "show", f"{commit}:{path}"],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            try:
+                previous = yaml.safe_load(text)
+            except yaml.YAMLError:
+                rejected.append(f"{path}@{commit}: invalid YAML")
+                continue
+            if not isinstance(previous, dict):
+                continue
+            if not isinstance(previous.get("issue"), str) or not isinstance(previous.get("pr"), str):
+                continue
+            if previous.get("issue") not in issues or previous.get("pr") not in pr_refs:
+                continue
+            if any(previous.get(k) != latest.get(k) for k in ("ticket", "role")):
+                rejected.append(f"{path}@{commit}: ticket/role differs from current return")
+                continue
+            expected_name = f"{previous.get('ticket')}.{previous.get('role')}.yaml"
+            if pathlib.Path(path).name != expected_name or not validator.is_valid(previous):
+                rejected.append(f"{path}@{commit}: historical return is not schema-valid or misnamed")
+                continue
+            return (f"{path}@{commit} (issue: {previous['issue']}, pr: {previous['pr']})"), rejected
+    return None, rejected
+
+
+def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=None):
     if not files:
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
     issues = set(CLOSES.findall(body or ""))
     if issues:
         found = set()
+        current = {}
         for f in files:
             try:
                 doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
             except (OSError, yaml.YAMLError):
                 continue
+            if not isinstance(doc, dict):
+                continue
+            current[f] = doc
             m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
             if m:
                 found.add(m.group(1))
@@ -86,9 +139,16 @@ def check(body, files, root=".", parent_of=lambda n: None):
         # that issue while the return file names the ticket. Either counts.
         accepted = issues | {p for p in (parent_of(n) for n in issues) if p}
         if not accepted & found:
+            rejected = []
+            if base and pr_url:
+                proof, rejected = superseded_attribution(base, current, accepted, pr_url, root)
+                if proof:
+                    return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
+                                  "Historical attribution is not a passing verdict; current gates still apply.")
             return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
                            f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
-                           f"{', '.join(files)})")
+                           f"{', '.join(files)})"
+                           + (f"; rejected historical evidence: {'; '.join(rejected)}" if rejected else ""))
     return True, f"return file(s): {', '.join(files)}"
 
 
@@ -107,7 +167,8 @@ def main():
     if not is_agent_pr(pr):
         print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
-    ok, msg = check(pr.get("body") or "", changed_return_files(a.base), parent_of=github_parent)
+    ok, msg = check(pr.get("body") or "", changed_return_files(a.base), parent_of=github_parent,
+                    base=a.base, pr_url=pr.get("html_url"))
     if pasted_contract(pr.get("body") or ""):
         # A warning, not a failure: a follow-up session cannot edit the description to fix it.
         print("::warning title=Return contract pasted into the PR description::Link to "
