@@ -63,6 +63,10 @@ bootstrap, not something to discover at acceptance. Enricher-added nodes and edg
 to data. Review them: templates and static pages are expected there; a screen that loads data is not.
 
 ## Recommended
-- Branch protection on `main`: require the **AFS harness check** jobs (harness, return file, gates).
+- Branch protection on `main`: require the **AFS harness check** jobs (stack base, harness, return file,
+  gates). The stack-base job blocks the other jobs when a stacked PR's base lacks the current default
+  branch or its head lacks the current base. Merge the default branch into the work branch, then the
+  updated work branch into its stacked heads and push; rerunning old checks does not refresh their
+  merge commit.
 - After the first push of the generated workflows, check that `Actions` lists them. A brand-new repo
   only picks up workflows once they are on the default branch.

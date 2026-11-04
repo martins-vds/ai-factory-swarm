@@ -53,6 +53,9 @@ slice.
   and in the other open PRs. No two tickets may own the same file, and no new module or package
   may share a dotted name with an existing one (a package `x/` shadows a module `x.py`). After
   merging one of them, bring the others up to date with `main` and re-run CI before merging.
+- After any merge or revert on the default branch, update every open work branch before trusting
+  stacked-PR CI. Then merge each updated base into its stacked PR's head and push to trigger fresh
+  checks; updating only the base or rerunning the old workflow is not enough (agents/README.md).
 - Never accept a bare "done". Re-read the evidence (or re-run a gate through `afs-run`).
 - Hold ticket ids and paths in context, not code or logs.
 - Same ticket fails twice after honest attempts → escalate to the Program Orchestrator.

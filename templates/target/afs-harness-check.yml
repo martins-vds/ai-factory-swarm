@@ -14,8 +14,18 @@ permissions:
   contents: read
 
 jobs:
+  stack-base:
+    name: Stacked PR base is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: {{ fetch-depth: 0 }}
+      - name: Check stack ancestry before trusting CI
+        run: python3 .migration/harness/tools/check_stack_base.py
+
   harness:
     name: Migration state and pinned harness files
+    needs: stack-base
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -73,6 +83,7 @@ jobs:
 
   return-contract:
     name: Agent PR commits its return file
+    needs: stack-base
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -88,6 +99,7 @@ jobs:
 
   gates:
     name: Gates (build, idiom, tests, CRAP, mutation on changed code)
+    needs: stack-base
     runs-on: ubuntu-latest
     env:
       AFS_BASE: origin/${{{{ github.base_ref || 'main' }}}}   # afs-mutation diffs against it

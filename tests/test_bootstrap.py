@@ -67,7 +67,8 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(r["skills"], len(lock["skills"]) + len(json.loads(PACK.read_text())["skills"]))
         self.assertEqual(r["agents"], 10)
         for f in [".migration/source.lock", ".migration/profile.yaml", ".migration/capabilities.yaml",
-                  ".migration/harness/tools/afs-run", ".migration/harness/installed.json",
+                  ".migration/harness/tools/afs-run", ".migration/harness/tools/check_stack_base.py",
+                  ".migration/harness/installed.json",
                   ".github/hooks/rtk-rewrite.json", ".github/workflows/copilot-setup-steps.yml",
                   ".github/workflows/afs-harness-check.yml", ".github/skills/django-patterns/PROVENANCE.md",
                   ".github/skills/django-patterns/LICENSE", ".github/skills/afs-wayfinder/PROVENANCE.md"]:
@@ -78,6 +79,11 @@ class BootstrapTest(unittest.TestCase):
             self.assertIn("jobs", doc)
         self.assertIn("copilot-setup-steps", yaml.safe_load(
             (self.target / ".github/workflows/copilot-setup-steps.yml").read_text())["jobs"])
+        checks = yaml.safe_load((self.target / ".github/workflows/afs-harness-check.yml").read_text())["jobs"]
+        self.assertEqual(checks["stack-base"]["steps"][0]["with"]["fetch-depth"], 0)
+        self.assertIn("check_stack_base.py", checks["stack-base"]["steps"][1]["run"])
+        for job in ("harness", "return-contract", "gates"):
+            self.assertEqual(checks[job]["needs"], "stack-base")
         # ADR-0018: the workflows' Python is the profile's declared python-X.Y, not a harness default.
         prof = yaml.safe_load((self.target / ".migration/profile.yaml").read_text())
         want = next(s.split("-", 1)[1] for s in prof["target"]["stacks"]["backend"] if s.startswith("python-"))
