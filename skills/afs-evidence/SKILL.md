@@ -5,7 +5,8 @@ description: Run gates and produce auditable evidence — every gate command goe
 
 # Evidence
 
-A claim that something passes is only valid with **fresh output from this session**.
+A claim that something passes requires **fresh output from this session**, or independently verified
+durable Actions output for the same execution inputs as described below.
 
 ## Running a gate
 ```bash
@@ -64,3 +65,46 @@ Write `.migration/evidence/<slice>/report.md` (committed):
 ## Human check
 <who checked, when, outcome, follow-up tickets>
 ```
+
+## Durable slice gates outside the cloud worker
+The generated **AFS acceptance gates** workflow runs independently of the shorter model-session
+lifetime. It is manual, read-only on GitHub, and does not commit evidence, open a PR, accept a slice or
+merge anything. Install it through a reviewed, pinned bootstrap rollout before dispatching it.
+
+1. Select the reviewed branch/ref and dispatch `afs-acceptance.yml` with the acceptance ticket. Record
+   the run URL, repository, resolved source SHA, run ID and attempt. Do not silently use a newer head.
+   The job has a six-hour limit; its gate step has 330 minutes, leaving artifact-upload headroom.
+2. `afs-acceptance run` records runtime/integrity/service and both-side graph preflights, then the
+   profile's exact build, idiom, tests, CRAP and **mutation_full** command lists through `afs-run`.
+   Ordinary PR checks still run changed-code mutation only.
+3. Wait for the actual Actions run, not the agent's finish event. Download the matching
+   `afs-acceptance-<sha>-<run-id>-<attempt>` artifact under gitignored `.migration/runs/`.
+   Independently inspect that run using GitHub: correct repository, source SHA, attempt, workflow
+   source and **successful** conclusion. Hashes prove file integrity, not who produced the artifact.
+4. On the Auditor's checkout, verify the downloaded directory:
+   ```bash
+   python .migration/harness/tools/afs-acceptance verify .migration/runs/downloaded-artifact \
+     --commit <executed-full-sha> --run-id <run-id> --attempt <attempt>
+   ```
+   Verification requires the same tracked execution inputs, profile, source lock and installed pin,
+   all planned passing gates, unmodified complete raw logs/records, and numeric, nonempty `base=all`
+   mutation accounting meeting the profile threshold. Missing, partial, N/A, failed, interrupted or
+   mismatched evidence cannot pass. Report Markdown, returns, handoffs and cost records may advance;
+   reserved acceptance-result archives may also advance; code, tests, JSON evidence fixtures, graph
+   inputs and other execution inputs may not.
+5. After verification, append the artifact's `journals/<ticket>.md` **data rows unchanged** to your
+   committed `.migration/evidence/runs/<ticket>.md`; preserve all prior rows. Copy the machine
+   `result.json` unchanged to `.migration/evidence/acceptance-runs/<run-id>-<attempt>.json` (a reserved
+   report directory, never test-fixture storage) and link it with the original Actions run and artifact
+   name. Cite any newly produced `mutants.md`; copy its contents unchanged if needed.
+   Keep raw logs out of git. Record the artifact's 30-day retention; retain a verified download until
+   review is complete. Copy scores only from the actual mutation result, never calculate your own.
+
+Cancellation checkpoints and partial logs are diagnostic evidence only. A hard-killed process can
+leave `status: running`; it is still incomplete. No successful journal row is synthesized for a
+killed gate. Failed setup may leave no artifact at all and is a blocker, not a successful empty run.
+This lane does not add mutation-cache resume: if its own longer deadline is insufficient, preserve the
+blocker and arrange a separately reviewed execution change rather than reporting partial shards.
+The Auditor still performs independent capability/differential review and obtains the required
+human flow sign-off before a complete verdict; a green workflow grants neither acceptance nor merge
+approval.

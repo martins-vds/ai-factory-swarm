@@ -68,13 +68,14 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(r["agents"], 10)
         for f in [".migration/source.lock", ".migration/profile.yaml", ".migration/capabilities.yaml",
                   ".migration/harness/tools/afs-run", ".migration/harness/tools/check_stack_base.py",
+                  ".migration/harness/tools/afs-acceptance",
                   ".migration/harness/installed.json",
                   ".github/hooks/rtk-rewrite.json", ".github/workflows/copilot-setup-steps.yml",
                   ".github/workflows/afs-harness-check.yml", ".github/skills/django-patterns/PROVENANCE.md",
                   ".github/skills/django-patterns/LICENSE", ".github/skills/afs-wayfinder/PROVENANCE.md"]:
             self.assertTrue((self.target / f).exists(), f)
         self.assertTrue(os.access(self.target / ".migration/harness/tools/afs-run", os.X_OK))
-        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml"):
+        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-acceptance.yml"):
             doc = yaml.safe_load((self.target / ".github/workflows" / wf).read_text())
             self.assertIn("jobs", doc)
         self.assertIn("copilot-setup-steps", yaml.safe_load(
@@ -90,7 +91,7 @@ class BootstrapTest(unittest.TestCase):
         # ADR-0018: the workflows' Python is the profile's declared python-X.Y, not a harness default.
         prof = yaml.safe_load((self.target / ".migration/profile.yaml").read_text())
         want = next(s.split("-", 1)[1] for s in prof["target"]["stacks"]["backend"] if s.startswith("python-"))
-        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml"):
+        for wf in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-acceptance.yml"):
             self.assertIn(f'python-version: "{want}"', (self.target / ".github/workflows" / wf).read_text())
         for cmd in (["python3", ".migration/harness/tools/check_installed.py"],
                     ["python3", ".migration/harness/tools/validate.py", ".migration"]):
@@ -99,6 +100,26 @@ class BootstrapTest(unittest.TestCase):
         lock_text = (self.target / ".migration/source.lock").read_text()
         self.assertIn("sha: c2df7607e3b6a997dd27eb2917bc33e4ec0f6692", lock_text)
         self.assertEqual((self.target / ".gitignore").read_text(), ".source/\n.migration/runs/\n")
+
+    def test_acceptance_workflow_is_manual_durable_and_preserves_failed_evidence(self):
+        self.run_bootstrap()
+        text = (self.target / ".github/workflows/afs-acceptance.yml").read_text()
+        doc = yaml.safe_load(text)
+        # PyYAML's YAML 1.1 parser treats the Actions key "on" as True.
+        self.assertEqual(set(doc[True]), {"workflow_dispatch"})
+        self.assertEqual(doc["permissions"], {"contents": "read"})
+        job = doc["jobs"]["acceptance"]
+        self.assertEqual(job["timeout-minutes"], 360)
+        run = next(s for s in job["steps"] if "afs-acceptance run" in s.get("run", ""))
+        self.assertEqual(run["timeout-minutes"], 330)
+        self.assertIn('--ticket "$AFS_ACCEPTANCE_TICKET"', run["run"])
+        self.assertNotIn("${{ inputs.ticket }}", run["run"], "dispatch input is data, not shell source")
+        upload = next(s for s in job["steps"] if s.get("uses") == "actions/upload-artifact@v4")
+        self.assertEqual(upload["if"], "always()")
+        self.assertTrue(upload["with"]["include-hidden-files"])
+        self.assertIn("github.sha", upload["with"]["name"])
+        checks = (self.target / ".github/workflows/afs-harness-check.yml").read_text()
+        self.assertNotIn("mutation_full", checks, "ordinary per-PR gates remain unchanged")
 
     def test_instruction_blocks_preserve_team_content_and_are_idempotent(self):
         ci = self.target / ".github/copilot-instructions.md"

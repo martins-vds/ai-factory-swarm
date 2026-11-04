@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Run profile acceptance gates outside an agent session; verify the resulting Actions artifact.
+
+afs-acceptance run --ticket T --out .migration/runs/acceptance-ID
+afs-acceptance verify ARTIFACT --commit SHA --run-id ID --attempt N
+
+Artifacts are evidence, not an acceptance verdict. The Auditor must also check the actual Actions
+run's repository, source SHA and successful conclusion. Hashes detect corruption, not authenticity.
+"""
+import argparse
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+import pathlib
+import re
+import shutil
+import signal
+import shlex
+import subprocess
+import sys
+
+import yaml
+
+sys.dont_write_bytecode = True
+HERE = pathlib.Path(__file__).resolve().parent
+GATES = ("build", "idiom", "tests", "crap", "mutation_full")
+INPUTS = (".migration/profile.yaml", ".migration/source.lock", ".migration/harness/installed.json")
+REPORTS = ((".migration/evidence/", ".md"), (".migration/returns/", ".yaml"),
+           (".migration/handoffs/", ".md"), (".migration/costs/", ".json"),
+           (".migration/evidence/acceptance-runs/", ".json"))
+
+
+class EvidenceError(Exception):
+    pass
+
+
+class Interrupted(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git(*args):
+    return subprocess.run(["git", *args], check=True, capture_output=True).stdout
+
+
+def audit_output(path):
+    return any(path.startswith(prefix) and path.endswith(suffix) for prefix, suffix in REPORTS)
+
+
+def input_tree():
+    """Audit reports may advance HEAD; every other tracked input must still describe the same tree."""
+    entries = git("ls-tree", "-r", "-z", "HEAD").split(b"\0")
+    kept = [entry for entry in entries if entry and
+            not audit_output(entry.split(b"\t", 1)[1].decode())]
+    return hashlib.sha256(b"\0".join(kept)).hexdigest()
+
+
+def clean_inputs():
+    changed = git("diff", "--name-only", "-z", "HEAD").decode().split("\0")
+    if any(path and not audit_output(path) for path in changed):
+        raise EvidenceError("tracked execution inputs differ from HEAD")
+    untracked = git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0")
+    if any(path and not audit_output(path) for path in untracked):
+        raise EvidenceError("untracked execution inputs are present")
+
+
+def commands(profile):
+    gates = profile.get("gates") or {}
+    plan = [
+        ("runtime", [sys.executable, str(HERE / "check_runtime.py")]),
+        ("harness-integrity", [sys.executable, str(HERE / "check_installed.py")]),
+        ("services", [sys.executable, str(HERE / "afs-services"), "check"]),
+        ("graph-freshness", [sys.executable, str(HERE / "check_graph_fresh.py"), "--require", "source,target"]),
+        ("graph-source", [sys.executable, str(HERE / "graph_gate.py"), "--side", "source", "--require-graph"]),
+        ("graph-target", [sys.executable, str(HERE / "graph_gate.py"), "--side", "target", "--require-graph"]),
+    ]
+    for gate in GATES:
+        rows = gates.get(gate)
+        if not isinstance(rows, list) or not rows or any(not isinstance(c, str) or not c.strip() for c in rows):
+            raise EvidenceError(f"profile gates.{gate} must be a nonempty command list")
+        plan += [(f"{gate}-{i}", ["bash", "-c", cmd]) for i, cmd in enumerate(rows)]
+    return [{"name": name, "command": cmd} for name, cmd in plan]
+
+
+def result_fields(log):
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    result = next((line[len("AFS-RESULT "):] for line in reversed(lines)
+                   if line.startswith("AFS-RESULT ")), "")
+    return dict(word.split("=", 1) for word in result.split() if "=" in word)
+
+
+def full_mutation(fields, threshold):
+    try:
+        killed, survived, files = (int(fields[k]) for k in ("killed", "survived", "files"))
+        score, declared = float(fields["score"]), float(fields["threshold"])
+    except (KeyError, ValueError) as exc:
+        raise EvidenceError("full mutation has no complete numeric result") from exc
+    if fields.get("gate") != "mutation" or fields.get("base") != "all" \
+            or min(killed, survived) < 0 or files <= 0 or killed + survived <= 0:
+        raise EvidenceError("full mutation requires nonempty base=all accounting")
+    actual = killed / (killed + survived)
+    if not math.isfinite(score) or declared != threshold or actual < threshold or abs(score - actual) > 0.000500001:
+        raise EvidenceError("full mutation score/counts/threshold do not establish a pass")
+
+
+def write_result(out, result):
+    result["files"] = {p.relative_to(out).as_posix(): digest(p) for p in sorted(out.rglob("*"))
+                       if p.is_file() and p not in (out / "result.json", out / "result.tmp")}
+    temp = out / "result.tmp"
+    temp.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    temp.replace(out / "result.json")
+
+
+def stop(process):
+    if process.poll() is None:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+
+
+def run(ticket, out):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", ticket) or ticket.strip("-._") != ticket:
+        raise EvidenceError("ticket must be a safe identifier of at most 80 characters, ending in a letter or digit")
+    if out.exists():
+        raise EvidenceError("output directory already exists; use a new run/attempt directory")
+    clean_inputs()
+    profile = yaml.safe_load(pathlib.Path(INPUTS[0]).read_text(encoding="utf-8"))
+    plan = commands(profile)
+    threshold = float(profile["thresholds"]["mutation_score_min"])
+    if not math.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise EvidenceError("profile mutation threshold must be between 0 and 1")
+    commit = git("rev-parse", "HEAD").decode().strip()
+    if os.environ.get("GITHUB_SHA", commit) != commit:
+        raise EvidenceError("checked-out revision differs from the Actions source SHA")
+    out.mkdir(parents=True)
+    for path in INPUTS:
+        dest = out / "inputs" / pathlib.Path(path).name
+        dest.parent.mkdir(exist_ok=True)
+        shutil.copyfile(path, dest)
+    manifest = json.loads(pathlib.Path(INPUTS[2]).read_text(encoding="utf-8"))
+    result = {
+        "format": 1, "ticket": ticket, "status": "running", "started_at": now(),
+        "commit": commit, "input_tree_sha256": input_tree(), "harness_commit": manifest["harness_commit"],
+        "inputs": {path: digest(pathlib.Path(path)) for path in INPUTS},
+        "workflow": {key: os.environ.get(key) for key in
+                     ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT")},
+        "plan": plan, "steps": [],
+    }
+    survivors = pathlib.Path(f".migration/evidence/mutants/{ticket}.md")
+    survivors_before = survivors.stat().st_mtime_ns if survivors.is_file() else None
+    write_result(out, result)
+    code = 0
+    try:
+        for item in plan:
+            step = {**item, "status": "running", "started_at": now()}
+            result["steps"].append(step)
+            write_result(out, result)
+            cmd = [sys.executable, str(HERE / "afs-run"), "--ticket", ticket, "--name", item["name"],
+                   "--runs-dir", str(out / "logs"), "--journal-dir", str(out / "journals"),
+                   "--", *item["command"]]
+            process = subprocess.Popen(cmd, start_new_session=True,
+                                       env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+            try:
+                exit_code = process.wait()
+            except BaseException:
+                stop(process)
+                raise
+            records = [json.loads(line) for line in (out / "logs" / ticket / "runs.jsonl").read_text().splitlines()]
+            record = records[-1]
+            log = pathlib.Path(record["log"])
+            step.update(exit=exit_code, finished_at=now(), record=record, result=result_fields(log),
+                        log=log.relative_to(out).as_posix(), status="passed" if exit_code == 0 else "failed")
+            if record["ticket"] != ticket or record["name"] != item["name"] or record["exit"] != exit_code:
+                raise EvidenceError("afs-run record does not match the executed gate")
+            if exit_code:
+                code = exit_code if exit_code > 0 else 128 - exit_code
+                break
+            if item["name"].startswith("mutation_full-"):
+                try:
+                    full_mutation(step["result"], threshold)
+                except EvidenceError as exc:
+                    step.update(status="failed", error=str(exc))
+                    raise
+            write_result(out, result)
+        clean_inputs()
+        if input_tree() != result["input_tree_sha256"]:
+            raise EvidenceError("execution inputs changed during the run")
+        result["status"] = "passed" if code == 0 else "failed"
+    except Interrupted as exc:
+        code = 128 + exc.signum
+        result.update(status="interrupted", error=f"received signal {exc.signum}")
+        if result["steps"] and result["steps"][-1]["status"] == "running":
+            result["steps"][-1].update(status="interrupted", finished_at=now())
+    except (EvidenceError, OSError, subprocess.SubprocessError, ValueError) as exc:
+        code = 2
+        result.update(status="failed", error=str(exc))
+    finally:
+        completed_mutation = any(s["name"].startswith("mutation_full-") and "result" in s for s in result["steps"])
+        if completed_mutation and survivors.is_file() and survivors.stat().st_mtime_ns != survivors_before:
+            shutil.copyfile(survivors, out / "mutants.md")
+        result.update(finished_at=now(), exit=code)
+        write_result(out, result)
+    print(f"AFS-RESULT gate=acceptance status={result['status']} commit={commit} exit={code}")
+    return code
+
+
+def verify(out, commit, run_id, attempt):
+    result = json.loads((out / "result.json").read_text(encoding="utf-8"))
+    if result.get("format") != 1 or result.get("status") != "passed" or result.get("exit") != 0:
+        raise EvidenceError("artifact is incomplete, interrupted or failed")
+    workflow = result.get("workflow", {})
+    if result.get("commit") != commit or workflow.get("GITHUB_RUN_ID") != run_id \
+            or workflow.get("GITHUB_RUN_ATTEMPT") != attempt:
+        raise EvidenceError("artifact does not match the expected commit/run")
+    clean_inputs()
+    if input_tree() != result["input_tree_sha256"]:
+        raise EvidenceError("artifact execution inputs do not match this checkout")
+    actual_files = {p.relative_to(out).as_posix() for p in out.rglob("*")
+                    if p.is_file() and p != out / "result.json"}
+    if actual_files != set(result["files"]):
+        raise EvidenceError("artifact file inventory is incomplete")
+    for name, fingerprint in result["files"].items():
+        path = (out / name).resolve()
+        if not path.is_relative_to(out.resolve()) or digest(path) != fingerprint:
+            raise EvidenceError(f"artifact file missing, unsafe or modified: {name}")
+    if set(result["inputs"]) != set(INPUTS):
+        raise EvidenceError("artifact is missing input provenance")
+    for path in INPUTS:
+        if digest(pathlib.Path(path)) != result["inputs"][path] \
+                or digest(out / "inputs" / pathlib.Path(path).name) != result["inputs"][path]:
+            raise EvidenceError(f"artifact input mismatch: {path}")
+    profile = yaml.safe_load(pathlib.Path(INPUTS[0]).read_text(encoding="utf-8"))
+    if workflow.get("GITHUB_REPOSITORY") != profile["target"]["repo"]:
+        raise EvidenceError("artifact repository differs from the profile target")
+    manifest = json.loads(pathlib.Path(INPUTS[2]).read_text(encoding="utf-8"))
+    if result["harness_commit"] != manifest["harness_commit"]:
+        raise EvidenceError("artifact harness pin differs from installed manifest")
+    journal = out / "journals" / f"{result['ticket']}.md"
+    if not journal.is_file():
+        raise EvidenceError("artifact has no run journal")
+    plan = commands(profile)
+    # Interpreter/install paths may differ between the Actions runner and the Auditor's checkout.
+    expected_names = [p["name"] for p in plan]
+    if [p["name"] for p in result["plan"]] != expected_names \
+            or [s["name"] for s in result["steps"]] != expected_names:
+        raise EvidenceError("artifact is missing required gates")
+    records = [json.loads(line) for line in (out / "logs" / result["ticket"] / "runs.jsonl").read_text().splitlines()]
+    if len(records) != len(plan):
+        raise EvidenceError("artifact has incomplete afs-run records")
+    for item, declared, step, record in zip(plan, result["plan"], result["steps"], records):
+        if step["status"] != "passed" or step["exit"] != 0 or record["exit"] != 0 \
+                or step["record"] != record or record["name"] != item["name"] or record["ticket"] != result["ticket"]:
+            raise EvidenceError(f"gate is not a recorded pass: {item['name']}")
+        if step["command"] != declared["command"] or record["command"] != shlex.join(step["command"]):
+            raise EvidenceError("gate command does not match the execution record")
+        if not any(item["name"].startswith(f"{gate}-") for gate in GATES):
+            cmd = step["command"]
+            if len(cmd) < 2 or pathlib.Path(cmd[1]).name != pathlib.Path(item["command"][1]).name \
+                    or cmd[2:] != item["command"][2:]:
+                raise EvidenceError(f"preflight command changed: {item['name']}")
+        elif step["command"] != item["command"]:
+            raise EvidenceError(f"profile command changed: {item['name']}")
+        log = out / step["log"]
+        if step["log"] not in result["files"]:
+            raise EvidenceError("raw gate log is outside the artifact inventory")
+        raw = log.read_bytes()
+        if len(raw) != record["bytes"] or len(raw.decode(errors="replace").splitlines()) != record["lines"]:
+            raise EvidenceError("raw gate log does not match its execution record")
+        if result_fields(log) != step["result"]:
+            raise EvidenceError("recorded result differs from the raw gate log")
+        if item["name"].startswith("mutation_full-"):
+            full_mutation(step["result"], float(profile["thresholds"]["mutation_score_min"]))
+    print(f"AFS-RESULT gate=acceptance-evidence status=verified commit={commit} run_id={run_id} attempt={attempt}")
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    sub = ap.add_subparsers(dest="operation", required=True)
+    runner = sub.add_parser("run")
+    runner.add_argument("--ticket", required=True)
+    runner.add_argument("--out", type=pathlib.Path, required=True)
+    checker = sub.add_parser("verify")
+    checker.add_argument("artifact", type=pathlib.Path)
+    checker.add_argument("--commit", required=True)
+    checker.add_argument("--run-id", required=True)
+    checker.add_argument("--attempt", required=True)
+    args = ap.parse_args(argv)
+    old_handlers = {}
+    try:
+        if args.operation == "verify":
+            return verify(args.artifact, args.commit, args.run_id, args.attempt)
+        def interrupted(signum, frame):
+            raise Interrupted(signum)
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            old_handlers[sig] = signal.signal(sig, interrupted)
+        return run(args.ticket, args.out)
+    except (EvidenceError, OSError, subprocess.SubprocessError, ValueError, KeyError) as exc:
+        print(f"afs-acceptance: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
+
+
+if __name__ == "__main__":
+    import afs_trace
+    afs_trace.run(main)

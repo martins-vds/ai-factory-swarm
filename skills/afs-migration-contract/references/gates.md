@@ -2,7 +2,7 @@
 
 Commands come from `.migration/profile.yaml` (`gates.*`); thresholds from `thresholds.*`. Run every gate
 through `afs-run` so the raw log is kept as evidence (`afs-evidence`). A gate passes only on fresh output
-from this session.
+from this session, or verified durable Actions output for identical execution inputs (`afs-evidence`).
 
 | Gate | Question | When |
 |---|---|---|
@@ -63,6 +63,12 @@ never production code, and send implementation defects back to a Migrator.
 4. Target graph updated incrementally; gate 7; ledger reconciled.
 5. Evidence report at `.migration/evidence/<slice>/report.md`.
 6. Human side-by-side (or spec-based) check of the slice's flows.
+
+If full mutation exceeds a cloud worker's lifetime, dispatch the generated `afs-acceptance.yml`
+workflow on the reviewed ref. It runs the profile's full gate outside the model session and preserves
+raw logs, journal and exact-revision provenance. The Auditor verifies/imports that evidence through
+`afs-evidence`; cancelled or incomplete runs never establish acceptance. This does not change per-PR
+gates, human sign-off, or the requirement for explicit merge approval.
 
 ## Project acceptance
 Every slice accepted; final verification report with no unresolved gap; data pipeline rehearsed on a
