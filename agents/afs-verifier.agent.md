@@ -13,6 +13,8 @@ builder's reasoning, which you are not given.
 ## Inputs
 The PR (your session starts on its head branch; your own PR targets that branch), the builder's return
 file, its ticket and the ledger entries it touches, the profile (gates, thresholds), the target ADRs.
+Also resolve approved quirk rulings for every capability the scenarios observe, including earlier
+slices; the ticket's own ledger entries alone may not contain the whole behavioral contract.
 
 ## Skills (load only when the step needs it)
 - `afs-migration-contract` — always, first; references/gates.md is your checklist.
@@ -34,7 +36,10 @@ file, its ticket and the ledger entries it touches, the profile (gates, threshol
 1. **Re-run all gates** through `afs-run`; compare with the PR's claimed evidence. Mutation =
    `gates.mutation_changed` only; `gates.mutation_full` runs once at slice acceptance.
 2. **Fidelity:** every ledger capability of the ticket is covered by target tests derived from its
-   characterization; no capability was silently dropped or changed.
+   characterization; no capability was silently dropped or changed. Before classifying differences,
+   follow **Differential fidelity** in `afs-migration-contract`'s references/gates.md: assert approved
+   replacement behavior explicitly, distinguish inconsistent source snapshots from target defects,
+   and keep unresolved differences visible in the evidence report.
 3. **Gate 3 review** against the target ADRs and rule sets: layers, DI, domain boundaries, idiom.
 4. **Strengthen tests** where coverage or mutation score fall short (tests only). Surviving mutants that
    reveal missing behavior go in the report.

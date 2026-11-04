@@ -23,6 +23,38 @@ any no  → fix; same failure after two honest attempts → stop, handoff, escal
 Never weaken a threshold, skip a gate, disable a test, or use `--no-verify`. Thresholds are a human
 decision recorded in the profile.
 
+## Differential fidelity
+
+Source observations are evidence, not permission to override an approved human decision. Before
+classifying a difference, resolve the ledger, ADRs and linked quirk rulings for **every capability the
+scenario observes**, including previously migrated slices. Record the applicable decisions and the
+source/target revisions with the differential evidence. Missing or conflicting decisions remain
+unresolved; an agent cannot approve a divergence.
+
+Classify each case/field difference in the committed evidence report:
+
+| Class | Required action |
+|---|---|
+| Approved divergence | Cite the human decision and assert its precise replacement behavior. |
+| Comparison or setup defect | Repair the oracle or replay setup and rerun the affected gates. |
+| Unresolved source observation or quirk | Preserve the evidence, raise/link a quirk ticket, and block only work that needs its answer. |
+| Target implementation defect | Report the reproducible input, field and independently justified expected value for a Migrator to fix. |
+
+Keep the original source goldens unchanged. Apply approved differences narrowly: never skip whole
+fields, cases or objects, and never calculate expected values by calling the production behavior
+under test. Use the ruling, characterized inputs and independent boundary evidence to justify the
+expected result. Test that the approved replacement holds, not merely that the old value is absent.
+
+Check observation boundaries before treating a legacy snapshot as one coherent state. Separate
+endpoint reads, background processing, caches and persistence reloads may expose different states.
+If an approved target transaction removes a legacy stale-state window, assert the independently
+justified post-transaction state; do not make the target reproduce the stale window or ignore its
+state fields. If the evidence cannot establish the expected state, report the ambiguity instead.
+
+A passing classification is not a passing gate. Unapproved differences remain findings; failed
+behavior or regression runs cannot support a `pass` verdict. Verifiers fix tests/evidence only,
+never production code, and send implementation defects back to a Migrator.
+
 ## Slice acceptance (Slice Coordinator + Auditor)
 1. Slice's end-to-end characterization suite against the target.
 2. Automated differential checks where a legacy environment exists (tier A); otherwise against the

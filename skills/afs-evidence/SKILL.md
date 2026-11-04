@@ -42,6 +42,12 @@ The committed run journal plus the return file's `gates` map are the evidence; e
 `afs-migration-contract` → references/gates.md must appear in both. The PR description links to both; it
 doesn't repeat their contents.
 
+For differential checks, follow `afs-migration-contract`'s **Differential fidelity** checklist. Commit
+case/field classifications in the linked evidence report, including input, source observation,
+target observation, expected target behavior and the decision or independent evidence justifying it.
+Keep approved divergences, comparison defects, unresolved quirks and implementation defects distinct.
+Record remaining failures honestly; a corrected oracle is not evidence that production now passes.
+
 ## Slice evidence report (Slice Coordinator, Auditor)
 Write `.migration/evidence/<slice>/report.md` (committed):
 ```markdown
