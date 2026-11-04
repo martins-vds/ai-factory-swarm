@@ -31,3 +31,25 @@ The M5 re-audit of Track Cargo (pilot #77) found two gaps that no check had caug
 - Dead or stale evidence fails CI on the PR that introduces it, or on the PR that renames the test.
 - A target whose profile changes its runtime gets it everywhere on the next bootstrap. Any drift fails
   fast instead of surfacing at acceptance.
+
+## Durable long-running acceptance gates
+Full mutation can exceed a cloud agent's lifetime; the agent's finish event is not evidence that the
+gate finished. Bootstrap installs a separate manual `afs-acceptance.yml` workflow and `afs-acceptance`
+runner. The job runs for up to six hours (330-minute gate step, leaving upload headroom), uses the
+profile's Python/runtime/services/commands, and uploads logs, `afs-run` journal/records and a
+machine-readable result even after failure or cancellation. Existing per-PR gates are unchanged.
+
+The result binds the source SHA, Actions run/attempt, installed harness pin, profile/source-lock hashes
+and tracked execution-input tree. Only audit-output Markdown, return YAML, handoff Markdown, cost JSON
+and the reserved `.migration/evidence/acceptance-runs/*.json` result archives are excluded from that
+tree so an Auditor can commit a report without invalidating the underlying measurement; JSON evidence
+fixtures and code remain inputs. Gate execution requires clean inputs. Artifact verification rejects
+changed inputs/logs, missing gates, interrupted status and
+incomplete/N/A/non-full mutation accounting. It checks the unrounded killed/survived ratio against the
+profile threshold as well as the tool's reported result.
+
+Artifact hashes do not authenticate a run: the Auditor must independently verify its repository,
+source SHA, workflow source, attempt and successful GitHub conclusion before importing journal rows.
+No cancellation produces a successful completion row. There is no new cache/resume mechanism or
+automatic verdict, evidence commit, PR creation or merge; independent coverage review, human flow
+sign-off and explicit merge approval still apply.

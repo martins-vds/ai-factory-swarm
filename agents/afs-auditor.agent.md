@@ -37,6 +37,13 @@ or a failing gate, and never report `verdict: complete` while either fails (CI r
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
 exists and passes now, the flow connects end to end. Classify every delta with the five gap classes.
 
+Full mutation may exceed the cloud worker's lifetime. Use the generated **AFS acceptance gates**
+workflow instead of repeatedly restarting `afs-mutation --all` in a bounded agent session. Follow
+`afs-evidence`'s durable Actions procedure: independently check the linked run and exact revision,
+verify its artifact against the current execution inputs, and import the genuine journal rows.
+An interrupted, partial, missing or N/A full-mutation result is a blocker, never a score or pass.
+Workflow success proves gates only; it does not replace your capability review or human flow sign-off.
+
 **Final verification:** with both graphs fresh (above);
 sweep **top-down** from every screen, route and workflow and **bottom-up** from every non-UI capability;
 trust but verify suspected gaps in code; file a ticket for every gap as you find it; write the A–G
