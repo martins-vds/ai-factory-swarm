@@ -1,5 +1,6 @@
 """Return files: the generated schema, validate.py, and the CI check."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -193,6 +194,124 @@ class ReturnFileTest(unittest.TestCase):
     def test_only_agent_prs_are_checked(self):
         self.assertFalse(crc.is_agent_pr({"head": {"ref": "harness/x"}, "user": {"login": "martins-vds"}}))
         self.assertTrue(crc.is_agent_pr({"head": {"ref": "copilot/tc-03"}, "user": {"login": "Copilot"}}))
+
+
+class SupersededReturnTest(unittest.TestCase):
+    PATH = ".migration/returns/TC-02.afs-migrator.yaml"
+    PR = "https://github.com/martins-vds/ai-factory-pilot-target/pull/38"
+    LATEST = RETURN.replace("#22", "#23").replace("#38", "#39")
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.repo = pathlib.Path(temp.name)
+        git(self.repo, "init", "-q", "-b", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-q", "--allow-empty", "-m", "base")
+        git(self.repo, "checkout", "-q", "-b", "copilot/work")
+
+    def commit(self, text):
+        path = self.repo / self.PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "return")
+
+    def check(self, body="Fixes #22", **kwargs):
+        return crc.check(body, crc.changed_return_files("main", self.repo), self.repo,
+                         base="main", pr_url=self.PR, **kwargs)
+
+    def test_superseded_return_preserves_this_prs_attribution(self):
+        self.commit(RETURN)
+        self.commit(self.LATEST)
+        ok, message = self.check()
+        self.assertTrue(ok, message)
+        self.assertIn("superseded attribution", message)
+        self.assertIn(self.PATH + "@", message)
+        self.assertIn("not a passing verdict", message)
+        self.assertEqual((self.repo / self.PATH).read_text(), self.LATEST)
+        self.assertTrue(self.check("Fixes #147", parent_of={"147": "22"}.get)[0])
+
+    def test_cli_passes_event_identity_and_base_to_history_check(self):
+        self.commit(RETURN)
+        self.commit(self.LATEST)
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "head": {"ref": "copilot/work"}, "body": "Fixes #22", "html_url": self.PR,
+        }}), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"),
+             "--base", "main", "--event", str(event)], cwd=self.repo,
+            env={**os.environ, "GITHUB_REPOSITORY": ""}, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("superseded attribution", result.stdout)
+        self.assertIn("AFS-TOOL check_return_contract.py exit=0", result.stderr)
+
+    def test_wrong_pr_cannot_borrow_history(self):
+        self.commit(RETURN.replace("#38", "#40"))
+        self.commit(self.LATEST)
+        self.assertFalse(self.check()[0])
+
+    def test_wrong_repository_cannot_borrow_an_issue_number(self):
+        self.commit(RETURN.replace("issue: martins-vds/ai-factory-pilot-target",
+                                   "issue: other/repository"))
+        self.commit(self.LATEST)
+        self.assertFalse(self.check()[0])
+
+    def test_wrong_ticket_or_role_cannot_borrow_history(self):
+        for old in (RETURN.replace("ticket: TC-02", "ticket: TC-03"),
+                    RETURN.replace("role: afs-migrator", "role: afs-verifier")):
+            with self.subTest(old=old):
+                self.commit(old)
+                self.commit(self.LATEST)
+                ok, message = self.check()
+                self.assertFalse(ok)
+                self.assertIn("ticket/role differs", message)
+
+    def test_invalid_historical_schema_cannot_prove_attribution(self):
+        self.commit(RETURN.replace("handoff: null\n", ""))
+        self.commit(self.LATEST)
+        ok, message = self.check()
+        self.assertFalse(ok)
+        self.assertIn("historical return is not schema-valid", message)
+
+    def test_invalid_current_return_cannot_borrow_valid_history(self):
+        self.commit(RETURN)
+        self.commit(self.LATEST.replace("handoff: null\n", ""))
+        ok, message = self.check()
+        self.assertFalse(ok)
+        self.assertIn("current return is not schema-valid", message)
+
+    def test_malformed_historical_yaml_does_not_replace_valid_proof(self):
+        self.commit(RETURN)
+        self.commit("issue: [\n")
+        self.commit(self.LATEST)
+        self.assertTrue(self.check()[0])
+
+    def test_base_only_return_cannot_prove_attribution(self):
+        git(self.repo, "checkout", "-q", "main")
+        self.commit(RETURN)
+        git(self.repo, "checkout", "-q", "copilot/work")
+        git(self.repo, "merge", "--ff-only", "main")
+        self.commit(self.LATEST)
+        self.assertFalse(self.check()[0])
+
+    def test_unrelated_branch_cannot_prove_attribution(self):
+        git(self.repo, "checkout", "-q", "-b", "unrelated", "main")
+        self.commit(RETURN)
+        git(self.repo, "checkout", "-q", "copilot/work")
+        self.commit(self.LATEST)
+        self.assertFalse(self.check()[0])
+
+    def test_deleted_return_cannot_prove_attribution(self):
+        self.commit(RETURN)
+        (self.repo / self.PATH).unlink()
+        path = self.repo / ".migration/returns/TC-03.afs-migrator.yaml"
+        path.write_text(self.LATEST.replace("TC-02", "TC-03"), encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "replace")
+        self.assertFalse(self.check()[0])
 
 
 if __name__ == "__main__":

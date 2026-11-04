@@ -91,7 +91,7 @@ jobs:
         with: {{ fetch-depth: 0 }}
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
-      - run: pip install -q pyyaml
+      - run: pip install -q pyyaml jsonschema
       - name: Check for .migration/returns/<ticket>.<role>.yaml
         env:
           GITHUB_TOKEN: ${{{{ github.token }}}}      # reads a sub-issue's parent ticket

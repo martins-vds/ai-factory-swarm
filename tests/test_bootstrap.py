@@ -84,6 +84,9 @@ class BootstrapTest(unittest.TestCase):
         self.assertIn("check_stack_base.py", checks["stack-base"]["steps"][1]["run"])
         for job in ("harness", "return-contract", "gates"):
             self.assertEqual(checks[job]["needs"], "stack-base")
+        installs = [s.get("run", "") for s in checks["return-contract"]["steps"]]
+        self.assertTrue(any("pip install" in cmd and {"pyyaml", "jsonschema"} <= set(cmd.split())
+                            for cmd in installs))
         # ADR-0018: the workflows' Python is the profile's declared python-X.Y, not a harness default.
         prof = yaml.safe_load((self.target / ".migration/profile.yaml").read_text())
         want = next(s.split("-", 1)[1] for s in prof["target"]["stacks"]["backend"] if s.startswith("python-"))
