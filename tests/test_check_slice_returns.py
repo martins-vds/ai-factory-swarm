@@ -223,6 +223,32 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.assertEqual(result, 0, output)
         self.assertIn(old, output)
 
+    def test_return_committed_only_in_merge_resolution_is_reachable(self):
+        base = self.commit(RETURN.replace("o/r#1\n", "o/r#3\n"))
+        self.git("checkout", "-qb", "worker")
+        (self.root / "worker.txt").write_text("worker work\n")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "worker")
+        self.git("checkout", "--detach", base)
+        self.git("merge", "--no-ff", "--no-commit", "worker")
+        old = self.commit(RETURN, "return recorded during merge")
+        self.assertEqual(len(self.git("rev-list", "--parents", "-n1", old).split()), 3)
+        self.commit(RETURN.replace("o/r#1\n", "o/r#2\n"))
+        result, output, _ = self.run_guard()
+        self.assertEqual(result, 0, output)
+        self.assertIn(old, output)
+
+    def test_replacement_ref_cannot_fabricate_ancestry(self):
+        ancestor = self.commit(RETURN.replace("o/r#1\n", "o/r#3\n"))
+        tip = self.commit(RETURN.replace("o/r#1\n", "o/r#2\n"))
+        self.git("checkout", "--orphan", "unapproved")
+        forged = self.commit(RETURN, "unrelated return")
+        self.git("checkout", "--detach", tip)
+        self.git("replace", ancestor, forged)
+        self.assertIn("issue: o/r#3", self.git("--no-replace-objects", "show",
+                                            f"{ancestor}:.migration/returns/T1.afs-verifier.yaml"))
+        self.assert_blocked()
+
     def test_shallow_history_fails_explicitly_even_if_a_match_is_visible(self):
         old = self.supersede()
         (self.root / ".git/shallow").write_text(old + "\n")

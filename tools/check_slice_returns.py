@@ -75,7 +75,8 @@ def superseded_attribution(required, current):
         return set(), []
 
     def git(*args):
-        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["git", "--no-replace-objects", *args],
+                              capture_output=True, text=True, check=True).stdout
 
     if git("rev-parse", "--is-shallow-repository").strip() != "false":
         raise ValueError("shallow repository")
@@ -95,7 +96,7 @@ def superseded_attribution(required, current):
         if not candidates:
             continue
         # Full history includes merged worker branches, but never arbitrary refs or dangling objects.
-        commits = git("log", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path).splitlines()
+        commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path).splitlines()
         for commit in commits:
             previous = valid_return(git("show", f"{commit}:{path}"), path)
             if not previous or previous["issue"] not in candidates:
@@ -113,10 +114,12 @@ def superseded_attribution(required, current):
 
 def rule_since(path=SELF):
     """ISO time the rule entered the repo: the commit that first added this tool (None outside git)."""
-    shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], capture_output=True, text=True)
+    shallow = subprocess.run(["git", "--no-replace-objects", "rev-parse", "--is-shallow-repository"],
+                             capture_output=True, text=True)
     if shallow.returncode != 0 or shallow.stdout.strip() != "false":
         return None
-    r = subprocess.run(["git", "log", "--diff-filter=A", "--format=%cI", "--", path], capture_output=True, text=True)
+    r = subprocess.run(["git", "--no-replace-objects", "log", "--diff-filter=A", "--format=%cI", "--", path],
+                       capture_output=True, text=True)
     dates = r.stdout.split() if r.returncode == 0 else []
     return dates[-1] if dates else None
 

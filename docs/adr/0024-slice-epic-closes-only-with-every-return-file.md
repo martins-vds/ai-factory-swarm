@@ -28,7 +28,8 @@ moment to count.
     same path in committed **HEAD ancestry** may establish the completed ticket's attribution.
     Current and historical returns must match ticket, role and issue repository; the current return
     must still exist, be valid and match its committed HEAD version. Other refs, unreachable objects,
-    deleted files and invalid returns are not proof.
+    deleted files and invalid returns are not proof. Merge-resolution revisions are included;
+    local Git replacement refs cannot alter attribution or the rule-installation date.
   - Historical attribution is **not a passing verdict**. A predecessor may report `changes-required`;
     current acceptance and Auditor evidence remain separate requirements. The guard logs the historical
     path, full commit and canonical issue used, without rewriting the superseding return.
