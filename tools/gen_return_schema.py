@@ -41,7 +41,15 @@ def parse_template(text):
     """YAML-load a contract template, turning each <placeholder> into a marked string."""
     text = text.replace("<ticket>", "TICKET")
     text = re.sub(r"#.*$", "", text, flags=re.M)
-    text = re.sub(r"<([^<>]*)>", lambda m: json.dumps(MARK + m.group(1).strip()), text)
+
+    def mark(match):
+        value = MARK + match.group(1).strip()
+        quote = text[match.start() - 1] if match.start() else ""
+        if quote in ("'", '"') and text[match.end():match.end() + 1] == quote:
+            return value
+        return json.dumps(value)
+
+    text = re.sub(r"<([^<>]*)>", mark, text)
     return yaml.safe_load(text) or {}
 
 

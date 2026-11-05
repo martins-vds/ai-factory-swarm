@@ -559,5 +559,93 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertFalse(self.check()[0])
 
 
+class ShallowHistorySetupTest(unittest.TestCase):
+    def test_inherited_null_pr_return_passes_after_required_history_is_prepared(self):
+        return_text = """role: afs-verifier
+ticket: T-1
+issue: example/target#1
+pr: null
+verdict: blocked
+gates:
+  build: "n/a: setup did not run"
+  behavior: "n/a: setup did not run"
+  idiom: "n/a: setup did not run"
+  crap: "n/a: setup did not run"
+  mutation_changed: "n/a: setup did not run"
+  regression: "n/a: setup did not run"
+evidence_logs: []
+findings: []
+tests_added: []
+ledger_issues: []
+quirk_tickets: []
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            origin, clone = root / "origin", root / "clone"
+            origin.mkdir()
+            git(origin, "init", "-q", "-b", "main")
+            tools = origin / ".migration/harness/tools"
+            returns = origin / ".migration/returns"
+            tools.mkdir(parents=True)
+            returns.mkdir(parents=True)
+            validate = (ROOT / "tools/validate.py").read_text(encoding="utf-8")
+            (tools / "validate.py").write_text(
+                validate.replace('PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"',
+                                 'PR_ATTRIBUTION_RULE_V1 = "OLD_RULE_MARKER"'),
+                encoding="utf-8")
+            shutil.copyfile(ROOT / "tools/afs_trace.py", tools / "afs_trace.py")
+            return_path = returns / "T-1.afs-verifier.yaml"
+            return_path.write_text(return_text, encoding="utf-8")
+            git(origin, "add", "-A")
+            git(origin, "-c", "user.name=test", "-c", "user.email=test@example.com",
+                "commit", "-qm", "historical return")
+            (tools / "validate.py").write_text(validate, encoding="utf-8")
+            git(origin, "add", str(tools / "validate.py"))
+            git(origin, "-c", "user.name=test", "-c", "user.email=test@example.com",
+                "commit", "-qm", "introduce PR attribution rule")
+            git(clone.parent, "clone", "-q", "--depth", "1", origin.as_uri(), str(clone))
+
+            def validate_state():
+                return subprocess.run(
+                    [sys.executable, str(clone / ".migration/harness/tools/validate.py"),
+                     str(clone / ".migration"), "--schemas", str(ROOT / "schemas")],
+                    capture_output=True, text=True)
+
+            self.assertEqual(
+                subprocess.check_output(
+                    ["git", "-C", str(clone), "rev-parse", "--is-shallow-repository"], text=True).strip(),
+                "true")
+            before_fetch = validate_state()
+            self.assertEqual(before_fetch.returncode, 1)
+            self.assertIn("finished return requires a meaningful PR reference", before_fetch.stderr)
+
+            setup_skill = (ROOT / "skills/afs-setup-check/SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("git fetch --unshallow origin", setup_skill)
+            self.assertLess(setup_skill.index("git fetch --unshallow origin"),
+                            setup_skill.index("validate.py .migration"))
+            self.assertIn("ERROR: could not fetch complete HEAD ancestry", setup_skill)
+            self.assertIn("write a blocking handoff", setup_skill)
+            git(clone, "fetch", "--unshallow", "origin")
+            self.assertEqual(
+                subprocess.check_output(
+                    ["git", "-C", str(clone), "rev-parse", "--is-shallow-repository"], text=True).strip(),
+                "false")
+            after_fetch = validate_state()
+            self.assertEqual(after_fetch.returncode, 0, after_fetch.stderr)
+
+            inherited = clone / ".migration/returns/T-1.afs-verifier.yaml"
+            inherited.write_text(inherited.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+            edited = validate_state()
+            self.assertEqual(edited.returncode, 1)
+            self.assertIn("finished return requires a meaningful PR reference", edited.stderr)
+            git(clone, "checkout", "--", ".migration/returns/T-1.afs-verifier.yaml")
+
+            new_return = clone / ".migration/returns/T-2.afs-verifier.yaml"
+            new_return.write_text(return_text.replace("T-1", "T-2"), encoding="utf-8")
+            added = validate_state()
+            self.assertEqual(added.returncode, 1)
+            self.assertIn("finished return requires a meaningful PR reference", added.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
