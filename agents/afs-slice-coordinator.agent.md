@@ -58,6 +58,8 @@ slice.
    owning PR must be cited and contain that return. A closed-unmerged PR counts as completed only when
    its exact head is in `main` ancestry; a later carrier PR may provide that landing. A return file, green
    check or closed PR alone is not landing or acceptance evidence.
+   Preserve unchanged pre-rule null-PR returns only through the validator's existing Git-history proof,
+   with an exact snapshot in a cited landed PR and a passing role outcome; never rewrite inherited outputs.
    Commit the report on `main` through human review. The AFS map-fog workflow checks it before the
    existing return-file gate; missing or invalid reconciliation reopens the epic and suppresses fog
    re-walk. The checker never closes work issues. A retained-open descendant remains open and continues

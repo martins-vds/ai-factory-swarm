@@ -159,13 +159,20 @@ def _landed_pull(repo, number):
     return commit
 
 
-def _return_pr_number(doc, repo):
+def _return_pr_number(doc, repo, *, return_path=None):
     role = doc.get("role")
     field = "setup_pr" if role == "afs-bootstrapper" else "pr"
     value = doc.get(field)
     if value is None and role not in {"afs-bootstrapper", "afs-migrator",
                                       "afs-specialist-migrator", "afs-verifier"}:
         return None
+    if value is None and field == "pr" and return_path is not None:
+        from validate import pre_rule_null_pr
+        path = pathlib.Path(_return_path(return_path))
+        if pre_rule_null_pr(path, pathlib.Path(".migration")):
+            print(f"::notice::{path}: unchanged pre-rule null-PR return; "
+                  "a cited landed PR must still contain its exact snapshot")
+            return None
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{role} return has no owning PR reference in `{field}`")
     value = value.strip()
@@ -359,7 +366,7 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                         outcome_problem = _role_outcome_problem(doc)
                         if outcome_problem:
                             raise ValueError(outcome_problem)
-                        owner_pr = _return_pr_number(doc, repo)
+                        owner_pr = _return_pr_number(doc, repo, return_path=return_path)
                         if owner_pr is not None and owner_pr not in landed:
                             raise ValueError(f"owning PR #{owner_pr} is missing from completed evidence")
                         candidates = [landed[owner_pr]] if owner_pr is not None else list(landed.values())

@@ -25,6 +25,9 @@ related issue tree is stale.
     outcomes are checked against their role contracts: Verifier returns must pass, Bootstrapper validation
     must explicitly pass (including pass-with-limitations), Migrator gates must show passing outcomes with
     no outstanding handoff, Characterizer cases must all pass, and Auditor verdicts must be complete.
+    The validator's existing unchanged pre-rule null-PR exemption remains valid only with its original
+    Git-history proof and an exact return snapshot in a cited landed PR. Missing history or a later return
+    edit requires the owning PR normally; this exemption never establishes a passing role outcome.
   - `superseded`: the issue is closed as not planned, links a replacement issue, and preserves a closed,
     unmerged failed role PR plus that role's explicit failure return at the PR head. Supported outcomes
     include Verifier changes-required/blocked, Bootstrapper fail/blocked validation, Migrator failed gates

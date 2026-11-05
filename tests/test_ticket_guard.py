@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import ticket_guard  # noqa: E402
 import check_slice_returns  # noqa: E402
 import fog_rewalk  # noqa: E402
+import validate  # noqa: E402
 
 
 class TicketGuardTest(unittest.TestCase):
@@ -175,6 +176,46 @@ quirk_tickets: []
     def pull(self, number, *, head, merged=False):
         return {"number": number, "state": "closed", "merged_at": "2026-11-05T00:00:00Z" if merged else None,
                 "merge_commit_sha": head if merged else None, "head": {"sha": head}}
+
+    def historical_null_pr_return(self, *, changed=False, rule=True):
+        path = self.root / ".migration/returns/T1.afs-verifier.yaml"
+        path.parent.mkdir(parents=True)
+        doc = yaml.safe_load(self.RETURN)
+        doc["pr"] = None
+        doc["gates"] = {"build": 0, "behavior": 0, "idiom": 0, "crap": 15,
+                        "mutation_changed": 0.855, "regression": 0}
+        path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+        installed_tools = self.root / ".migration/harness/tools"
+        installed_tools.mkdir(parents=True)
+        validator = installed_tools / "validate.py"
+        validator.write_text("# Historical installed validator.\n", encoding="utf-8")
+        owner = self.commit("historical completed return")
+        if rule:
+            validator.write_text('PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"\n', encoding="utf-8")
+            self.commit("introduce existing PR attribution rule")
+        if changed:
+            path.write_text(path.read_text(encoding="utf-8") + "# Later edit.\n", encoding="utf-8")
+            self.commit("edit return after rule")
+        issue = {"number": 1, "disposition": "completed", "pull_requests": [101],
+                 "returns": [path.relative_to(self.root).as_posix()]}
+        with mock.patch.object(validate, "HERE", installed_tools):
+            self.assertEqual(validate.pre_rule_null_pr(path, self.root / ".migration"), rule and not changed)
+            return self.run_reconciliation([issue], {101: self.pull(101, head=owner, merged=True)})
+
+    def test_completed_unchanged_null_pr_return_retains_existing_historical_exemption(self):
+        result, output, _ = self.historical_null_pr_return()
+        self.assertEqual(result, 0, output)
+        self.assertIn("unchanged pre-rule null-PR return", output)
+
+    def test_completed_null_pr_return_edited_after_rule_requires_owning_pr(self):
+        result, output, _ = self.historical_null_pr_return(changed=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("no owning PR reference", output)
+
+    def test_completed_null_pr_return_without_rule_history_requires_owning_pr(self):
+        result, output, _ = self.historical_null_pr_return(rule=False)
+        self.assertEqual(result, 1, output)
+        self.assertIn("no owning PR reference", output)
 
     def test_completed_return_cannot_be_borrowed_from_another_issue(self):
         _, main = self.setup_completed_stack()

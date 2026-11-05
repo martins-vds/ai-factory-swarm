@@ -29,6 +29,8 @@ related work/fix/verifier/bootstrap descendants, with one evidence-backed dispos
 - `completed`: closed as completed, with role return(s) and landing PR(s) whose merge commit or exact
   closed-unmerged head is in default-branch history. A return must identify the issue directly or through
   same-path, same-ticket/role history; its owning PR must be cited and contain the committed return.
+  Existing unchanged pre-rule null-PR returns retain the validator's Git-history exemption, but still
+  need an exact snapshot in a cited landed PR and a passing applicable role outcome. Never retrofit them.
 - `superseded`: closed as not planned, with a replacement issue and the original failed role's PR/return
   preserved (for example, retain a blocked Bootstrapper return as Bootstrapper evidence);
 - `retained-open`: still open, with specific outstanding work and its actual blocker.
