@@ -1,5 +1,6 @@
 """Tests for tools/bootstrap.py and tools/check_installed.py. Offline: upstream fetches and `gh` are faked."""
 import json
+import multiprocessing
 import os
 import pathlib
 import shutil
@@ -7,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -17,6 +19,55 @@ import bootstrap  # noqa: E402
 PROFILE = ROOT / "templates/migration/profile.yaml"
 CAPS = ROOT / "templates/migration/capabilities.yaml"
 PACK = ROOT / "stacks/java-to-django.json"
+
+
+def bootstrap_process(target, ready, release, pause_at, outcomes):
+    original_publish = getattr(bootstrap, "publish_install", None)
+    original_output = getattr(bootstrap, "_publish_output", None)
+    count = 0
+
+    def pause_publish(*args, **kwargs):
+        ready.set()
+        release.wait(30)
+        return original_publish(*args, **kwargs)
+
+    def pause_output(*args, **kwargs):
+        nonlocal count
+        result = original_output(*args, **kwargs)
+        count += 1
+        if count == 1:
+            ready.set()
+            release.wait(30)
+        return result
+
+    if pause_at == "before-publish":
+        bootstrap.publish_install = pause_publish
+    elif pause_at == "after-first-output":
+        bootstrap._publish_output = pause_output
+    try:
+        bootstrap.bootstrap(target, PROFILE, CAPS, [PACK], offline=True)
+    except BaseException as exc:
+        outcomes.put(f"{type(exc).__name__}: {exc}")
+    else:
+        outcomes.put("ok")
+
+
+def managed_snapshot(target):
+    paths = (".github/skills", ".github/agents", ".github/workflows", ".github/hooks",
+             ".github/copilot-instructions.md", ".migration/harness", ".migration/source.lock",
+             ".migration/profile.yaml", ".migration/capabilities.yaml", ".migration/ledger",
+             ".gitignore")
+    snapshot = {}
+    for rel in paths:
+        path = target / rel
+        snapshot[rel] = "directory" if path.is_dir() else "file" if path.is_file() else "missing"
+        if path.is_dir():
+            for child in sorted(path.rglob("*")):
+                if child.is_file():
+                    snapshot[str(child.relative_to(target))] = child.read_bytes()
+        elif path.is_file():
+            snapshot[rel] = path.read_bytes()
+    return snapshot
 
 
 def fake_upstream():
@@ -148,6 +199,88 @@ class BootstrapTest(unittest.TestCase):
         self.assertNotEqual((self.target / ".github/skills/afs-ledger/SKILL.md").read_text(), "edited")
         self.assertFalse((self.target / ".github/agents/afs-stale.agent.md").exists())
         self.assertTrue((self.target / ".github/agents/team.agent.md").exists())
+
+    def test_concurrent_process_is_refused_with_lock_owner_pid(self):
+        context = multiprocessing.get_context("fork")
+        ready, release, outcomes = context.Event(), context.Event(), context.Queue()
+        first = context.Process(target=bootstrap_process,
+                                args=(self.target, ready, release, "before-publish", outcomes))
+        first.start()
+        self.addCleanup(lambda: first.is_alive() and first.kill())
+        self.assertTrue(ready.wait(20), "first bootstrap did not reach staged publication")
+
+        second_outcomes = context.Queue()
+        second = context.Process(target=bootstrap_process,
+                                 args=(self.target, context.Event(), context.Event(), None, second_outcomes))
+        second.start()
+        second.join(20)
+        self.assertFalse(second.is_alive(), "competing bootstrap did not exit")
+        result = second_outcomes.get(timeout=2)
+        self.assertIn("BootstrapLockError", result)
+        self.assertIn(str(first.pid), result)
+
+        release.set()
+        first.join(20)
+        self.assertFalse(first.is_alive(), "first bootstrap did not finish")
+        self.assertEqual(outcomes.get(timeout=2), "ok")
+
+    def test_killed_staging_run_preserves_old_install_and_reports_stale_lock(self):
+        self.run_bootstrap()
+        before = managed_snapshot(self.target)
+        context = multiprocessing.get_context("fork")
+        ready, release = context.Event(), context.Event()
+        process = context.Process(target=bootstrap_process,
+                                  args=(self.target, ready, release, "before-publish", context.Queue()))
+        process.start()
+        self.addCleanup(lambda: process.is_alive() and process.kill())
+        self.assertTrue(ready.wait(20), "bootstrap did not finish staging")
+        process.kill()
+        process.join(10)
+
+        self.assertEqual(managed_snapshot(self.target), before)
+        with self.assertRaisesRegex(bootstrap.BootstrapLockError, str(process.pid)):
+            self.run_bootstrap(offline=True)
+        lock_path = self.target / ".afs-bootstrap.lock"
+        self.assertTrue(lock_path.exists())
+        lock_path.unlink()
+        self.run_bootstrap(offline=True)
+
+    def test_publication_failure_rolls_back_all_managed_outputs(self):
+        self.run_bootstrap()
+        before = managed_snapshot(self.target)
+        original = getattr(bootstrap, "_publish_output", None)
+        count = 0
+
+        def fail_after_one(*args, **kwargs):
+            nonlocal count
+            if count == 1:
+                raise OSError("injected publication failure")
+            count += 1
+            return original(*args, **kwargs)
+
+        with mock.patch.object(bootstrap, "_publish_output", fail_after_one):
+            with self.assertRaisesRegex(bootstrap.BootstrapError, "previous install was restored"):
+                self.run_bootstrap(offline=True)
+        self.assertEqual(managed_snapshot(self.target), before)
+
+    def test_killed_publication_is_recovered_before_the_next_install(self):
+        self.run_bootstrap()
+        before = managed_snapshot(self.target)
+        context = multiprocessing.get_context("fork")
+        ready, release = context.Event(), context.Event()
+        process = context.Process(target=bootstrap_process,
+                                  args=(self.target, ready, release, "after-first-output", context.Queue()))
+        process.start()
+        self.addCleanup(lambda: process.is_alive() and process.kill())
+        self.assertTrue(ready.wait(20), "bootstrap did not publish its first output")
+        process.kill()
+        process.join(10)
+        self.assertNotEqual(managed_snapshot(self.target), before)
+
+        (self.target / ".afs-bootstrap.lock").unlink()
+        with bootstrap.bootstrap_lock(self.target):
+            bootstrap.recover_interrupted_install(self.target)
+        self.assertEqual(managed_snapshot(self.target), before)
 
     def test_rerun_from_the_targets_own_state(self):
         self.run_bootstrap()
