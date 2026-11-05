@@ -282,6 +282,24 @@ class SupersededReturnTest(unittest.TestCase):
         return crc.check(body, crc.changed_return_files("main", self.repo), self.repo,
                          base="main", pr_url=self.PR, **kwargs)
 
+    def revision(self, ref):
+        return subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", ref], text=True).strip()
+
+    def actions_event_result(self, head, base):
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "head": {"ref": "copilot/work", "sha": head},
+            "base": {"ref": "main", "sha": base},
+            "body": "Fixes #22", "html_url": self.PR,
+        }}), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"),
+             "--base", "main", "--event", str(event)], cwd=self.repo,
+            env={**os.environ, "GITHUB_REPOSITORY": ""},
+            capture_output=True, text=True,
+        )
+
     def test_superseded_return_preserves_this_prs_attribution(self):
         self.commit(RETURN)
         self.commit(self.LATEST)
@@ -298,7 +316,9 @@ class SupersededReturnTest(unittest.TestCase):
         self.commit(self.LATEST)
         event = self.repo / "event.json"
         event.write_text(json.dumps({"pull_request": {
-            "head": {"ref": "copilot/work"}, "body": "Fixes #22", "html_url": self.PR,
+            "head": {"ref": "copilot/work", "sha": self.revision("HEAD")},
+            "base": {"ref": "main", "sha": self.revision("main")},
+            "body": "Fixes #22", "html_url": self.PR,
         }}), encoding="utf-8")
         result = subprocess.run(
             [sys.executable, str(ROOT / "tools/check_return_contract.py"),
@@ -308,6 +328,22 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("superseded attribution", result.stdout)
         self.assertIn("AFS-TOOL check_return_contract.py exit=0", result.stderr)
+
+    def test_cli_fails_explicitly_when_event_shas_are_missing(self):
+        self.commit(RETURN)
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "head": {"ref": "copilot/work"}, "base": {"ref": "main"},
+            "body": "Fixes #22", "html_url": self.PR,
+        }}), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"),
+             "--base", "main", "--event", str(event)], cwd=self.repo,
+            env={**os.environ, "GITHUB_REPOSITORY": ""},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must include head.sha and base.sha", result.stdout)
 
     def test_event_pr_must_match_the_completed_return_it_owns(self):
         self.commit(RETURN.replace("#38", "#40"))
@@ -405,6 +441,57 @@ class SupersededReturnTest(unittest.TestCase):
         ok, message = self.check()
         self.assertFalse(ok, message)
         self.assertIn("TC-02.afs-migrator.yaml", message)
+
+    def test_actions_synthetic_merge_uses_event_head_for_owned_return_identity(self):
+        self.commit(RETURN.replace("#38", "#40"))
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must identify this PR", result.stdout)
+
+    def test_actions_synthetic_merge_accepts_correct_event_owned_return(self):
+        self.commit(RETURN)
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_actions_synthetic_merge_preserves_a_child_return_inherited_by_event_head(self):
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_wrong_pr_cannot_borrow_history(self):
         self.commit(RETURN.replace("#38", "#40"))

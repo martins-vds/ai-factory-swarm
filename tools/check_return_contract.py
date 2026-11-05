@@ -55,8 +55,8 @@ def pasted_contract(body):
     return False
 
 
-def changed_return_files(base, root="."):
-    out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...HEAD", "--",
+def changed_return_files(base, root=".", head="HEAD"):
+    out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...{head}", "--",
                           ".migration/returns/"], capture_output=True, text=True, check=True).stdout
     return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
 
@@ -78,13 +78,13 @@ def identifies_same_pr(actual, expected):
             (actual[2] is None or actual[2] == expected[2]))
 
 
-def inherited_from_merge(base, path, root="."):
+def inherited_from_merge(base, path, root=".", head="HEAD"):
     """Whether an unchanged return arrived on a merged side branch, not this PR's first-parent work."""
     def git(*args):
         result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
         return result.stdout.strip() if result.returncode == 0 else None
 
-    merges = git("rev-list", "--first-parent", "--merges", f"{base}..HEAD")
+    merges = git("rev-list", "--first-parent", "--merges", f"{base}..{head}")
     if merges is None:
         return False
     for merge in merges.splitlines():
@@ -97,7 +97,7 @@ def inherited_from_merge(base, path, root="."):
         second_blob = git("rev-parse", "--verify", f"{second_parent}:{path}")
         if not merge_blob or not second_blob or merge_blob != second_blob or merge_blob == first_blob:
             continue
-        later_changes = git("log", "--first-parent", "--format=%H", f"{merge}..HEAD", "--", path)
+        later_changes = git("log", "--first-parent", "--format=%H", f"{merge}..{head}", "--", path)
         if later_changes == "":
             return True
     return False
@@ -130,7 +130,7 @@ def github_parent(number):
     return m.group(1) if m else None
 
 
-def superseded_attribution(base, current, accepted, pr_url, root):
+def superseded_attribution(base, current, accepted, pr_url, root, head="HEAD"):
     """Find this PR's own valid return before a later run replaced its attribution."""
     identity = re.fullmatch(r"https?://[^/]+/([^/]+/[^/]+)/pull/(\d+)", pr_url.rstrip("/"))
     if not identity:
@@ -147,7 +147,7 @@ def superseded_attribution(base, current, accepted, pr_url, root):
             continue
         commits = subprocess.run(
             ["git", "-C", str(root), "log", "--format=%H", "--no-merges", "--diff-filter=AM",
-             f"{base}..HEAD", "--", path], capture_output=True, text=True, check=True,
+             f"{base}..{head}", "--", path], capture_output=True, text=True, check=True,
         ).stdout.splitlines()
         for commit in commits:
             text = subprocess.run(
@@ -176,7 +176,7 @@ def superseded_attribution(base, current, accepted, pr_url, root):
     return None, rejected
 
 
-def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=None):
+def check(body, files, root=".", parent_of=lambda n: None, *, base=None, head="HEAD", pr_url=None):
     if not files:
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
@@ -185,8 +185,15 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
     current = {}
     for f in files:
         try:
-            doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):
+            if head == "HEAD":
+                text = pathlib.Path(root, f).read_text(encoding="utf-8")
+            else:
+                text = subprocess.run(
+                    ["git", "-C", str(root), "show", f"{head}:{f}"],
+                    capture_output=True, text=True, check=True,
+                ).stdout
+            doc = yaml.safe_load(text) or {}
+        except (OSError, yaml.YAMLError, subprocess.CalledProcessError):
             continue
         if not isinstance(doc, dict):
             continue
@@ -211,9 +218,9 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
             if not identifies_same_pr(pr_identity(doc.get("pr")), expected):
                 proof = None
                 if base and accepted:
-                    proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root)
+                    proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root, head)
                     rejected_identity.extend(rejected)
-                inherited = bool(base and inherited_from_merge(base, path, root))
+                inherited = bool(base and inherited_from_merge(base, path, root, head))
                 if proof or inherited:
                     continue
                 mismatches.append(f"{path} has pr: {doc.get('pr')!r}")
@@ -221,7 +228,7 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
         rejected = []
         if base and pr_url:
             for path, doc in current.items():
-                proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root)
+                proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root, head)
                 if proof and not mismatches:
                     return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
                                   "Historical attribution is not a passing verdict; current gates still apply.")
@@ -253,8 +260,32 @@ def main():
     if not is_agent_pr(pr):
         print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
-    ok, msg = check(pr.get("body") or "", changed_return_files(a.base), parent_of=github_parent,
-                    base=a.base, pr_url=pr.get("html_url"))
+    head = (pr.get("head") or {}).get("sha")
+    base = (pr.get("base") or {}).get("sha")
+    if not head or not base:
+        print("::error title=Return ownership context missing::PR event must include head.sha and base.sha; "
+              "cannot establish changed return ownership.")
+        return 1
+    for label, revision in (("head", head), ("base", base)):
+        exists = subprocess.run(
+            ["git", "-C", ".", "cat-file", "-e", f"{revision}^{{commit}}"],
+            capture_output=True,
+        )
+        if exists.returncode:
+            print(f"::error title=Return ownership context unavailable::Event {label} commit {revision} "
+                  "is not available locally; fetch full PR history and retry.")
+            return 1
+    configured_base = subprocess.run(
+        ["git", "-C", ".", "rev-parse", "--verify", f"{a.base}^{{commit}}"],
+        capture_output=True, text=True,
+    )
+    if configured_base.returncode or configured_base.stdout.strip() != base:
+        print(f"::error title=Return ownership context inconsistent::Configured --base {a.base!r} does not "
+              f"resolve to event base.sha {base}; refresh the event/base checkout and retry.")
+        return 1
+    files = changed_return_files(base, head=head)
+    ok, msg = check(pr.get("body") or "", files, parent_of=github_parent,
+                    base=base, head=head, pr_url=pr.get("html_url"))
     if pasted_contract(pr.get("body") or ""):
         # A warning, not a failure: a follow-up session cannot edit the description to fix it.
         print("::warning title=Return contract pasted into the PR description::Link to "

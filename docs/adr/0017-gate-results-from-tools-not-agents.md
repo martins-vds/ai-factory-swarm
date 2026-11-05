@@ -50,11 +50,13 @@ the validator does not resolve it over the network. A handoff remains partial an
 and roles without a `pr` contract are unaffected.
 
 The PR-event contract check compares finished returns changed against that PR's base with the event PR.
-It treats a return as inherited only when Git history shows its content arrived unchanged from a merged
-second parent and no later first-parent commit changed that path. Superseded-attribution evidence is
-limited to the same return path; one return cannot attest another. If the required merge ancestry is
-unavailable, a mismatching return fails rather than being presumed inherited. These metadata checks do
-not prove that the worker completed the work, that a PR exists or is merged, or that merging is authorized.
+It uses the event's `base.sha` and `head.sha`, not the Actions synthetic merge checkout's `HEAD`, to
+identify changed files, current return contents, and reachable history. It treats a return as inherited
+only when the event-head history shows its content arrived unchanged from a merged second parent and no
+later first-parent commit changed that path. Superseded-attribution evidence is limited to the same
+return path; one return cannot attest another. If required event SHAs or merge ancestry are unavailable,
+the check fails rather than assuming ownership or inheritance. These metadata checks do not prove that the
+worker completed the work, that a PR exists or is merged, or that merging is authorized.
 
 For rollout, an unchanged null-PR return whose last change predates the commit introducing this rule
 remains historical and is not rewritten or treated as current work. A later edit to that return is
