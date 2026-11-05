@@ -136,7 +136,7 @@ quirk_tickets: []
                 for number in [99, *(i["number"] for i in issues)]}
 
     def run_reconciliation(self, issues, pulls, contents=None, *, report_exists=True, labels=None,
-                           report_issues=None):
+                           report_issues=None, issue_details=None):
         if report_exists:
             self.write_report(report_issues if report_issues is not None else issues)
             self.commit("reconciliation evidence")
@@ -158,6 +158,8 @@ quirk_tickets: []
                 return []
             if endpoint.startswith("repos/o/r/issues/") and "/sub_issues?" not in endpoint:
                 number = int(endpoint.rsplit("/", 1)[1])
+                if issue_details and number in issue_details:
+                    return issue_details[number]
                 if number == 4:
                     return {"number": number, "state": "closed", "state_reason": "completed", "title": f"T{number}"}
                 return {"number": number, "state": "open", "title": f"T{number}"}
@@ -173,9 +175,9 @@ quirk_tickets: []
             result = ticket_guard.main(["--repo", "o/r", "--reconcile-epic", "99", "--reopen"])
         return result, output.getvalue(), calls
 
-    def pull(self, number, *, head, merged=False):
+    def pull(self, number, *, head, merged=False, body=""):
         return {"number": number, "state": "closed", "merged_at": "2026-11-05T00:00:00Z" if merged else None,
-                "merge_commit_sha": head if merged else None, "head": {"sha": head}}
+                "merge_commit_sha": head if merged else None, "head": {"sha": head}, "body": body}
 
     def historical_null_pr_return(self, *, changed=False, rule=True):
         path = self.root / ".migration/returns/T1.afs-verifier.yaml"
@@ -320,6 +322,212 @@ validation: "pass with limitations: optional service is unavailable"
         self.assertIsNone(ticket_guard._role_outcome_problem(passing))
         self.assertIsNone(ticket_guard._role_outcome_problem(failing, failed=True))
         self.assertIn("no passing result", ticket_guard._role_outcome_problem(failing))
+
+    def test_migrator_none_handoff_and_reasoned_na_follow_the_return_contract(self):
+        gates = {"build": 0, "behavior": 0, "idiom": 0, "crap": 4,
+                 "mutation_changed": "n/a: no mutable code changed", "regression": 0}
+        passing = {"role": "afs-specialist-migrator", "gates": gates, "handoff": "none"}
+        self.assertIsNone(ticket_guard._role_outcome_problem(passing))
+        self.assertIsNotNone(ticket_guard._role_outcome_problem(passing, failed=True))
+        returned = """role: afs-migrator
+ticket: HR-04A
+issue: o/r#1
+pr: o/r#101
+gates:
+  build: 0
+  behavior: 0
+  idiom: 0
+  crap: 4
+  mutation_changed: "n/a: no mutable code changed"
+  regression: 0
+evidence_logs: []
+ledger_updated: []
+quirk_tickets: []
+new_tickets: []
+handoff: none
+"""
+        schema_valid = ticket_guard._valid_return(
+            returned, ".migration/returns/HR-04A.afs-migrator.yaml")
+        self.assertIsNotNone(schema_valid)
+        self.assertIsNone(ticket_guard._role_outcome_problem(schema_valid))
+        for invalid in (
+                {**gates, "mutation_changed": "n/a: "},
+                {**gates, "mutation_changed": None},
+                {**gates, "mutation_changed": 1.1},
+                {**gates, "mutation_changed": float("nan")},
+                {**gates, "crap": -1},
+                {**gates, "crap": float("inf")},
+                {**gates, "crap": float("nan")},
+                {**gates, "regression": None},
+                {**gates, "build": 1},
+        ):
+            with self.subTest(gates=invalid):
+                self.assertIsNotNone(ticket_guard._role_outcome_problem(
+                    {"role": "afs-migrator", "gates": invalid, "handoff": "none"}))
+        for handoff in ("", None, "none", "   "):
+            with self.subTest(handoff=handoff):
+                self.assertIsNotNone(ticket_guard._role_outcome_problem(
+                    {"role": "afs-migrator", "gates": gates, "handoff": handoff}, failed=True))
+        blocked = {"role": "afs-migrator", "gates": gates, "handoff": "blocked: external dependency"}
+        self.assertIn("outstanding handoff", ticket_guard._role_outcome_problem(blocked))
+        self.assertIsNone(ticket_guard._role_outcome_problem(blocked, failed=True))
+
+    def test_completed_parent_ticket_return_is_attributed_to_its_actual_child_pr(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        passed = self.RETURN.replace("verdict: pass", "verdict: pass").replace("pr: o/r#101", "pr: o/r#102")
+        (self.root / path).write_text(passed, encoding="utf-8")
+        landed = self.commit("child work and parent-owned return")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [102], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {102: self.pull(102, head=landed, merged=True, body="Fixes #2")},
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
+        )
+        self.assertEqual(result, 0, output)
+
+    def test_parent_ticket_return_cannot_borrow_a_parent_or_unrelated_pr(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        passed = self.RETURN.replace("pr: o/r#101", "pr: o/r#102")
+        (self.root / path).write_text(passed, encoding="utf-8")
+        landed = self.commit("unrelated carrier return")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [102], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {102: self.pull(102, head=landed, merged=True, body="Updates #2")},
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, "parent_issue_url":
+                               "https://api.github.com/repos/o/r/issues/1"}},
+        )
+        self.assertEqual(result, 1, output)
+        self.assertIn("does not close child issue #2", output)
+        result, output, _ = self.run_reconciliation(
+            [issue], {102: self.pull(102, head=landed, merged=True, body="Fixes #2")},
+            report_exists=False,
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, "parent_issue_url":
+                               "https://api.github.com/repos/o/r/issues/3"}},
+        )
+        self.assertEqual(result, 1, output)
+        self.assertIn("not a child of return ticket #1", output)
+
+    def test_parent_ticket_return_accepts_same_path_supersession_with_cited_child_pr(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        failed = self.RETURN.replace("pr: o/r#101", "pr: o/r#102").replace("verdict: pass",
+                                                                           "verdict: changes-required")
+        (self.root / path).write_text(failed, encoding="utf-8")
+        failed_head = self.commit("failed child verifier return")
+        passed = self.RETURN.replace("pr: o/r#101", "pr: o/r#103")
+        (self.root / path).write_text(passed, encoding="utf-8")
+        current_head = self.commit("current passing parent-owned return")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [102, 103], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {
+                102: self.pull(102, head=failed_head, body="Fixes #2"),
+                103: self.pull(103, head=current_head, merged=True, body="Fixes #1"),
+            },
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
+        )
+        self.assertEqual(result, 0, output)
+
+    def test_generic_history_cannot_bypass_parent_child_pr_proof(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        child_return = self.RETURN.replace("issue: o/r#1", "issue: o/r#2").replace(
+            "pr: o/r#101", "pr: o/r#102")
+        (self.root / path).write_text(child_return, encoding="utf-8")
+        self.commit("historical child return")
+        passed = self.RETURN.replace("pr: o/r#101", "pr: o/r#103")
+        (self.root / path).write_text(passed, encoding="utf-8")
+        current_head = self.commit("parent return without child proof")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [103], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {103: self.pull(103, head=current_head, merged=True, body="Fixes #1")},
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
+        )
+        self.assertEqual(result, 1, output)
+        self.assertIn("parent-ticket continuation for issue #2 is not verified", output)
+
+    def test_superseded_parent_owned_verifier_failure_and_completed_replacement(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        base = self.commit("base")
+        self.git("checkout", "-qb", "failed-child-verifier")
+        failed_path = ".migration/returns/T1.afs-verifier.yaml"
+        (self.root / failed_path).parent.mkdir(parents=True)
+        failed = self.RETURN.replace("pr: o/r#101", "pr: o/r#103").replace("verdict: pass",
+                                                                           "verdict: changes-required")
+        (self.root / failed_path).write_text(failed, encoding="utf-8")
+        failed_head = self.commit("failed child verifier")
+        self.git("checkout", "-q", "--detach", base)
+        replacement_path = ".migration/returns/T4.afs-verifier.yaml"
+        (self.root / replacement_path).parent.mkdir(parents=True)
+        passing = self.RETURN.replace("ticket: T1", "ticket: T4").replace("issue: o/r#1", "issue: o/r#4") \
+            .replace("pr: o/r#101", "pr: o/r#104")
+        (self.root / replacement_path).write_text(passing, encoding="utf-8")
+        replacement_head = self.commit("replacement verifier passes")
+        report = [
+            {"number": 3, "disposition": "superseded", "replacement": 4,
+             "failure": {"pull_request": 103, "return": failed_path}},
+            {"number": 4, "disposition": "completed", "pull_requests": [104], "returns": [replacement_path]},
+        ]
+        result, output, _ = self.run_reconciliation(
+            [{"number": 3, "disposition": "superseded"}, {"number": 4, "disposition": "completed"}], {
+                103: self.pull(103, head=failed_head, body="Fixes #3"),
+                104: self.pull(104, head=replacement_head, merged=True),
+            }, contents={
+                f"repos/o/r/contents/{failed_path}?ref={failed_head}": {
+                    "encoding": "base64", "content": base64.b64encode(failed.encode()).decode()},
+            },
+            report_issues=report,
+            labels=[
+                {"number": 3, "title": "failed child", "state": "closed", "state_reason": "not_planned",
+                 "labels": []},
+                {"number": 4, "title": "replacement", "state": "closed", "state_reason": "completed",
+                 "labels": []},
+            ],
+            issue_details={3: {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
+        )
+        self.assertEqual(result, 0, output)
+
+    def test_failed_parent_owned_return_requires_the_actual_child_and_closing_pr(self):
+        path = ".migration/returns/T3.afs-verifier.yaml"
+        failed = self.FAILED_RETURN.replace("issue: o/r#3", "issue: o/r#1")
+        encoded = {"encoding": "base64", "content": base64.b64encode(failed.encode()).decode()}
+        pull = {"number": 103, "state": "closed", "merged_at": None, "head": {"sha": "a" * 40},
+                "body": "Fixes #3"}
+        cases = (
+            ("https://api.github.com/repos/o/r/issues/4", "Fixes #3", "not a child"),
+            ("https://api.github.com/repos/o/r/issues/1", "Updates #3", "does not close child"),
+        )
+        for parent_url, body, problem in cases:
+            with self.subTest(parent=parent_url, body=body):
+                def gh(endpoint, *args, **kwargs):
+                    if endpoint == f"repos/o/r/contents/{path}?ref={'a' * 40}":
+                        return encoded
+                    if endpoint == "repos/o/r/issues/3":
+                        return {"number": 3, "parent_issue_url": parent_url}
+                    return {}
+
+                with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+                    with self.assertRaisesRegex(ValueError, problem):
+                        ticket_guard._failed_role_return(
+                            "o/r", 3, 103, path, {**pull, "body": body})
 
     def test_superseded_bootstrapper_failure_can_preserve_its_own_blocked_return(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")

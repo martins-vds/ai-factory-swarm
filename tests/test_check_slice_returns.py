@@ -13,6 +13,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+import ticket_guard  # noqa: E402
 import check_slice_returns as csr  # noqa: E402
 
 REPO = "o/r"
@@ -118,8 +119,14 @@ class HistoricalAttributionTest(unittest.TestCase):
                 return subs if subs is not None else [sub(1)]
             return {"state": "closed", "labels": [{"name": "afs:slice"}] if epic else []}
 
+        def parent_gh(endpoint, *args, **kwargs):
+            if endpoint.startswith("repos/o/r/issues/"):
+                return {"number": int(endpoint.rsplit("/", 1)[1])}
+            return {}
+
         output = io.StringIO()
         with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
                 mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
                 contextlib.redirect_stdout(output):
             result = csr.main(["--repo", REPO, "--epic", "99"] + (["--reopen"] if reopen else []))
@@ -272,6 +279,142 @@ class HistoricalAttributionTest(unittest.TestCase):
         result, output, _ = self.run_guard()
         self.assertEqual(result, 0, output)
         self.assertIn(old, output)
+
+    def test_parent_ticket_return_requires_the_exact_landed_child_pr(self):
+        returned = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#12")
+        landed = self.commit(returned, "parent-owned child return")
+        endpoints = {
+            "repos/o/r/issues/99": {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]},
+            "repos/o/r/issues/99/sub_issues?per_page=100&page=1": [sub(2)],
+            "repos/o/r/issues/2/sub_issues?per_page=100&page=1": [],
+        }
+
+        def gh(endpoint, *args, **kwargs):
+            return endpoints.get(endpoint, {})
+
+        def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": landed, "head": {"sha": landed}, "body": "Fixes #2"}
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
+                mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            result = csr.main(["--repo", REPO, "--epic", "99"])
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertIn("verdict=pass tickets=1 failures=0", output.getvalue())
+
+    def test_parent_ticket_return_rejects_an_unrelated_carrier_pr(self):
+        returned = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#12")
+        landed = self.commit(returned, "unrelated carrier return")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/99":
+                return {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]}
+            if endpoint == "repos/o/r/issues/99/sub_issues?per_page=100&page=1":
+                return [sub(2)]
+            if endpoint == "repos/o/r/issues/2/sub_issues?per_page=100&page=1":
+                return []
+            return {}
+
+        def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": landed, "head": {"sha": landed}, "body": "Updates #2"}
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
+                mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            result = csr.main(["--repo", REPO, "--epic", "99"])
+        self.assertEqual(result, 1, output.getvalue())
+        self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
+        self.assertIn("does not close child issue #2", output.getvalue())
+
+    def test_parent_ticket_continuation_can_use_same_path_history_after_current_pass(self):
+        failed = RETURN.replace("pr: o/r#10", "pr: o/r#12")
+        failed_head = self.commit(failed, "failed parent-owned child return")
+        passed = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#13")
+        current_head = self.commit(passed, "corrected parent-owned child return")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/99":
+                return {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]}
+            if endpoint == "repos/o/r/issues/99/sub_issues?per_page=100&page=1":
+                return [sub(2)]
+            if endpoint == "repos/o/r/issues/2/sub_issues?per_page=100&page=1":
+                return []
+            return {}
+
+        def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": None,
+                        "merge_commit_sha": None, "head": {"sha": failed_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": current_head, "head": {"sha": current_head}, "body": "Fixes #1"}
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
+                mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            result = csr.main(["--repo", REPO, "--epic", "99"])
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertIn("parent-ticket continuation", output.getvalue())
+
+    def test_generic_history_cannot_bypass_parent_child_pr_proof(self):
+        child_return = RETURN.replace("o/r#1\n", "o/r#2\n").replace("pr: o/r#10", "pr: o/r#12")
+        self.commit(child_return, "historical child return")
+        current_return = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#13")
+        current_head = self.commit(current_return, "parent-owned return")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/99":
+                return {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]}
+            if endpoint == "repos/o/r/issues/99/sub_issues?per_page=100&page=1":
+                return [sub(2)]
+            if endpoint == "repos/o/r/issues/2/sub_issues?per_page=100&page=1":
+                return []
+            return {}
+
+        def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": current_head, "head": {"sha": current_head}, "body": "Fixes #1"}
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
+                mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            result = csr.main(["--repo", REPO, "--epic", "99"])
+        self.assertEqual(result, 1, output.getvalue())
+        self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
+        self.assertIn("does not close child issue #2", output.getvalue())
+
+    def test_parent_ticket_continuation_rejects_a_failed_current_role_outcome(self):
+        self.commit(RETURN, "parent-owned failed verifier return")
+        current = csr.current_returns()
+        with mock.patch.object(ticket_guard, "_parent_issue_number", return_value=1):
+            attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
+        self.assertEqual(attributed, set())
+        self.assertTrue(any("current role outcome does not pass" in item for item in diagnostics))
 
     def test_malformed_intermediate_revision_does_not_hide_valid_ancestry(self):
         old = self.commit(RETURN)

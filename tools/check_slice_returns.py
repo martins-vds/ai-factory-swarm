@@ -12,7 +12,9 @@ slice's tickets meet, so this check runs when the epic closes:
 Tickets closed before this tool was first committed to the repo are exempt (the rule didn't exist yet);
 the date comes from git history, so no list can be edited by hand.
 If a later valid same-ticket/same-role return supersedes an issue, a schema-valid predecessor reachable
-from HEAD may establish attribution only, never a passing verdict. Required history must be complete.
+from HEAD may establish attribution only, never a passing verdict. A parent-ticket return can also cover a
+child only when GitHub confirms the direct parent, the owning PR closes that child and contains the exact
+return, and the current role outcome passes. Required history must be complete.
 
   check_slice_returns.py --repo owner/repo --epic 9 [--reopen]   (the AFS map fog workflow runs this)
 
@@ -70,7 +72,7 @@ def returned_issues(returns_dir=".migration/returns"):
     return {doc["issue"] for doc in current_returns(returns_dir).values()}
 
 
-def superseded_attribution(required, current):
+def superseded_attribution(required, current, repo=None):
     """Attribute missing issues using only complete HEAD ancestry and valid, still-present returns."""
     if not required:
         return set(), []
@@ -84,6 +86,20 @@ def superseded_attribution(required, current):
     root = pathlib.Path(git("rev-parse", "--show-toplevel").strip())
     git("rev-parse", "--verify", "HEAD")
     found, diagnostics = set(), []
+    parent_numbers = {}
+    if repo:
+        from ticket_guard import _parent_issue_number
+
+        for issue in sorted(required):
+            child_repo, child_number = issue.rsplit("#", 1)
+            if child_repo.lower() != repo.lower():
+                continue
+            try:
+                parent_numbers[issue] = _parent_issue_number(repo, int(child_number))
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+                parent_numbers[issue] = "unavailable"
+                diagnostics.append(f"parent-ticket continuation for {issue} blocked: "
+                                   "GitHub parent relationship could not be verified")
     for path, latest in current.items():
         path = path.resolve().relative_to(root).as_posix()
         if not git("ls-tree", "HEAD", "--", path).strip():
@@ -92,8 +108,14 @@ def superseded_attribution(required, current):
         committed = git("show", f"HEAD:{path}")
         if valid_return(committed, path) != latest:
             continue
-        candidates = {issue for issue in required - found
-                      if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]}
+        latest_match = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([1-9][0-9]*)", latest["issue"])
+        parent_number = int(latest_match[1]) if latest_match else None
+        candidates = {
+            issue for issue in required - found
+            if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]
+            and (not repo or (parent_numbers.get(issue) != "unavailable"
+                              and parent_numbers.get(issue) != parent_number))
+        }
         if not candidates:
             continue
         # Full history includes merged worker branches, but never arbitrary refs or dangling objects.
@@ -110,6 +132,72 @@ def superseded_attribution(required, current):
                                "Historical attribution is not a passing verdict; current acceptance gates still apply.")
             if not candidates:
                 break
+    if repo:
+        from ticket_guard import _parent_ticket_return, _return_pr_number, _role_outcome_problem
+        for issue in sorted(required - found):
+            child_repo, child_number = issue.rsplit("#", 1)
+            if child_repo.lower() != repo.lower():
+                continue
+            try:
+                parent_numbers[issue] = _parent_issue_number(repo, int(child_number))
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+                parent_numbers[issue] = "unavailable"
+
+        for path, latest in current.items():
+            path = path.resolve().relative_to(root).as_posix()
+            issue_match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
+                                      latest.get("issue", ""))
+            if not issue_match or f"{issue_match[1]}/{issue_match[2]}".lower() != repo.lower():
+                continue
+            children = [
+                (issue, int(issue.rsplit("#", 1)[1]), parent)
+                for issue, parent in parent_numbers.items()
+                if parent == int(issue_match[3])
+            ]
+            if not children:
+                continue
+            outcome_problem = _role_outcome_problem(latest)
+            if outcome_problem:
+                diagnostics.extend(f"parent-ticket continuation for {issue} rejected: current role outcome "
+                                   f"does not pass ({outcome_problem})" for issue, _, _ in children)
+                continue
+
+            candidates = [latest]
+            commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD",
+                          "--", path).splitlines()
+            for commit in commits:
+                previous = valid_return(git("show", f"{commit}:{path}"), path)
+                if (previous and all(previous.get(key) == latest.get(key)
+                                     for key in ("issue", "ticket", "role"))):
+                    candidates.append(previous)
+
+            for issue, child_number, parent in children:
+                proof_problems = []
+                for candidate in candidates:
+                    try:
+                        owner_pr = _return_pr_number(candidate, repo, return_path=path)
+                    except ValueError as exc:
+                        proof_problems.append(str(exc))
+                        continue
+                    if owner_pr is None:
+                        proof_problems.append("parent-owned return has no owning PR")
+                        continue
+                    try:
+                        _parent_ticket_return(repo, child_number, path, candidate, verified_parent=parent)
+                    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                        proof_problems.append(str(exc))
+                        continue
+                    except SystemExit:
+                        proof_problems.append("GitHub API evidence for the owning PR is unavailable")
+                        continue
+                    found.add(issue)
+                    diagnostics.append(f"parent-ticket continuation: {issue} is attributed to {path} "
+                                       f"through its actual parent and landed child PR #{owner_pr}; "
+                                       "current role outcome passes")
+                    break
+                if issue not in found:
+                    diagnostics.append(f"parent-ticket continuation for {issue} blocked: "
+                                       + "; ".join(dict.fromkeys(proof_problems)))
     return found, diagnostics
 
 
@@ -166,7 +254,7 @@ def main(argv=None):
     required = {f"{a.repo}#{s['number']}" for s in subs if requires_return(s, since)} - returned
     history_errors = []
     try:
-        historical, diagnostics = superseded_attribution(required, current)
+        historical, diagnostics = superseded_attribution(required, current, a.repo)
         returned.update(historical)
         for diagnostic in diagnostics:
             print(diagnostic)

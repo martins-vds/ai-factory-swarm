@@ -16,6 +16,7 @@ Uses `gh api`; reconciliation also requires PyYAML and complete Git history.
 import argparse
 import base64
 import json
+import math
 import pathlib
 import re
 import subprocess
@@ -115,7 +116,7 @@ def _issue_ref(repo, number):
     return f"{repo}#{number}"
 
 
-def _return_at_head(path, repo, issue_number):
+def _return_at_head(path, repo, issue_number, cited_prs=None):
     path = _return_path(path)
     try:
         text = git("show", f"HEAD:{path}")
@@ -128,6 +129,34 @@ def _return_at_head(path, repo, issue_number):
     expected = _issue_ref(repo, issue_number)
     if match and f"{match[1]}/{match[2]}#{match[3]}" == expected:
         return doc, []
+    if cited_prs is not None:
+        continuation_problems = []
+        try:
+            owner_pr = _return_pr_number(doc, repo, return_path=path)
+        except ValueError as exc:
+            owner_pr = None
+            continuation_problems.append(str(exc))
+        if owner_pr in cited_prs:
+            try:
+                _parent_ticket_return(repo, issue_number, path, doc)
+                return doc, [f"{path}: parent-ticket continuation verified through child issue #{issue_number} "
+                             f"and PR #{owner_pr}"]
+            except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
+                continuation_problems.append(str(exc))
+        elif owner_pr is not None:
+            continuation_problems.append(f"current owning PR #{owner_pr} is not among the cited landing PRs")
+        if _parent_ticket_history(repo, issue_number, path, doc, cited_prs, continuation_problems):
+            return doc, [f"{path}: parent-ticket continuation verified through same-path "
+                         f"ticket/role history for child issue #{issue_number}"]
+        try:
+            actual_parent = _parent_issue_number(repo, issue_number)
+        except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+            raise ValueError(f"GitHub parent relationship for issue #{issue_number} is unavailable; "
+                             "generic history cannot establish parent-ticket attribution") from exc
+        if match and f"{match[1]}/{match[2]}".lower() == repo.lower() and \
+                actual_parent == int(match[3]):
+            detail = f": {'; '.join(continuation_problems)}" if continuation_problems else ""
+            raise ValueError(f"parent-ticket continuation for issue #{issue_number} is not verified{detail}")
     try:
         from check_slice_returns import superseded_attribution
         attributed, diagnostics = superseded_attribution(
@@ -135,9 +164,110 @@ def _return_at_head(path, repo, issue_number):
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as exc:
         raise ValueError(f"return attribution history for {path} is unavailable: {exc}") from exc
     if expected not in attributed:
+        detail = f"; parent-ticket continuation evidence: {'; '.join(continuation_problems)}" \
+            if cited_prs is not None and continuation_problems else ""
         raise ValueError(f"return evidence {path} does not attribute to issue #{issue_number} "
-                         "directly or through same-path ticket/role history")
+                         f"directly or through same-path ticket/role history{detail}")
     return doc, diagnostics
+
+
+def _parent_issue_number(repo, issue_number):
+    issue = gh(f"repos/{repo}/issues/{issue_number}")
+    if not isinstance(issue, dict) or issue.get("number") != issue_number:
+        raise ValueError(f"GitHub issue #{issue_number} identity is unavailable")
+    url = issue.get("parent_issue_url")
+    if not url:
+        return None
+    match = re.fullmatch(r"https://api\.github\.com/repos/([^/]+/[^/]+)/issues/([1-9][0-9]*)",
+                         url)
+    if not match or match[1].lower() != repo.lower():
+        raise ValueError(f"GitHub parent relationship for issue #{issue_number} is invalid")
+    return int(match[2])
+
+
+def _pull_closes_issue(pull, repo, issue_number):
+    pattern = re.compile(
+        rf"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+"
+        rf"(?:(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#{issue_number}\b"
+    )
+    return any(match.group("repo") is None or match.group("repo").lower() == repo.lower()
+               for match in pattern.finditer(pull.get("body") or ""))
+
+
+def _parent_ticket_return(repo, issue_number, path, doc, *, pull=None, require_landed=True,
+                          check_owner=True, verified_parent=None):
+    """Verify a return owned by a parent ticket's child work PR, never by parentage alone."""
+    issue_ref = doc.get("issue", "")
+    match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)", issue_ref)
+    if not match or f"{match[1]}/{match[2]}".lower() != repo.lower():
+        raise ValueError(f"return does not identify a same-repository parent ticket")
+    actual_parent = verified_parent if verified_parent is not None else _parent_issue_number(repo, issue_number)
+    if actual_parent != int(match[3]):
+        raise ValueError(f"issue #{issue_number} is not a child of return ticket #{match[3]}")
+    owner_pr = _return_pr_number(doc, repo, return_path=path)
+    if owner_pr is None and check_owner:
+        raise ValueError(f"parent-owned return for issue #{issue_number} has no owning PR")
+    if pull is None and owner_pr is not None:
+        pull = _pull(repo, owner_pr)
+    if not isinstance(pull, dict) or not isinstance(pull.get("number"), int):
+        raise ValueError(f"parent-owned return for issue #{issue_number} has no attributable PR")
+    if check_owner and owner_pr != pull["number"]:
+        raise ValueError(f"return does not identify PR #{pull['number']} as its owning PR")
+    if not _pull_closes_issue(pull, repo, issue_number):
+        raise ValueError(f"PR #{pull['number']} does not close child issue #{issue_number}")
+    if require_landed:
+        commit = _landed_pull(repo, pull["number"])
+        if not _return_in_commit(_return_path(path), doc, commit):
+            raise ValueError(f"PR #{pull['number']} does not contain this exact role return")
+    return pull["number"]
+
+
+def _parent_ticket_history(repo, issue_number, path, current, cited_prs, problems=None):
+    outcome_problem = _role_outcome_problem(current)
+    if outcome_problem:
+        if problems is not None:
+            problems.append(f"current role outcome does not pass: {outcome_problem}")
+        return False
+    try:
+        parent_number = _parent_issue_number(repo, issue_number)
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+        if problems is not None:
+            problems.append(f"GitHub parent relationship for issue #{issue_number} is unavailable")
+        return False
+    if parent_number is None:
+        if problems is not None:
+            problems.append(f"GitHub does not confirm issue #{issue_number} has a direct parent")
+        return False
+    path = _return_path(path)
+    try:
+        commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path)
+    except ValueError:
+        return False
+    for commit in commits.splitlines():
+        try:
+            previous = _valid_return(git("show", f"{commit}:{path}"), path)
+        except ValueError:
+            continue
+        if not previous or any(previous.get(key) != current.get(key) for key in ("issue", "ticket", "role")):
+            continue
+        try:
+            owner_pr = _return_pr_number(previous, repo, return_path=path)
+        except ValueError as exc:
+            if problems is not None:
+                problems.append(str(exc))
+            continue
+        if owner_pr not in cited_prs:
+            if problems is not None:
+                problems.append(f"historical child PR #{owner_pr} is not among the cited landing PRs")
+            continue
+        try:
+            _parent_ticket_return(repo, issue_number, path, previous, verified_parent=parent_number)
+        except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
+            if problems is not None:
+                problems.append(str(exc))
+            continue
+        return True
+    return False
 
 
 def _pull(repo, number):
@@ -208,24 +338,34 @@ def _role_outcome_problem(doc, *, failed=False):
         failed_gates = {"build", "behavior", "idiom", "regression"}
         has_failed_gate = isinstance(gates, dict) and any(
             type(gates.get(gate)) is int and gates[gate] != 0 for gate in failed_gates)
-        if not has_failed_gate and not (isinstance(doc.get("handoff"), str) and doc["handoff"].strip()):
+        handoff = doc.get("handoff")
+        has_blocker = isinstance(handoff, str) and handoff.strip() and handoff != "none"
+        if not has_failed_gate and not has_blocker:
             return f"{role} return has no explicit failed gate or blocker handoff"
     elif role in {"afs-migrator", "afs-specialist-migrator"}:
         gates = doc.get("gates")
         if not isinstance(gates, dict):
             return f"{role} return has no gate outcome evidence"
+
+        def reasoned_na(value):
+            return isinstance(value, str) and re.match(r"^n/a: \S", value) is not None
+
         for gate in ("build", "behavior", "idiom", "regression"):
             result = gates.get(gate)
             if (type(result) is int and result == 0) or \
-                    (isinstance(result, str) and result.startswith("n/a: ") and result[5:].strip()):
+                    reasoned_na(result):
                 continue
             return f"{role} gate `{gate}` has no passing result"
         crap, mutation = gates.get("crap"), gates.get("mutation_changed")
-        if type(crap) not in {int, float} or crap < 0:
+        if not reasoned_na(crap) and (
+                type(crap) not in {int, float} or crap < 0 or
+                (type(crap) is float and not math.isfinite(crap))):
             return f"{role} gate `crap` has no score"
-        if type(mutation) not in {int, float} or not 0 <= mutation <= 1:
+        if not reasoned_na(mutation) and (
+                type(mutation) not in {int, float} or not 0 <= mutation <= 1 or
+                (type(mutation) is float and not math.isfinite(mutation))):
             return f"{role} gate `mutation_changed` has no score"
-        if isinstance(doc.get("handoff"), str) and doc["handoff"].strip():
+        if doc.get("handoff") not in (None, "", "none"):
             return f"{role} return still has an outstanding handoff"
     elif role == "afs-characterizer" and failed:
         suite = doc.get("suite")
@@ -266,8 +406,14 @@ def _failed_role_return(repo, issue_number, pull_number, path, pull):
     doc = _valid_return(text, path)
     match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
                          doc.get("issue", "") if doc else "")
-    if not doc or not match or f"{match[1]}/{match[2]}#{match[3]}" != _issue_ref(repo, issue_number):
+    if not doc:
         raise ValueError(f"{path} does not belong to issue #{issue_number}")
+    if not match or f"{match[1]}/{match[2]}#{match[3]}" != _issue_ref(repo, issue_number):
+        try:
+            _parent_ticket_return(repo, issue_number, path, doc, pull=pull, require_landed=False,
+                                  check_owner=False)
+        except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
+            raise ValueError(f"{path} does not belong to issue #{issue_number}: {exc}") from exc
     outcome_problem = _role_outcome_problem(doc, failed=True)
     if outcome_problem:
         raise ValueError(f"{path} does not preserve an explicit failed role outcome: {outcome_problem}")
@@ -360,7 +506,7 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                         problems.append(f"#{number}: {exc}")
                 for return_path in returns:
                     try:
-                        doc, diagnostics = _return_at_head(return_path, repo, number)
+                        doc, diagnostics = _return_at_head(return_path, repo, number, set(landed))
                         for diagnostic in diagnostics:
                             print(f"::notice::{diagnostic}")
                         outcome_problem = _role_outcome_problem(doc)
