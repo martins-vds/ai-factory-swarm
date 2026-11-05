@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -560,6 +561,88 @@ class SupersededReturnTest(unittest.TestCase):
 
 
 class ShallowHistorySetupTest(unittest.TestCase):
+    def ancestry_preflight(self):
+        skill = (ROOT / "skills/afs-setup-check/SKILL.md").read_text(encoding="utf-8")
+        match = re.search(
+            r"(?ms)^# BEGIN AFS target ancestry preflight\n(.*?)^# END AFS target ancestry preflight$",
+            skill,
+        )
+        self.assertIsNotNone(match, "setup skill must bracket the executable ancestry preflight")
+        return skill, match.group(1)
+
+    def run_preflight(self, repo, script):
+        return subprocess.run(
+            ["bash", "-c", script + '\nprintf "VALIDATION_SENTINEL_REACHED\\n"\n'],
+            cwd=repo, capture_output=True, text=True,
+        )
+
+    def test_setup_ancestry_preflight_is_executable_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            origin = root / "origin"
+            origin.mkdir()
+            git(origin, "init", "-q", "-b", "main")
+            (origin / "history.txt").write_text("first\n", encoding="utf-8")
+            git(origin, "add", "history.txt")
+            git(origin, "-c", "user.name=test", "-c", "user.email=test@example.com",
+                "commit", "-qm", "first")
+            (origin / "history.txt").write_text("first\nsecond\n", encoding="utf-8")
+            git(origin, "add", "history.txt")
+            git(origin, "-c", "user.name=test", "-c", "user.email=test@example.com",
+                "commit", "-qm", "second")
+            skill, preflight = self.ancestry_preflight()
+            self.assertIn('input "is not present" without check 4', skill)
+
+            shallow = root / "shallow"
+            git(root, "clone", "-q", "--depth", "1", origin.as_uri(), str(shallow))
+            self.assertEqual(
+                subprocess.check_output(
+                    ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"], text=True).strip(),
+                "true")
+            prepared = self.run_preflight(shallow, preflight)
+            self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
+            self.assertIn("VALIDATION_SENTINEL_REACHED", prepared.stdout)
+            self.assertEqual(
+                subprocess.check_output(
+                    ["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"], text=True).strip(),
+                "false")
+
+            complete = root / "complete"
+            git(root, "clone", "-q", origin.as_uri(), str(complete))
+            git(complete, "remote", "remove", "origin")
+            no_op = self.run_preflight(complete, preflight)
+            self.assertEqual(no_op.returncode, 0, no_op.stdout + no_op.stderr)
+            self.assertIn("VALIDATION_SENTINEL_REACHED", no_op.stdout)
+
+            missing_origin = root / "missing-origin"
+            git(root, "clone", "-q", "--depth", "1", origin.as_uri(), str(missing_origin))
+            git(missing_origin, "remote", "remove", "origin")
+            unavailable = self.run_preflight(missing_origin, preflight)
+            self.assertNotEqual(unavailable.returncode, 0)
+            self.assertNotIn("VALIDATION_SENTINEL_REACHED", unavailable.stdout)
+            self.assertIn("setup is blocked", unavailable.stdout)
+
+            shallow_origin = root / "shallow-origin.git"
+            git(root, "clone", "-q", "--bare", "--depth", "1", origin.as_uri(), str(shallow_origin))
+            remains_shallow = root / "remains-shallow"
+            git(root, "clone", "-q", "--depth", "1", shallow_origin.as_uri(), str(remains_shallow))
+            still_shallow = self.run_preflight(remains_shallow, preflight)
+            self.assertNotEqual(still_shallow.returncode, 0)
+            self.assertNotIn("VALIDATION_SENTINEL_REACHED", still_shallow.stdout)
+            self.assertIn("remains shallow", still_shallow.stdout)
+            self.assertEqual(
+                subprocess.check_output(
+                    ["git", "-C", str(remains_shallow), "rev-parse", "--is-shallow-repository"],
+                    text=True).strip(),
+                "true")
+
+            not_git = root / "not-git"
+            not_git.mkdir()
+            outside_git = self.run_preflight(not_git, preflight)
+            self.assertNotEqual(outside_git.returncode, 0)
+            self.assertNotIn("VALIDATION_SENTINEL_REACHED", outside_git.stdout)
+            self.assertIn("cannot inspect target Git history", outside_git.stdout)
+
     def test_inherited_null_pr_return_passes_after_required_history_is_prepared(self):
         return_text = """role: afs-verifier
 ticket: T-1
@@ -619,13 +702,11 @@ quirk_tickets: []
             self.assertEqual(before_fetch.returncode, 1)
             self.assertIn("finished return requires a meaningful PR reference", before_fetch.stderr)
 
-            setup_skill = (ROOT / "skills/afs-setup-check/SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("git fetch --unshallow origin", setup_skill)
-            self.assertLess(setup_skill.index("git fetch --unshallow origin"),
-                            setup_skill.index("validate.py .migration"))
-            self.assertIn("ERROR: could not fetch complete HEAD ancestry", setup_skill)
+            setup_skill, preflight = self.ancestry_preflight()
             self.assertIn("write a blocking handoff", setup_skill)
-            git(clone, "fetch", "--unshallow", "origin")
+            prepared = self.run_preflight(clone, preflight)
+            self.assertEqual(prepared.returncode, 0, prepared.stdout + prepared.stderr)
+            self.assertIn("VALIDATION_SENTINEL_REACHED", prepared.stdout)
             self.assertEqual(
                 subprocess.check_output(
                     ["git", "-C", str(clone), "rev-parse", "--is-shallow-repository"], text=True).strip(),

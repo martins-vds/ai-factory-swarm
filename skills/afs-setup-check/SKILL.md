@@ -18,12 +18,14 @@ git check-ignore -q .source && echo "ignored"            # .source must never be
 
 # 2. Complete the current target checkout's HEAD ancestry before history-dependent validation.
 # The Copilot setup workflow's fetch-depth does not guarantee this role checkout is complete.
+# BEGIN AFS target ancestry preflight
 shallow=$(git rev-parse --is-shallow-repository) || { echo "ERROR: cannot inspect target Git history"; exit 1; }
 if [ "$shallow" = true ]; then
   git fetch --unshallow origin || { echo "ERROR: could not fetch complete HEAD ancestry from origin; setup is blocked"; exit 1; }
   shallow=$(git rev-parse --is-shallow-repository) || { echo "ERROR: cannot verify target Git history"; exit 1; }
 fi
 [ "$shallow" = false ] || { echo "ERROR: target checkout remains shallow; complete HEAD ancestry is required"; exit 1; }
+# END AFS target ancestry preflight
 
 # 3. Migration state valid (when .migration/ has content)
 python .migration/harness/tools/validate.py .migration
@@ -49,7 +51,7 @@ run tests (Program Orchestrator, Planner, Analyst) skip check 6. If check 6 fail
 `python .migration/harness/tools/afs-services up` once (it prints the services' logs on failure) —
 starting the compose services is the setup step, not a workaround. Never start a database or other
 service by hand, and never point tests at an in-memory or mocked stand-in instead. Never conclude an
-input "is not present" without check 3: a missing named input is a stop, not an open question.
+input "is not present" without check 4: a missing named input is a stop, not an open question.
 
 ## Outcome
 - **All pass:** state "setup OK" with the pinned SHA in one line, then continue.
