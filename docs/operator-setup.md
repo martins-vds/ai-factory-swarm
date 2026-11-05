@@ -20,6 +20,41 @@ list, and the setup PR repeats it as a checklist.
 | 9 | **Graph first** (ADR-0020): after the setup PR merges, run **AFS understand (code graphs)** with `side=source` on `main`, review its PR (the graph gate and the list of entry points that reach data), and merge it | Actions → AFS understand → Run workflow | Analysis and planning query the graph; a graph that can't reach the data hides capabilities | Planner and Analyst stop at setup; CI fails on slice anchors that reach no data |
 | 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret** for the account that **pays** for Copilot, named in profile `costs.billing` (see below) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
 
+## Slice completion and ticket reconciliation
+
+Before a coordinator completes a slice or closes its epic, require the committed
+`.migration/evidence/ticket-reconciliation/<epic>.yaml` report (ADR-0030). It must cover the slice epic's
+related work/fix/verifier/bootstrap descendants, with one evidence-backed disposition per issue:
+
+- `completed`: closed as completed, with role return(s) and landing PR(s) whose merge commit or exact
+  closed-unmerged head is in default-branch history;
+- `superseded`: closed as not planned, with a replacement issue and the failed verifier PR/return preserved;
+- `retained-open`: still open, with specific outstanding work and its actual blocker.
+
+```yaml
+epic: 99
+scope: slice-epic-descendants
+issues:
+  - number: 123
+    disposition: completed
+    pull_requests: [124]
+    returns: [.migration/returns/T-123.afs-verifier.yaml]
+  - number: 125
+    disposition: superseded
+    replacement: 123
+    failure: {pull_request: 126, return: .migration/returns/T-125.afs-verifier.yaml}
+  - number: 127
+    disposition: retained-open
+    outstanding: "Finish the data import."
+    blocker: "Waiting for the operator-owned production snapshot."
+```
+
+The generated AFS map-fog workflow checks this report before the existing return-file check. If it is
+missing or evidence cannot be verified, the workflow reopens the epic and does not create the fog re-walk
+task. The checker never closes work issues or merges PRs: review the evidence and keep those actions under
+human authority. Decision-map/research work and unrelated slices are outside the reconciliation scope.
+Retained-open descendants remain open and still prevent epic closure under ADR-0024.
+
 ## Cost tracking: which billing account and token
 
 Copilot usage is billed to whoever provides the seat, which isn't necessarily you. Set `costs.billing` in

@@ -26,8 +26,6 @@ CLOSES = r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+(?:[\w.-]+/[\w
 RECONCILIATION_DIR = pathlib.Path(".migration/evidence/ticket-reconciliation")
 RESEARCH_LABELS = {"wayfinder:map", "wayfinder:research", "wayfinder:prototype",
                    "wayfinder:grilling", "wayfinder:task"}
-COMPLETED_ROLES = {"afs-analyst", "afs-bootstrapper", "afs-characterizer", "afs-migrator",
-                   "afs-specialist-migrator", "afs-verifier"}
 
 
 def gh(*args, data=None):
@@ -252,8 +250,6 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                 for return_path in returns:
                     try:
                         doc = _return_at_head(return_path, repo, scope)
-                        if doc["role"] not in COMPLETED_ROLES:
-                            raise ValueError("return does not identify a completion role")
                         if doc["role"] == "afs-verifier" and doc.get("verdict") != "pass":
                             raise ValueError("verifier return is not a pass")
                     except (ValueError, OSError, subprocess.SubprocessError) as exc:

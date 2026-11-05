@@ -5,11 +5,12 @@ import unittest
 import base64
 import contextlib
 import io
-import json
 import os
 import subprocess
 import tempfile
 from unittest import mock
+
+import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -97,24 +98,31 @@ quirk_tickets: []
     def write_report(self, issues):
         path = self.root / self.REPORT
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"epic": 99, "scope": "slice-epic-descendants", "issues": issues}),
+        path.write_text(yaml.safe_dump({"epic": 99, "scope": "slice-epic-descendants", "issues": issues}),
                         encoding="utf-8")
 
     def setup_completed_stack(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        base = self.commit("base")
+        self.git("checkout", "-qb", "work-pr")
         returns = self.root / ".migration/returns"
         returns.mkdir(parents=True)
         (returns / "T1.afs-verifier.yaml").write_text(self.RETURN, encoding="utf-8")
         (returns / "T2.afs-verifier.yaml").write_text(
-            self.RETURN.replace("ticket: T1", "ticket: T2").replace("o/r#1", "o/r#2")
-            .replace("o/r#101", "o/r#102"), encoding="utf-8")
+            self.RETURN.replace("ticket: T1", "ticket: T2").replace("issue: o/r#1", "issue: o/r#2")
+            .replace("pr: o/r#101", "pr: o/r#102"), encoding="utf-8")
         (self.root / "work.txt").write_text("accepted work\n", encoding="utf-8")
         head = self.commit("accepted work head")
+        self.git("checkout", "-qb", "accepted-main", base)
         (self.root / "carrier.txt").write_text("carried by another PR\n", encoding="utf-8")
-        main = self.commit("accepted main")
+        self.git("add", "carrier.txt")
+        self.git("commit", "-qm", "carrier changes")
+        self.git("merge", "--no-ff", "work-pr", "-m", "carrier PR integration")
+        main = self.git("rev-parse", "HEAD")
         self.write_report([
             {"number": 1, "disposition": "completed", "pull_requests": [101],
              "returns": [".migration/returns/T1.afs-verifier.yaml"]},
-            {"number": 2, "disposition": "completed", "pull_requests": [102],
+            {"number": 2, "disposition": "completed", "pull_requests": [101, 102],
              "returns": [".migration/returns/T2.afs-verifier.yaml"]},
         ])
         self.commit("reconciliation evidence")
@@ -169,15 +177,34 @@ quirk_tickets: []
         issues = [
             {"number": 1, "disposition": "completed", "pull_requests": [101],
              "returns": [".migration/returns/T1.afs-verifier.yaml"]},
-            {"number": 2, "disposition": "completed", "pull_requests": [102],
+            {"number": 2, "disposition": "completed", "pull_requests": [101, 102],
              "returns": [".migration/returns/T2.afs-verifier.yaml"]},
         ]
-        result, output, _ = self.run_reconciliation(issues, {
+        result, output, calls = self.run_reconciliation(issues, {
             101: self.pull(101, head=main, merged=True),
             102: self.pull(102, head=head),
         }, report_exists=False)
         self.assertEqual(result, 0, output)
         self.assertIn("gate=ticket-reconciliation epic=99 verdict=pass", output)
+        self.assertFalse(any(c[1][:2] == ("-X", "PATCH") for c in calls), "check does not close work issues")
+
+    def test_closed_unmerged_pr_without_its_exact_head_in_main_is_not_landing_evidence(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        base = self.commit("base")
+        self.git("checkout", "-qb", "unmerged-work")
+        (self.root / "unmerged.txt").write_text("not on main\n", encoding="utf-8")
+        unmerged_head = self.commit("unmerged work")
+        self.git("checkout", "-q", "--detach", base)
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        (returns / "T1.afs-verifier.yaml").write_text(self.RETURN, encoding="utf-8")
+        (self.root / "main.txt").write_text("default branch\n", encoding="utf-8")
+        self.commit("default branch")
+        issue = {"number": 1, "disposition": "completed", "pull_requests": [101],
+                 "returns": [".migration/returns/T1.afs-verifier.yaml"]}
+        result, output, _ = self.run_reconciliation([issue], {101: self.pull(101, head=unmerged_head)})
+        self.assertEqual(result, 1, output)
+        self.assertIn("no verified landing", output)
 
     def test_skipped_reconciliation_reopens_epic_and_fails(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
