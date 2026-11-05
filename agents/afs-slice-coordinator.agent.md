@@ -52,10 +52,12 @@ slice.
    decision-map/research issues. For
    each issue, review the landing and role evidence, then record exactly one disposition in
    `.migration/evidence/ticket-reconciliation/<epic>.yaml`: `completed` with landing PR(s) and committed
-   role return(s), `superseded` with a replacement issue plus the closed-unmerged failure PR and its
-   failed verifier return, or `retained-open` with actual outstanding work and blocker. A closed-unmerged
-   PR counts as completed only when its exact head is in `main` ancestry; a later carrier PR may provide
-   that landing. A return file, green check or closed PR alone is not landing or acceptance evidence.
+   role return(s), `superseded` with a replacement issue plus the closed-unmerged failure PR and that
+   role's own failed return, or `retained-open` with actual outstanding work and blocker. A completed
+   return must identify this issue directly or through same-path, same-ticket/role committed history; its
+   owning PR must be cited and contain that return. A closed-unmerged PR counts as completed only when
+   its exact head is in `main` ancestry; a later carrier PR may provide that landing. A return file, green
+   check or closed PR alone is not landing or acceptance evidence.
    Commit the report on `main` through human review. The AFS map-fog workflow checks it before the
    existing return-file gate; missing or invalid reconciliation reopens the epic and suppresses fog
    re-walk. The checker never closes work issues. A retained-open descendant remains open and continues

@@ -19,10 +19,14 @@ related issue tree is stale.
 - Each issue has exactly one disposition:
   - `completed`: the issue is closed as completed, lists landing PRs and committed role returns, and the
     checker confirms the merged PR's merge commit or a closed-unmerged PR's exact head is in default-branch
-    ancestry. This supports a correction carried by a later PR without treating a closed PR as proof.
-    Verifier returns must pass.
+    ancestry. A return must identify this issue directly or through same-path, same-ticket/role committed
+    history. Its owning PR must be among the cited landing PRs and contain the exact committed return.
+    This supports a correction carried by a later PR without treating a closed PR as proof. Verifier returns
+    must pass; Bootstrapper validation must explicitly pass (including pass-with-limitations).
   - `superseded`: the issue is closed as not planned, links a replacement issue, and preserves a closed,
-    unmerged failed verifier PR plus its changes-required/blocked return at that PR's head.
+    unmerged failed role PR plus that role's explicit failure return at the PR head. The return must belong
+    to the superseded issue and identify the same owning PR; for example, a Bootstrapper's blocked validation
+    is preserved as Bootstrapper evidence, not rewritten as a Verifier result.
   - `retained-open`: the issue remains open and states the outstanding work and actual blocker. It is not
     represented as completed or automatically closed.
 - The AFS map fog workflow checks this report before the existing ADR-0024 return-file check. A missing,

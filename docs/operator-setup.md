@@ -27,8 +27,10 @@ Before a coordinator completes a slice or closes its epic, require the committed
 related work/fix/verifier/bootstrap descendants, with one evidence-backed disposition per issue:
 
 - `completed`: closed as completed, with role return(s) and landing PR(s) whose merge commit or exact
-  closed-unmerged head is in default-branch history;
-- `superseded`: closed as not planned, with a replacement issue and the failed verifier PR/return preserved;
+  closed-unmerged head is in default-branch history. A return must identify the issue directly or through
+  same-path, same-ticket/role history; its owning PR must be cited and contain the committed return.
+- `superseded`: closed as not planned, with a replacement issue and the original failed role's PR/return
+  preserved (for example, retain a blocked Bootstrapper return as Bootstrapper evidence);
 - `retained-open`: still open, with specific outstanding work and its actual blocker.
 
 ```yaml
