@@ -24,8 +24,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
-        with: {{ fetch-depth: 0 }}   # check_slice_returns dates its rule from git history
-      - run: pip install -q pyyaml
+        with: {{ fetch-depth: 0 }}   # rule date and superseded return attribution require full HEAD ancestry
+      - run: pip install -q pyyaml jsonschema
       - name: Every ticket of the slice is closed and has its return file
         env:
           GH_TOKEN: ${{{{ github.token }}}}

@@ -11,18 +11,23 @@ slice's tickets meet, so this check runs when the epic closes:
 
 Tickets closed before this tool was first committed to the repo are exempt (the rule didn't exist yet);
 the date comes from git history, so no list can be edited by hand.
+If a later valid same-ticket/same-role return supersedes an issue, a schema-valid predecessor reachable
+from HEAD may establish attribution only, never a passing verdict. Required history must be complete.
 
   check_slice_returns.py --repo owner/repo --epic 9 [--reopen]   (the AFS map fog workflow runs this)
 
 With --reopen, a failing epic is reopened with a comment that lists what is missing. Exit 1 on failure,
-0 otherwise (also when the issue is not a slice epic). Uses `gh api` and git; needs PyYAML.
+0 otherwise (also when the issue is not a slice epic). Uses `gh api` and git; needs PyYAML and jsonschema.
 """
 import argparse
+import json
 import pathlib
+import re
 import subprocess
 import sys
 
 import yaml
+from jsonschema import Draft202012Validator
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.dont_write_bytecode = True       # installed harness files are drift-checked (check_installed.py)
@@ -30,23 +35,87 @@ sys.path.insert(0, str(HERE))
 import fog_rewalk  # noqa: E402
 
 SELF = ".migration/harness/tools/check_slice_returns.py"
+VALIDATOR = Draft202012Validator(json.loads((HERE.parent / "schemas/return.schema.json").read_text(encoding="utf-8")))
+
+
+def valid_return(text, path):
+    """Schema-valid return with canonical issue and ticket/role/filename identity."""
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(doc, dict) or not VALIDATOR.is_valid(doc):
+        return None
+    issue = doc.get("issue")
+    if not isinstance(issue, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*", issue):
+        return None
+    return doc if pathlib.Path(path).name == f"{doc['ticket']}.{doc['role']}.yaml" else None
+
+
+def current_returns(returns_dir=".migration/returns"):
+    out = {}
+    for p in sorted(pathlib.Path(returns_dir).glob("*.y*ml")):
+        try:
+            doc = valid_return(p.read_text(encoding="utf-8"), p)
+        except (OSError, UnicodeError):
+            continue
+        if doc:
+            out[p] = doc
+    return out
 
 
 def returned_issues(returns_dir=".migration/returns"):
-    """`owner/repo#n` of every committed return file."""
-    out = set()
-    for p in sorted(pathlib.Path(returns_dir).glob("*.y*ml")):
-        try:
-            doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
+    """Canonical issues of valid current return files."""
+    return {doc["issue"] for doc in current_returns(returns_dir).values()}
+
+
+def superseded_attribution(required, current):
+    """Attribute missing issues using only complete HEAD ancestry and valid, still-present returns."""
+    if not required:
+        return set(), []
+
+    def git(*args):
+        return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+
+    if git("rev-parse", "--is-shallow-repository").strip() != "false":
+        raise ValueError("shallow repository")
+    root = pathlib.Path(git("rev-parse", "--show-toplevel").strip())
+    git("rev-parse", "--verify", "HEAD")
+    found, diagnostics = set(), []
+    for path, latest in current.items():
+        path = path.resolve().relative_to(root).as_posix()
+        if not git("ls-tree", "HEAD", "--", path).strip():
             continue
-        if isinstance(doc, dict) and doc.get("issue"):
-            out.add(str(doc["issue"]).strip())
-    return out
+        # A working-tree edit is not a committed superseding return.
+        committed = git("show", f"HEAD:{path}")
+        if valid_return(committed, path) != latest:
+            continue
+        candidates = {issue for issue in required - found
+                      if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]}
+        if not candidates:
+            continue
+        # Full history includes merged worker branches, but never arbitrary refs or dangling objects.
+        commits = git("log", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path).splitlines()
+        for commit in commits:
+            previous = valid_return(git("show", f"{commit}:{path}"), path)
+            if not previous or previous["issue"] not in candidates:
+                continue
+            if any(previous[k] != latest[k] for k in ("ticket", "role")):
+                continue
+            found.add(previous["issue"])
+            candidates.remove(previous["issue"])
+            diagnostics.append(f"superseded attribution: {path}@{commit} (issue: {previous['issue']}). "
+                               "Historical attribution is not a passing verdict; current acceptance gates still apply.")
+            if not candidates:
+                break
+    return found, diagnostics
 
 
 def rule_since(path=SELF):
     """ISO time the rule entered the repo: the commit that first added this tool (None outside git)."""
+    shallow = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], capture_output=True, text=True)
+    if shallow.returncode != 0 or shallow.stdout.strip() != "false":
+        return None
     r = subprocess.run(["git", "log", "--diff-filter=A", "--format=%cI", "--", path], capture_output=True, text=True)
     dates = r.stdout.split() if r.returncode == 0 else []
     return dates[-1] if dates else None
@@ -57,6 +126,11 @@ def utc(iso):
     return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(datetime.timezone.utc)
 
 
+def requires_return(s, since):
+    return (s["state"] == "closed" and s.get("state_reason") == "completed"
+            and not (since and s.get("closed_at") and utc(s["closed_at"]) < utc(since)))
+
+
 def problems(repo, subs, returned, since):
     """What blocks closing the epic: open tickets, and completed tickets without a return file."""
     out = []
@@ -64,9 +138,7 @@ def problems(repo, subs, returned, since):
         ref = f"#{s['number']} {s['title']}"
         if s["state"] != "closed":
             out.append(f"{ref}: still open")
-        elif s.get("state_reason") == "completed" and f"{repo}#{s['number']}" not in returned:
-            if since and s.get("closed_at") and utc(s["closed_at"]) < utc(since):
-                continue
+        elif requires_return(s, since) and f"{repo}#{s['number']}" not in returned:
             out.append(f"{ref}: closed as completed, but no `.migration/returns/*.yaml` has "
                        f"`issue: {repo}#{s['number']}`")
     return out
@@ -91,7 +163,18 @@ def main(argv=None):
             break
         page += 1
     since = rule_since()
-    found = problems(a.repo, subs, returned_issues(), since)
+    current = current_returns()
+    returned = {doc["issue"] for doc in current.values()}
+    required = {f"{a.repo}#{s['number']}" for s in subs if requires_return(s, since)} - returned
+    history_errors = []
+    try:
+        historical, diagnostics = superseded_attribution(required, current)
+        returned.update(historical)
+        for diagnostic in diagnostics:
+            print(diagnostic)
+    except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as e:
+        history_errors.append(f"return history unavailable: {e}; fetch complete HEAD ancestry and retry")
+    found = problems(a.repo, subs, returned, since) + history_errors
     print(f"slice epic #{a.epic}: {len(subs)} ticket(s); rule since {since or 'unknown'}")
     for p in found:
         print(f"::error::{p}")

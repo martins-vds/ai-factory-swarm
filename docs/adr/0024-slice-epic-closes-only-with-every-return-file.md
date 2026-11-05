@@ -23,11 +23,22 @@ moment to count.
   - every sub-issue of the epic must be closed;
   - every sub-issue closed as completed must have a return file whose `issue:` names it. A ticket
     closed as "not planned" needs none.
+  - Current returns must be schema-valid, canonically attributed (`owner/repo#N`) and named
+    `<ticket>.<role>.yaml`. If a later run supersedes a return's issue, a valid predecessor at the
+    same path in committed **HEAD ancestry** may establish the completed ticket's attribution.
+    Current and historical returns must match ticket, role and issue repository; the current return
+    must still exist, be valid and match its committed HEAD version. Other refs, unreachable objects,
+    deleted files and invalid returns are not proof.
+  - Historical attribution is **not a passing verdict**. A predecessor may report `changes-required`;
+    current acceptance and Auditor evidence remain separate requirements. The guard logs the historical
+    path, full commit and canonical issue used, without rewriting the superseding return.
   - On failure, the epic is **reopened** with a comment listing each problem, and the re-walk ticket is
     not opened. Closing it again re-runs both steps.
 - **Exemption by date, from git.** Tickets closed before the tool was first committed to the target repo
   are exempt, because the rule did not exist yet. The date is that commit's, so there is no list to edit
-  by hand.
+  by hand. Shallow history cannot establish this date. When a completed, non-exempt ticket lacks a
+  current return, unavailable or shallow history fails explicitly (and still reopens the epic);
+  fetch complete HEAD ancestry and retry. There is no success-shaped history fallback.
 - **Manual run.** The workflow also takes `workflow_dispatch` with an epic number, for an epic that
   closed before the workflow existed. Re-runs are safe: the re-walk ticket is not duplicated if the map
   already has it, and an open epic gets no re-walk.
@@ -38,3 +49,6 @@ moment to count.
 - A human who finishes a ticket by hand commits a return file for it too. The contract's Durable outputs
   already ask for this; now it is enforced.
 - The pilot's Track Cargo epic (#9) passes: its four tickets without return files closed before the rule.
+- Issue #70, selected from harness coverage #42, repairs attribution after legitimate supersession;
+  it does not change PR-attribution rules or authorize a harness merge or pilot rollout. Installation
+  remains a separately reviewed, pinned normal bootstrap.
