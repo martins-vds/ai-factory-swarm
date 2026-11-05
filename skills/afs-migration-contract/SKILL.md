@@ -81,6 +81,16 @@ key of your agent's return contract, filled in — also when you stop early (fil
 rest). It is validated against `.migration/harness/schemas/return.schema.json`; CI fails an agent PR
 without one.
 
+**Epic closure after supersession (ADR-0024).** Keep the latest valid return as-is when a later
+same-ticket/same-role run names its own issue. For a completed ticket whose issue is no longer current,
+the closure guard can use a schema-valid predecessor at that same correctly named path in committed
+HEAD ancestry, with matching ticket, role and canonical issue repository. The current return must
+remain valid, present and match HEAD; other refs or deleted/invalid returns do not count. The guard
+logs the historical file, commit and issue. This establishes **attribution only, not a passing
+verdict**; current gates, Auditor acceptance and human sign-off still apply independently.
+Required history must be complete: shallow/unavailable history blocks closure explicitly; fetch full
+HEAD ancestry and retry rather than copying the old issue into the latest return.
+
 **Every structured output is checked against a schema, and a failing check means redo.** Return
 files must use the contract's exact words and types (e.g. `verdict: pass`, not `passed`; a score is a
 number, `n/a: <reason>` or — only with a handoff — `null`, never prose; scores must equal the gate
