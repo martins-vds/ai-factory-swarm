@@ -71,6 +71,23 @@ class ReturnFileTest(unittest.TestCase):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(), self.GATES)
         self.assertEqual(self.errors(r), [])
 
+    def test_finished_return_requires_a_meaningful_pr_reference(self):
+        for text in (RETURN.replace("martins-vds/ai-factory-pilot-target#38", "null"),
+                     RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38\n", ""),
+                     RETURN.replace("martins-vds/ai-factory-pilot-target#38", "work in progress")):
+            with self.subTest(pr=text.split("pr:", 1)[1].splitlines()[0] if "pr:" in text else "missing"):
+                r = self.validate({"TC-02.afs-migrator.yaml": text}, self.mutation_run(), self.GATES)
+                self.assertIn("finished return requires a meaningful PR reference", r.stderr)
+                self.assertIn("fill `pr:` before finishing", r.stderr)
+
+    def test_roles_without_a_pr_contract_do_not_need_pr_attribution(self):
+        orchestrator = (
+            "role: afs-program-orchestrator\nticket: TC-02\nissue: martins-vds/ai-factory-pilot-target#22\n"
+            "phase: 5\ndecisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n"
+        )
+        r = self.validate({"TC-02.afs-program-orchestrator.yaml": orchestrator})
+        self.assertEqual(self.errors(r), [])
+
     def test_a_later_role_cannot_invalidate_a_committed_return(self):
         """Pilot HR-04C: the Verifier's failing runs appended to the shared journal must not break the
         Migrator's committed return; a return's score is checked as of its own last commit."""
@@ -132,12 +149,15 @@ class ReturnFileTest(unittest.TestCase):
 
     def test_null_gates_are_fine_with_a_handoff(self):
         text = (RETURN.replace("mutation_changed: 1.0", "mutation_changed: null")
+                .replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null")
                 .replace("handoff: null", "handoff: .migration/handoffs/TC-02.md"))
         r = self.validate({"TC-02.afs-migrator.yaml": text})
         self.assertNotIn("in a finished return", r.stderr)
+        self.assertNotIn("finished return requires a meaningful PR reference", r.stderr)
 
     def test_legacy_returns_are_exempt(self):
-        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, legacy=["TC-02.afs-migrator.yaml"])
+        historical = RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null")
+        r = self.validate({"TC-02.afs-migrator.yaml": historical}, legacy=["TC-02.afs-migrator.yaml"])
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_validate_rejects_missing_keys_bad_gates_and_wrong_names(self):
@@ -247,6 +267,35 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("superseded attribution", result.stdout)
         self.assertIn("AFS-TOOL check_return_contract.py exit=0", result.stderr)
+
+    def test_event_pr_must_match_the_completed_return_it_owns(self):
+        self.commit(RETURN.replace("#38", "#40"))
+        ok, message = self.check()
+        self.assertFalse(ok)
+        self.assertIn("does not identify this PR", message)
+
+    def test_stacked_pr_does_not_revalidate_inherited_return_identity(self):
+        self.commit(RETURN)
+        git(self.repo, "branch", "work-base")
+        git(self.repo, "checkout", "-q", "-b", "copilot/verifier")
+        verifier_path = ".migration/returns/TC-02.afs-verifier.yaml"
+        verifier = (
+            "role: afs-verifier\nticket: TC-02\nissue: martins-vds/ai-factory-pilot-target#34\n"
+            "pr: martins-vds/ai-factory-pilot-target#61\nverdict: pass\n"
+            "gates: {build: 0, behavior: 0, idiom: 0, crap: 0, mutation_changed: 1.0, regression: 0}\n"
+            "evidence_logs: []\nfindings: []\ntests_added: []\nledger_issues: []\nquirk_tickets: []\n"
+        )
+        path = self.repo / verifier_path
+        path.write_text(verifier, encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "verifier return")
+        files = crc.changed_return_files("work-base", self.repo)
+        self.assertEqual(files, [verifier_path])
+        ok, message = crc.check(
+            "Fixes #34", files, self.repo, base="work-base",
+            pr_url="https://github.com/martins-vds/ai-factory-pilot-target/pull/61",
+        )
+        self.assertTrue(ok, message)
 
     def test_wrong_pr_cannot_borrow_history(self):
         self.commit(RETURN.replace("#38", "#40"))
