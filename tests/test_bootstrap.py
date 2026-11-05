@@ -200,6 +200,7 @@ class BootstrapTest(unittest.TestCase):
         self.assertFalse((self.target / ".github/agents/afs-stale.agent.md").exists())
         self.assertTrue((self.target / ".github/agents/team.agent.md").exists())
 
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "requires POSIX process semantics")
     def test_concurrent_process_is_refused_with_lock_owner_pid(self):
         context = multiprocessing.get_context("fork")
         ready, release, outcomes = context.Event(), context.Event(), context.Queue()
@@ -224,6 +225,18 @@ class BootstrapTest(unittest.TestCase):
         self.assertFalse(first.is_alive(), "first bootstrap did not finish")
         self.assertEqual(outcomes.get(timeout=2), "ok")
 
+    def test_cli_exits_two_when_a_live_lock_exists(self):
+        lock = self.target / ".afs-bootstrap.lock"
+        lock.write_text(json.dumps({"pid": os.getpid(), "started_at": "now"}) + "\n")
+        out = subprocess.run(
+            [sys.executable, str(ROOT / "tools/bootstrap.py"), "--target", str(self.target),
+             "--profile", str(PROFILE), "--capabilities", str(CAPS), "--offline"],
+            capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn(str(os.getpid()), out.stderr)
+        self.assertTrue(lock.exists())
+
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "requires POSIX process semantics")
     def test_killed_staging_run_preserves_old_install_and_reports_stale_lock(self):
         self.run_bootstrap()
         before = managed_snapshot(self.target)
@@ -238,12 +251,47 @@ class BootstrapTest(unittest.TestCase):
         process.join(10)
 
         self.assertEqual(managed_snapshot(self.target), before)
-        with self.assertRaisesRegex(bootstrap.BootstrapLockError, str(process.pid)):
+        with self.assertRaisesRegex(bootstrap.BootstrapLockError, rf"{process.pid}.*rm -f --.*recover"):
             self.run_bootstrap(offline=True)
         lock_path = self.target / ".afs-bootstrap.lock"
         self.assertTrue(lock_path.exists())
         lock_path.unlink()
         self.run_bootstrap(offline=True)
+        self.assertEqual(list(self.target.glob(".afs-bootstrap-txn-*")), [])
+
+    def test_staged_validation_failure_does_not_change_live_outputs(self):
+        self.run_bootstrap()
+        before = managed_snapshot(self.target)
+        with mock.patch.object(bootstrap.check_installed, "check", return_value=(None, ["staged drift"])):
+            with self.assertRaisesRegex(bootstrap.BootstrapError, "staged install failed its drift check"):
+                self.run_bootstrap(offline=True)
+        self.assertEqual(managed_snapshot(self.target), before)
+        self.assertEqual(list(self.target.glob(".afs-bootstrap-txn-*")), [])
+
+    def test_invalid_recovery_journal_cannot_escape_target(self):
+        protected = self.target.parent / f"{self.target.name}-protected"
+        protected.write_text("keep")
+        self.addCleanup(protected.unlink)
+        transaction = self.target / ".afs-bootstrap-txn-invalid"
+        transaction.mkdir()
+        outputs = [{"path": rel, "backup": str(i), "had_old": False, "status": "pending"}
+                   for i, rel in enumerate(bootstrap.PUBLISH_PATHS)]
+        outputs[0]["path"] = "../" + protected.name
+        (transaction / bootstrap.TRANSACTION_MARKER).write_text("AI Factory Swarm bootstrap transaction\n")
+        (transaction / "transaction.json").write_text(json.dumps({"state": "publishing", "outputs": outputs}))
+
+        with self.assertRaisesRegex(bootstrap.BootstrapError, "invalid interrupted bootstrap journal"):
+            self.run_bootstrap(offline=True)
+        self.assertEqual(protected.read_text(), "keep")
+        self.assertTrue((transaction / "transaction.json").exists())
+
+    def test_unmarked_transaction_directory_is_not_deleted(self):
+        transaction = self.target / ".afs-bootstrap-txn-user-data"
+        transaction.mkdir()
+        content = transaction / "keep.txt"
+        content.write_text("not a bootstrap transaction")
+        self.run_bootstrap(offline=True)
+        self.assertEqual(content.read_text(), "not a bootstrap transaction")
 
     def test_publication_failure_rolls_back_all_managed_outputs(self):
         self.run_bootstrap()
@@ -263,6 +311,26 @@ class BootstrapTest(unittest.TestCase):
                 self.run_bootstrap(offline=True)
         self.assertEqual(managed_snapshot(self.target), before)
 
+    def test_keyboard_interrupt_during_publication_rolls_back(self):
+        self.run_bootstrap()
+        before = managed_snapshot(self.target)
+        original = bootstrap._publish_output
+        interrupted = False
+
+        def interrupt_after_one(*args, **kwargs):
+            nonlocal interrupted
+            result = original(*args, **kwargs)
+            if not interrupted:
+                interrupted = True
+                raise KeyboardInterrupt
+            return result
+
+        with mock.patch.object(bootstrap, "_publish_output", interrupt_after_one):
+            with self.assertRaises(KeyboardInterrupt):
+                self.run_bootstrap(offline=True)
+        self.assertEqual(managed_snapshot(self.target), before)
+
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "requires POSIX process semantics")
     def test_killed_publication_is_recovered_before_the_next_install(self):
         self.run_bootstrap()
         before = managed_snapshot(self.target)

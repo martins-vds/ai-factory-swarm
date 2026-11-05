@@ -61,6 +61,8 @@ PIP_PACKAGES = "jsonschema pyyaml lizard"
 DEFAULT_PYTHON = "3.12"   # when the profile declares no python-X.Y stack
 BOOTSTRAP_LOCK = ".afs-bootstrap.lock"
 TRANSACTION_PREFIX = ".afs-bootstrap-txn-"
+TRANSACTION_MARKER = ".afs-bootstrap-transaction"
+TRANSACTION_MARKER_CONTENT = "AI Factory Swarm bootstrap transaction\n"
 PUBLISH_PATHS = (".github/skills", ".github/agents", ".github/workflows", ".github/hooks",
                  ".github/copilot-instructions.md", ".gitignore", ".migration/source.lock",
                  ".migration/profile.yaml", ".migration/capabilities.yaml", ".migration/ledger",
@@ -152,7 +154,9 @@ def bootstrap_lock(target):
         try:
             owner = json.loads(path.read_text(encoding="utf-8"))
             pid = int(owner["pid"])
-        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            if pid <= 0:
+                raise ValueError("PID must be positive")
+        except (OSError, ValueError, KeyError, TypeError):
             raise BootstrapLockError(
                 f"bootstrap lock {path} exists but its owner cannot be read; verify no bootstrap is running "
                 f"before removing it with: rm -f -- {shlex.quote(str(path))}") from exc
@@ -178,7 +182,7 @@ def bootstrap_lock(target):
             owner = json.loads(path.read_text(encoding="utf-8"))
             if owner.get("token") == lock["token"]:
                 path.unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError, ValueError):
             pass
 
 
@@ -203,6 +207,29 @@ def _save_transaction(path, transaction):
     os.replace(tmp, path)
 
 
+def _load_transaction(journal):
+    try:
+        transaction = json.loads(journal.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BootstrapError(f"cannot read interrupted bootstrap journal {journal}: {exc}") from exc
+    if not isinstance(transaction, dict):
+        raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    valid_states = {"publishing", "committed"}
+    state = transaction.get("state")
+    outputs = transaction.get("outputs")
+    if not isinstance(state, str) or state not in valid_states or not isinstance(outputs, list) \
+            or len(outputs) != len(PUBLISH_PATHS):
+        raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    valid_statuses = {"pending", "publishing", "published"}
+    for i, (entry, rel) in enumerate(zip(outputs, PUBLISH_PATHS)):
+        status = entry.get("status") if isinstance(entry, dict) else None
+        if (not isinstance(entry, dict) or entry.get("path") != rel or entry.get("backup") != str(i)
+                or type(entry.get("had_old")) is not bool or not isinstance(status, str)
+                or status not in valid_statuses):
+            raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    return transaction
+
+
 def _publish_output(target, staging, backup, entry):
     destination = target / entry["path"]
     staged = staging / entry["path"]
@@ -217,7 +244,7 @@ def _publish_output(target, staging, backup, entry):
 
 def _rollback_transaction(target, transaction_dir):
     journal = transaction_dir / "transaction.json"
-    transaction = json.loads(journal.read_text(encoding="utf-8"))
+    transaction = _load_transaction(journal)
     errors = []
     for entry in reversed(transaction["outputs"]):
         destination = target / entry["path"]
@@ -241,16 +268,26 @@ def recover_interrupted_install(target):
     """Roll back an incomplete publication or discard an unpublished staging directory."""
     target = pathlib.Path(target)
     for transaction_dir in sorted(target.glob(f"{TRANSACTION_PREFIX}*")):
+        marker = transaction_dir / TRANSACTION_MARKER
+        if transaction_dir.is_symlink() or not transaction_dir.is_dir():
+            raise BootstrapError(f"unrecognized bootstrap transaction path {transaction_dir}; inspect it before "
+                                 "removing it")
+        try:
+            is_ours = not marker.is_symlink() and marker.read_text(encoding="utf-8") == TRANSACTION_MARKER_CONTENT
+        except (OSError, UnicodeDecodeError):
+            is_ours = False
+        if not is_ours:
+            continue
         journal = transaction_dir / "transaction.json"
         if not journal.exists():
             shutil.rmtree(transaction_dir)
             continue
-        try:
-            transaction = json.loads(journal.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise BootstrapError(f"cannot read interrupted bootstrap journal {journal}: {exc}") from exc
+        transaction = _load_transaction(journal)
         if transaction.get("state") == "committed":
-            shutil.rmtree(transaction_dir)
+            try:
+                shutil.rmtree(transaction_dir)
+            except OSError as exc:
+                raise BootstrapError(f"could not clean committed bootstrap transaction {transaction_dir}: {exc}") from exc
         else:
             _rollback_transaction(target, transaction_dir)
 
@@ -275,13 +312,19 @@ def publish_install(target, transaction_dir):
             _save_transaction(journal, transaction)
         transaction["state"] = "committed"
         _save_transaction(journal, transaction)
-    except Exception as exc:
+    except BaseException as exc:
         try:
             _rollback_transaction(target, transaction_dir)
         except Exception as rollback_exc:
             raise BootstrapError(f"publication failed ({exc}); recovery is required: {rollback_exc}") from exc
-        raise BootstrapError(f"publication failed; previous install was restored: {exc}") from exc
-    shutil.rmtree(transaction_dir)
+        if isinstance(exc, Exception):
+            raise BootstrapError(f"publication failed; previous install was restored: {exc}") from exc
+        raise
+    try:
+        shutil.rmtree(transaction_dir)
+    except OSError as exc:
+        raise BootstrapError(f"install was published, but transaction cleanup failed at {transaction_dir}: {exc}; "
+                             "the next bootstrap run will retry cleanup") from exc
 
 
 def _copy_existing(source, destination):
@@ -618,9 +661,14 @@ def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_is
 
     transaction_dir = pathlib.Path(tempfile.mkdtemp(prefix=TRANSACTION_PREFIX, dir=target))
     staging = transaction_dir / "stage"
-    staging.mkdir()
-    _seed_staging(target, staging)
     cache = {}
+    try:
+        (transaction_dir / TRANSACTION_MARKER).write_text(TRANSACTION_MARKER_CONTENT, encoding="utf-8")
+        staging.mkdir()
+        _seed_staging(target, staging)
+    except BaseException:
+        shutil.rmtree(transaction_dir, ignore_errors=True)
+        raise
     try:
         install_skills(staging, plan, cache, notes)
         install_harness(staging, lock)
