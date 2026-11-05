@@ -110,7 +110,11 @@ def _valid_return(text, path):
         return None
 
 
-def _return_at_head(path, repo, scope):
+def _issue_ref(repo, number):
+    return f"{repo}#{number}"
+
+
+def _return_at_head(path, repo, issue_number):
     path = _return_path(path)
     try:
         text = git("show", f"HEAD:{path}")
@@ -120,9 +124,19 @@ def _return_at_head(path, repo, scope):
     if not doc:
         raise ValueError(f"return evidence {path} is not a valid role return")
     match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)", doc.get("issue", ""))
-    if not match or f"{match[1]}/{match[2]}" != repo or int(match[3]) not in scope:
-        raise ValueError(f"return evidence {path} does not identify an issue in this slice")
-    return doc
+    expected = _issue_ref(repo, issue_number)
+    if match and f"{match[1]}/{match[2]}#{match[3]}" == expected:
+        return doc, []
+    try:
+        from check_slice_returns import superseded_attribution
+        attributed, diagnostics = superseded_attribution(
+            {expected}, {pathlib.Path(path): doc})
+    except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"return attribution history for {path} is unavailable: {exc}") from exc
+    if expected not in attributed:
+        raise ValueError(f"return evidence {path} does not attribute to issue #{issue_number} "
+                         "directly or through same-path ticket/role history")
+    return doc, diagnostics
 
 
 def _pull(repo, number):
@@ -144,7 +158,57 @@ def _landed_pull(repo, number):
     return commit
 
 
-def _failed_verifier_return(repo, pull_number, path, pull, scope):
+def _return_pr_number(doc, repo):
+    role = doc.get("role")
+    field = "setup_pr" if role == "afs-bootstrapper" else "pr"
+    value = doc.get(field)
+    if value is None and role not in {"afs-bootstrapper", "afs-migrator",
+                                      "afs-specialist-migrator", "afs-verifier"}:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{role} return has no owning PR reference in `{field}`")
+    value = value.strip()
+    match = re.fullmatch(rf"{re.escape(repo)}#([1-9][0-9]*)", value)
+    if match:
+        return int(match[1])
+    match = re.fullmatch(rf"https?://github\.com/{re.escape(repo)}/pull/([1-9][0-9]*)(?:/)?", value)
+    if match:
+        return int(match[1])
+    match = re.fullmatch(r"#([1-9][0-9]*)", value)
+    if match:
+        return int(match[1])
+    raise ValueError(f"{role} return has an invalid owning PR reference in `{field}`: {value!r}")
+
+
+def _role_outcome_problem(doc, *, failed=False):
+    role = doc.get("role")
+    if role == "afs-verifier":
+        acceptable = {"changes-required", "blocked"} if failed else {"pass"}
+        if doc.get("verdict") not in acceptable:
+            return f"Verifier verdict is not {'an explicit failure' if failed else 'pass'}"
+    elif role == "afs-bootstrapper":
+        validation = doc.get("validation")
+        pattern = r"^(?:fail|failed|blocked)(?:$|[\s:;,.(\-])" if failed else r"^(?:pass|passed)(?:$|[\s:;,.(\-])"
+        if not isinstance(validation, str) or not re.match(pattern, validation.strip(), re.IGNORECASE):
+            return f"Bootstrapper validation is not an explicit {'failure' if failed else 'pass'}"
+    elif role == "afs-auditor":
+        acceptable = {"gaps-remain"} if failed else {"complete"}
+        if doc.get("verdict") not in acceptable:
+            return f"Auditor verdict is not {'gaps-remain' if failed else 'complete'}"
+    else:
+        return f"role {role!r} has no supported explicit {'failure' if failed else 'passing'} outcome"
+    return None
+
+
+def _return_in_commit(path, doc, commit):
+    try:
+        committed = git("show", f"{commit}:{path}")
+    except ValueError:
+        return False
+    return _valid_return(committed, path) == doc
+
+
+def _failed_role_return(repo, issue_number, pull_number, path, pull):
     path = _return_path(path)
     head = (pull.get("head") or {}).get("sha")
     if not re.fullmatch(r"[0-9a-f]{40,64}", str(head or "")):
@@ -159,11 +223,14 @@ def _failed_verifier_return(repo, pull_number, path, pull, scope):
     doc = _valid_return(text, path)
     match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
                          doc.get("issue", "") if doc else "")
-    if (not doc or doc.get("role") != "afs-verifier"
-            or doc.get("verdict") not in {"changes-required", "blocked"}
-            or not match or f"{match[1]}/{match[2]}" != repo or int(match[3]) not in scope
-            or not re.search(rf"(?:#|/pull/){pull_number}\b", str(doc.get("pr") or ""))):
-        raise ValueError(f"{path} does not preserve a failed verifier return for PR #{pull_number}")
+    if not doc or not match or f"{match[1]}/{match[2]}#{match[3]}" != _issue_ref(repo, issue_number):
+        raise ValueError(f"{path} does not belong to issue #{issue_number}")
+    outcome_problem = _role_outcome_problem(doc, failed=True)
+    if outcome_problem:
+        raise ValueError(f"{path} does not preserve an explicit failed role outcome: {outcome_problem}")
+    owner_pr = _return_pr_number(doc, repo)
+    if owner_pr != pull_number:
+        raise ValueError(f"{path} does not identify failed PR #{pull_number} as its owning PR")
 
 
 def reconciliation_problems(repo, epic_number, epic, report_path=None):
@@ -242,16 +309,27 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                 if not isinstance(returns, list) or not returns:
                     problems.append(f"#{number}: completed disposition needs relevant role return(s)")
                     continue
+                landed = {}
                 for pr_number in prs:
                     try:
-                        _landed_pull(repo, pr_number)
+                        landed[pr_number] = _landed_pull(repo, pr_number)
                     except (ValueError, OSError, subprocess.SubprocessError) as exc:
                         problems.append(f"#{number}: {exc}")
                 for return_path in returns:
                     try:
-                        doc = _return_at_head(return_path, repo, scope)
-                        if doc["role"] == "afs-verifier" and doc.get("verdict") != "pass":
-                            raise ValueError("verifier return is not a pass")
+                        doc, diagnostics = _return_at_head(return_path, repo, number)
+                        for diagnostic in diagnostics:
+                            print(f"::notice::{diagnostic}")
+                        outcome_problem = _role_outcome_problem(doc)
+                        if outcome_problem:
+                            raise ValueError(outcome_problem)
+                        owner_pr = _return_pr_number(doc, repo)
+                        if owner_pr is not None and owner_pr not in landed:
+                            raise ValueError(f"owning PR #{owner_pr} is missing from completed evidence")
+                        candidates = [landed[owner_pr]] if owner_pr is not None else list(landed.values())
+                        if not any(_return_in_commit(_return_path(return_path), doc, commit)
+                                   for commit in candidates):
+                            raise ValueError(f"no cited landed PR contains this role return")
                     except (ValueError, OSError, subprocess.SubprocessError) as exc:
                         problems.append(f"#{number}: {exc}")
             elif disposition == "superseded":
@@ -265,6 +343,12 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                         replacement_issue = gh(f"repos/{repo}/issues/{replacement}")
                         if replacement_issue.get("pull_request"):
                             raise ValueError(f"replacement #{replacement} is not an issue")
+                        if replacement_issue.get("state") != "closed" or \
+                                replacement_issue.get("state_reason") != "completed":
+                            raise ValueError(f"replacement #{replacement} is not completed")
+                        replacement_entry = by_number.get(replacement)
+                        if replacement_entry and replacement_entry.get("disposition") != "completed":
+                            raise ValueError(f"replacement #{replacement} lacks a completed disposition")
                     except (AttributeError, ValueError) as exc:
                         problems.append(f"#{number}: invalid replacement issue #{replacement}: {exc}")
                 failure = item.get("failure")
@@ -275,7 +359,7 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                     failed_pull = _pull(repo, failure["pull_request"])
                     if failed_pull.get("state") != "closed" or failed_pull.get("merged_at"):
                         raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged")
-                    _failed_verifier_return(repo, failure["pull_request"], failure.get("return"), failed_pull, scope)
+                    _failed_role_return(repo, number, failure["pull_request"], failure.get("return"), failed_pull)
                 except (ValueError, OSError, subprocess.SubprocessError) as exc:
                     problems.append(f"#{number}: {exc}")
             elif disposition == "retained-open":
