@@ -12,7 +12,10 @@ An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.
 `validate.py` in the same workflow. If a later run supersedes that return, a schema-valid committed
 version in this PR's history may establish attribution for the same ticket/role and this exact PR.
 That proves attribution only, not a passing verdict. A return contract pasted into the PR description (instead of
-linked) produces a warning, not a failure, because later sessions cannot edit the description.
+linked) produces a warning, not a failure, because later sessions cannot edit the description. For
+finished PR-bearing returns changed against this PR's base, this event check also requires `pr:` to
+identify this PR; inherited stack returns are outside that diff. Neither check proves worker completion
+or merge authorization.
 Needs git, PyYAML and jsonschema.
 """
 import argparse
@@ -28,6 +31,10 @@ from jsonschema import Draft202012Validator
 
 AGENT_AUTHORS = {"Copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
 CLOSES = re.compile(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)")
+PR_REFERENCE = re.compile(
+    r"^(?:(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<ref>[1-9][0-9]*)|"
+    r"https?://(?P<host>[^/\s?#]+)/(?P<url_repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/"
+    r"(?P<url_ref>[1-9][0-9]*)/?)$")
 
 
 def is_agent_pr(pr):
@@ -51,6 +58,33 @@ def changed_return_files(base, root="."):
     out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...HEAD", "--",
                           ".migration/returns/"], capture_output=True, text=True, check=True).stdout
     return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
+
+
+def pr_identity(value):
+    """Return a normalized repository/number pair for a PR reference, without network lookup."""
+    if not isinstance(value, str):
+        return None
+    match = PR_REFERENCE.fullmatch(value)
+    if not match:
+        return None
+    return ((match.group("repo") or match.group("url_repo")).lower(),
+            int(match.group("ref") or match.group("url_ref")),
+            match.group("host").lower() if match.group("host") else None)
+
+
+def identifies_same_pr(actual, expected):
+    return (actual is not None and expected is not None and actual[:2] == expected[:2] and
+            (actual[2] is None or actual[2] == expected[2]))
+
+
+def roles_with_pr():
+    schema = pathlib.Path(__file__).resolve().parent.parent / "schemas/return.schema.json"
+    doc = json.loads(schema.read_text(encoding="utf-8"))
+    return {
+        clause["if"]["properties"]["role"]["const"]
+        for clause in doc.get("allOf", [])
+        if "pr" in clause.get("then", {}).get("required", [])
+    }
 
 
 def github_parent(number):
@@ -121,20 +155,21 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
     issues = set(CLOSES.findall(body or ""))
+    found = set()
+    current = {}
+    for f in files:
+        try:
+            doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        current[f] = doc
+        m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
+        if m:
+            found.add(m.group(1))
+    accepted = set()
     if issues:
-        found = set()
-        current = {}
-        for f in files:
-            try:
-                doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-            if not isinstance(doc, dict):
-                continue
-            current[f] = doc
-            m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
-            if m:
-                found.add(m.group(1))
         # A Verifier or a fix runs on its own issue, a sub-issue of the ticket (agents/README.md): its PR closes
         # that issue while the return file names the ticket. Either counts.
         accepted = issues | {p for p in (parent_of(n) for n in issues) if p}
@@ -149,6 +184,24 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
                            f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
                            f"{', '.join(files)})"
                            + (f"; rejected historical evidence: {'; '.join(rejected)}" if rejected else ""))
+    if pr_url:
+        expected = pr_identity(pr_url)
+        pr_roles = roles_with_pr()
+        mismatches = []
+        for path, doc in current.items():
+            if (doc.get("role") not in pr_roles or
+                    doc.get("handoff") not in (None, "", "none")):
+                continue
+            if not identifies_same_pr(pr_identity(doc.get("pr")), expected):
+                mismatches.append(f"{path} has pr: {doc.get('pr')!r}")
+        if mismatches:
+            if base and accepted:
+                proof, rejected = superseded_attribution(base, current, accepted, pr_url, root)
+                if proof:
+                    return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
+                                  "Historical attribution is not a passing verdict; current gates still apply.")
+            return False, (f"completed return(s) changed by this PR must identify this PR ({pr_url}); "
+                           f"update {'; '.join(mismatches)}")
     return True, f"return file(s): {', '.join(files)}"
 
 
@@ -177,7 +230,7 @@ def main():
     if ok:
         print(msg)
         return 0
-    print(f"::error title=Return file missing::{msg}. See afs-migration-contract → Return files.")
+    print(f"::error title=Return contract invalid::{msg}. See afs-migration-contract → Return files.")
     return 1
 
 

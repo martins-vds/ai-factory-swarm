@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -160,6 +161,46 @@ class ReturnFileTest(unittest.TestCase):
         r = self.validate({"TC-02.afs-migrator.yaml": historical}, legacy=["TC-02.afs-migrator.yaml"])
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_committed_null_pr_history_is_grandfathered_until_the_return_changes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            migration = root / ".migration"
+            ret = migration / "returns/TC-02.afs-migrator.yaml"
+            ret.parent.mkdir(parents=True)
+            ret.write_text(RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null"))
+            shutil.copy(ROOT / "templates/migration/profile.yaml", migration / "profile.yaml")
+            (migration / "evidence/runs").mkdir(parents=True)
+            (migration / "evidence/runs/TC-02.md").write_text(
+                "# Run journal\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| 2026-11-02T00:00:00+00:00 | mutation | 0 | 1.0 | `" + self.MUT +
+                "` | `abc` |  | gate=mutation score=1.000 threshold=0.8 |\n"
+            )
+            (migration / "harness").mkdir()
+            (migration / "harness/legacy-returns.json").write_text(
+                '{"rule":"ADR-0017","returns":[]}', encoding="utf-8")
+            git(root, "init", "-q", "-b", "main")
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "historical return")
+
+            harness = migration / "harness"
+            (harness / "tools").mkdir()
+            shutil.copytree(ROOT / "schemas", harness / "schemas")
+            for name in ("validate.py", "afs_trace.py"):
+                shutil.copy(ROOT / "tools" / name, harness / "tools" / name)
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "install PR rule")
+            validate = lambda: subprocess.run(
+                [sys.executable, str(harness / "tools/validate.py"), str(migration)],
+                capture_output=True, text=True,
+            )
+            self.assertNotIn("finished return requires a meaningful PR reference", validate().stderr)
+
+            ret.write_text(ret.read_text().replace("new_tickets: []", "new_tickets: [o/r#23]"))
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "update return")
+            self.assertIn("finished return requires a meaningful PR reference", validate().stderr)
+
     def test_validate_rejects_missing_keys_bad_gates_and_wrong_names(self):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN.replace("handoff: null\n", "")})
         self.assertIn("'handoff' is a required property", r.stderr)
@@ -272,7 +313,7 @@ class SupersededReturnTest(unittest.TestCase):
         self.commit(RETURN.replace("#38", "#40"))
         ok, message = self.check()
         self.assertFalse(ok)
-        self.assertIn("does not identify this PR", message)
+        self.assertIn("must identify this PR", message)
 
     def test_stacked_pr_does_not_revalidate_inherited_return_identity(self):
         self.commit(RETURN)

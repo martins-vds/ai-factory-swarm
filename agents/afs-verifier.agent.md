@@ -54,6 +54,8 @@ later runs can't invalidate it; a claim you dispute is a finding.
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
 (`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
+If your initial WIP return uses `pr: null`, replace it with this return's owning PR as `owner/repo#N` or a
+canonical PR URL and commit the update before finishing.
 ```yaml
 pr: <link>
 verdict: <pass | changes-required | blocked>
