@@ -141,9 +141,18 @@ class BootstrapTest(unittest.TestCase):
         self.assertTrue(any("pip install" in cmd and {"pyyaml", "jsonschema"} <= set(cmd.split())
                             for cmd in installs))
         closure = yaml.safe_load((self.target / ".github/workflows/afs-map-fog.yml").read_text())["jobs"]["rewalk"]
+        self.assertEqual(closure["permissions"], {"issues": "write", "pull-requests": "read", "contents": "read"})
+        self.assertIn("github.event.repository.default_branch", closure["steps"][0]["with"]["ref"])
         self.assertEqual(closure["steps"][0]["with"]["fetch-depth"], 0)
         self.assertTrue(any("pip install" in s.get("run", "") and
                             {"pyyaml", "jsonschema"} <= set(s["run"].split()) for s in closure["steps"]))
+        reconciliation = next(i for i, step in enumerate(closure["steps"])
+                              if "ticket_guard.py" in step.get("run", ""))
+        returns = next(i for i, step in enumerate(closure["steps"])
+                       if "check_slice_returns.py" in step.get("run", ""))
+        self.assertLess(reconciliation, returns)
+        self.assertIn("--reconcile-epic", closure["steps"][reconciliation]["run"])
+        self.assertIn("--reopen", closure["steps"][reconciliation]["run"])
         # ADR-0018: the workflows' Python is the profile's declared python-X.Y, not a harness default.
         prof = yaml.safe_load((self.target / ".migration/profile.yaml").read_text())
         want = next(s.split("-", 1)[1] for s in prof["target"]["stacks"]["backend"] if s.startswith("python-"))

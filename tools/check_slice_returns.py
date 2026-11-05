@@ -5,8 +5,8 @@ The return-contract check (check_return_contract.py) runs on agent pull requests
 (an agent run locally, a ticket finished by hand) is never checked. The slice epic is where all of a
 slice's tickets meet, so this check runs when the epic closes:
 
-  * every sub-issue of the epic is closed (an open ticket means the slice isn't done);
-  * every sub-issue closed as completed has a return file, `.migration/returns/<ticket>.<role>.yaml` with
+  * every in-scope descendant of the epic is closed (an open ticket means the slice isn't done);
+  * every in-scope descendant closed as completed has a return file, `.migration/returns/<ticket>.<role>.yaml` with
     `issue: <owner>/<repo>#<n>`. A ticket closed as "not planned" needs none.
 
 Tickets closed before this tool was first committed to the repo are exempt (the rule didn't exist yet);
@@ -33,6 +33,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.dont_write_bytecode = True       # installed harness files are drift-checked (check_installed.py)
 sys.path.insert(0, str(HERE))
 import fog_rewalk  # noqa: E402
+from ticket_guard import descendants  # noqa: E402
 
 SELF = ".migration/harness/tools/check_slice_returns.py"
 VALIDATOR = Draft202012Validator(json.loads((HERE.parent / "schemas/return.schema.json").read_text(encoding="utf-8")))
@@ -158,13 +159,7 @@ def main(argv=None):
     if not fog_rewalk.is_slice_epic(a.epic, [lbl["name"] for lbl in epic.get("labels", [])]):
         print(f"#{a.epic} is not a slice epic; nothing to check.")
         return 0
-    subs, page = [], 1
-    while True:
-        batch = fog_rewalk.gh(f"{R}/issues/{a.epic}/sub_issues?per_page=100&page={page}") or []
-        subs += batch
-        if len(batch) < 100:
-            break
-        page += 1
+    subs = list(descendants(a.repo, a.epic, gh_func=fog_rewalk.gh).values())
     since = rule_since()
     current = current_returns()
     returned = {doc["issue"] for doc in current.values()}

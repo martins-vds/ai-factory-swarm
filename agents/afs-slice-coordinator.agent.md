@@ -46,6 +46,24 @@ slice.
    with `side=target` on `main` (and `side=source` if `check_graph_fresh.py` says so), merge its PR, and
    confirm `python .migration/harness/tools/check_graph_fresh.py --require source,target` passes. Remote
    sessions can't run workflows, so this is the dispatcher's step.
+6. **Ticket reconciliation (ADR-0030), before coordinator completion or closing the slice epic.** After
+   the work has reached `main`, ensure every related work, fix, verifier and bootstrap issue is linked
+   beneath the slice epic, then enumerate its descendants; do not include unrelated slices or
+   decision-map/research issues. For
+   each issue, review the landing and role evidence, then record exactly one disposition in
+   `.migration/evidence/ticket-reconciliation/<epic>.yaml`: `completed` with landing PR(s) and committed
+   role return(s), `superseded` with a replacement issue plus the closed-unmerged failure PR and that
+   role's own failed return, or `retained-open` with actual outstanding work and blocker. A completed
+   return must identify this issue directly or through same-path, same-ticket/role committed history; its
+   owning PR must be cited and contain that return. A closed-unmerged PR counts as completed only when
+   its exact head is in `main` ancestry; a later carrier PR may provide that landing. A return file, green
+   check or closed PR alone is not landing or acceptance evidence.
+   Preserve unchanged pre-rule null-PR returns only through the validator's existing Git-history proof,
+   with an exact snapshot in a cited landed PR and a passing role outcome; never rewrite inherited outputs.
+   Commit the report on `main` through human review. The AFS map-fog workflow checks it before the
+   existing return-file gate; missing or invalid reconciliation reopens the epic and suppresses fog
+   re-walk. The checker never closes work issues. A retained-open descendant remains open and continues
+   to block epic closure under ADR-0024.
 
 ## Rules
 - **Parallel dispatch, path check:** before dispatching tickets that run at the same time, compare
@@ -57,6 +75,8 @@ slice.
   stacked-PR CI. Then merge each updated base into its stacked PR's head and push to trigger fresh
   checks; updating only the base or rerunning the old workflow is not enough (agents/README.md).
 - Never accept a bare "done". Re-read the evidence (or re-run a gate through `afs-run`).
+- Never infer issue closure from a worker return or a merged PR. Review the report and use the
+  coordinator's authorized GitHub actions to close completed or superseded issues; never close retained-open work.
 - Hold ticket ids and paths in context, not code or logs.
 - Same ticket fails twice after honest attempts → escalate to the Program Orchestrator.
 

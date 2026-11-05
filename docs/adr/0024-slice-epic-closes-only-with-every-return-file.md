@@ -18,6 +18,10 @@ The slice epic is where all of a slice's tickets meet, and closing it is the acc
 moment to count.
 
 ## Decision
+- **Ticket disposition first (ADR-0030).** Before checking return files, the AFS map fog workflow requires
+  committed, evidence-backed dispositions for all in-scope descendants of the slice epic. Missing or
+  invalid reconciliation reopens the epic and suppresses the fog re-walk. This does not replace the
+  return-file check below or allow an open child to pass it.
 - **`check_slice_returns.py`**, run by the AFS map fog workflow when a slice epic closes, before the fog
   re-walk:
   - every sub-issue of the epic must be closed;
