@@ -221,6 +221,8 @@ def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None
             current_parent = _parent_issue_number(repo, current_number)
         except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
             return False, relevant, [f"current return issue #{current_number} parent is unavailable: {exc}"]
+        if current_parent == issue_number:
+            return False, False, []
         if current_parent != parent_number:
             return False, relevant, ["current return issue is not the parent or a sibling of the child"]
         current_work_issues = {current_number}

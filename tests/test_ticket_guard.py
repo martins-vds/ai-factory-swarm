@@ -202,7 +202,10 @@ quirk_tickets: []
                  "returns": [path.relative_to(self.root).as_posix()]}
         with mock.patch.object(validate, "HERE", installed_tools):
             self.assertEqual(validate.pre_rule_null_pr(path, self.root / ".migration"), rule and not changed)
-            return self.run_reconciliation([issue], {101: self.pull(101, head=owner, merged=True)})
+            return self.run_reconciliation(
+                [issue], {101: self.pull(101, head=owner, merged=True)},
+                issue_details={1: {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}},
+            )
 
     def test_completed_unchanged_null_pr_return_retains_existing_historical_exemption(self):
         result, output, _ = self.historical_null_pr_return()
@@ -469,6 +472,32 @@ handoff: none
         )
         self.assertEqual(result, 1, output)
         self.assertIn("PR #103 is still open", output)
+
+    def test_ordinary_history_accepts_canonical_ticket_with_real_epic_parent(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        canonical = self.RETURN.replace("pr: o/r#101", "pr: o/r#102")
+        (self.root / path).write_text(canonical, encoding="utf-8")
+        canonical_head = self.commit("canonical ticket return")
+        current_child = self.RETURN.replace("issue: o/r#1", "issue: o/r#3").replace(
+            "pr: o/r#101", "pr: o/r#103")
+        (self.root / path).write_text(current_child, encoding="utf-8")
+        current_head = self.commit("sub-issue re-verification")
+        issue = {"number": 1, "disposition": "completed", "pull_requests": [103], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {103: self.pull(103, head=current_head, merged=True, body="Fixes #3")},
+            labels=[{"number": 1, "title": "canonical", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={
+                1: {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"},
+                3: {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"},
+            },
+        )
+        self.assertEqual(result, 0, output)
+        self.assertIn("Historical attribution is not a passing verdict", output)
+        self.assertTrue(canonical_head)
 
     def test_generic_history_cannot_bypass_parent_child_pr_proof(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")

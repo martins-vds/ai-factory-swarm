@@ -408,6 +408,17 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
         self.assertIn("does not close child issue #2", output.getvalue())
 
+    def test_unavailable_parent_relationship_blocks_generic_history(self):
+        child_return = RETURN.replace("o/r#1\n", "o/r#2\n").replace("pr: o/r#10", "pr: o/r#12")
+        self.commit(child_return, "historical child return")
+        current_return = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#13")
+        self.commit(current_return, "current parent-owned return")
+
+        with mock.patch.object(ticket_guard, "_parent_issue_number", side_effect=ValueError("API unavailable")):
+            attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, csr.current_returns(), REPO)
+        self.assertEqual(attributed, set())
+        self.assertTrue(any("parent relationship could not be verified" in item for item in diagnostics))
+
     def test_parent_ticket_continuation_rejects_a_failed_current_role_outcome(self):
         self.commit(RETURN, "parent-owned failed verifier return")
         current = csr.current_returns()
@@ -487,6 +498,41 @@ class HistoricalAttributionTest(unittest.TestCase):
             attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
         self.assertEqual(attributed, {"o/r#2"}, diagnostics)
         self.assertTrue(any("verified by current PR #13 and child PR #12" in item for item in diagnostics))
+
+    def test_ordinary_history_survives_real_parent_metadata_on_canonical_and_current_child(self):
+        canonical = RETURN.replace("pr: o/r#10", "pr: o/r#12")
+        canonical_head = self.commit(canonical, "canonical issue return")
+        current_child = RETURN.replace("changes-required", "pass").replace("o/r#1\n", "o/r#3\n") \
+            .replace("pr: o/r#10", "pr: o/r#13")
+        current_head = self.commit(current_child, "current child re-verification")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/99":
+                return {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]}
+            if endpoint == "repos/o/r/issues/99/sub_issues?per_page=100&page=1":
+                return [sub(1)]
+            if endpoint == "repos/o/r/issues/1/sub_issues?per_page=100&page=1":
+                return []
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
+            if endpoint == "repos/o/r/issues/3":
+                return {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": canonical_head, "head": {"sha": canonical_head}, "body": "Fixes #1"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": current_head, "head": {"sha": current_head}, "body": "Fixes #3"}
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                    mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                    contextlib.redirect_stdout(output):
+                result = csr.main(["--repo", REPO, "--epic", "99"])
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertIn("superseded attribution:", output.getvalue())
 
     def test_malformed_intermediate_revision_does_not_hide_valid_ancestry(self):
         old = self.commit(RETURN)

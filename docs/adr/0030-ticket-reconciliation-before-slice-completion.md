@@ -26,7 +26,10 @@ related issue tree is stale.
     names a sibling must have the same verified direct parent. The current return must match its committed
     HEAD snapshot, and its own cited owning PR must contain that exact snapshot in default-branch history;
     historical attribution alone never proves the current result. This supports a correction carried by a
-    later PR without treating a closed PR as proof. Applicable outcomes are checked against their role
+    later PR without treating a closed PR as proof. Ordinary same-path supersession remains distinct: a
+    historical return that directly identifies the reconciled issue may establish its attribution even if
+    that issue is itself below the slice epic and the latest return names its own child issue. Applicable
+    outcomes are checked against their role
     contracts: Verifier returns must pass, Bootstrapper validation must explicitly pass (including
     pass-with-limitations), Migrator gates must show passing outcomes with no outstanding handoff (`none`
     means no handoff, and contract-permitted reasoned `n/a` is valid for non-applicable measured gates),

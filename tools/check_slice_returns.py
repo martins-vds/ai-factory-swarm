@@ -108,10 +108,13 @@ def superseded_attribution(required, current, repo=None):
         committed = git("show", f"HEAD:{path}")
         if valid_return(committed, path) != latest:
             continue
+        latest_match = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([1-9][0-9]*)", latest["issue"])
+        latest_issue_number = int(latest_match[1]) if latest_match else None
         candidates = {
             issue for issue in required - found
             if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]
-            and (not repo or parent_numbers.get(issue) is None)
+            and parent_numbers.get(issue) != "unavailable"
+            and (not repo or parent_numbers.get(issue) != latest_issue_number)
         }
         if not candidates:
             continue
