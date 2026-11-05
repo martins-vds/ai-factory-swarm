@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -71,6 +72,23 @@ class ReturnFileTest(unittest.TestCase):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run(), self.GATES)
         self.assertEqual(self.errors(r), [])
 
+    def test_finished_return_requires_a_meaningful_pr_reference(self):
+        for text in (RETURN.replace("martins-vds/ai-factory-pilot-target#38", "null"),
+                     RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38\n", ""),
+                     RETURN.replace("martins-vds/ai-factory-pilot-target#38", "work in progress")):
+            with self.subTest(pr=text.split("pr:", 1)[1].splitlines()[0] if "pr:" in text else "missing"):
+                r = self.validate({"TC-02.afs-migrator.yaml": text}, self.mutation_run(), self.GATES)
+                self.assertIn("finished return requires a meaningful PR reference", r.stderr)
+                self.assertIn("fill `pr:` before finishing", r.stderr)
+
+    def test_roles_without_a_pr_contract_do_not_need_pr_attribution(self):
+        orchestrator = (
+            "role: afs-program-orchestrator\nticket: TC-02\nissue: martins-vds/ai-factory-pilot-target#22\n"
+            "phase: 5\ndecisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n"
+        )
+        r = self.validate({"TC-02.afs-program-orchestrator.yaml": orchestrator})
+        self.assertEqual(self.errors(r), [])
+
     def test_a_later_role_cannot_invalidate_a_committed_return(self):
         """Pilot HR-04C: the Verifier's failing runs appended to the shared journal must not break the
         Migrator's committed return; a return's score is checked as of its own last commit."""
@@ -132,13 +150,56 @@ class ReturnFileTest(unittest.TestCase):
 
     def test_null_gates_are_fine_with_a_handoff(self):
         text = (RETURN.replace("mutation_changed: 1.0", "mutation_changed: null")
+                .replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null")
                 .replace("handoff: null", "handoff: .migration/handoffs/TC-02.md"))
         r = self.validate({"TC-02.afs-migrator.yaml": text})
         self.assertNotIn("in a finished return", r.stderr)
+        self.assertNotIn("finished return requires a meaningful PR reference", r.stderr)
 
     def test_legacy_returns_are_exempt(self):
-        r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, legacy=["TC-02.afs-migrator.yaml"])
+        historical = RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null")
+        r = self.validate({"TC-02.afs-migrator.yaml": historical}, legacy=["TC-02.afs-migrator.yaml"])
         self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_committed_null_pr_history_is_grandfathered_until_the_return_changes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            migration = root / ".migration"
+            ret = migration / "returns/TC-02.afs-migrator.yaml"
+            ret.parent.mkdir(parents=True)
+            ret.write_text(RETURN.replace("pr: martins-vds/ai-factory-pilot-target#38", "pr: null"))
+            shutil.copy(ROOT / "templates/migration/profile.yaml", migration / "profile.yaml")
+            (migration / "evidence/runs").mkdir(parents=True)
+            (migration / "evidence/runs/TC-02.md").write_text(
+                "# Run journal\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| 2026-11-02T00:00:00+00:00 | mutation | 0 | 1.0 | `" + self.MUT +
+                "` | `abc` |  | gate=mutation score=1.000 threshold=0.8 |\n"
+            )
+            (migration / "harness").mkdir()
+            (migration / "harness/legacy-returns.json").write_text(
+                '{"rule":"ADR-0017","returns":[]}', encoding="utf-8")
+            git(root, "init", "-q", "-b", "main")
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "historical return")
+
+            harness = migration / "harness"
+            (harness / "tools").mkdir()
+            shutil.copytree(ROOT / "schemas", harness / "schemas")
+            for name in ("validate.py", "afs_trace.py"):
+                shutil.copy(ROOT / "tools" / name, harness / "tools" / name)
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "install PR rule")
+            validate = lambda: subprocess.run(
+                [sys.executable, str(harness / "tools/validate.py"), str(migration)],
+                capture_output=True, text=True,
+            )
+            self.assertNotIn("finished return requires a meaningful PR reference", validate().stderr)
+
+            ret.write_text(ret.read_text().replace("new_tickets: []", "new_tickets: [o/r#23]"))
+            git(root, "add", "-A")
+            git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "update return")
+            self.assertIn("finished return requires a meaningful PR reference", validate().stderr)
 
     def test_validate_rejects_missing_keys_bad_gates_and_wrong_names(self):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN.replace("handoff: null\n", "")})
@@ -221,6 +282,24 @@ class SupersededReturnTest(unittest.TestCase):
         return crc.check(body, crc.changed_return_files("main", self.repo), self.repo,
                          base="main", pr_url=self.PR, **kwargs)
 
+    def revision(self, ref):
+        return subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", ref], text=True).strip()
+
+    def actions_event_result(self, head, base):
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "head": {"ref": "copilot/work", "sha": head},
+            "base": {"ref": "main", "sha": base},
+            "body": "Fixes #22", "html_url": self.PR,
+        }}), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"),
+             "--base", "main", "--event", str(event)], cwd=self.repo,
+            env={**os.environ, "GITHUB_REPOSITORY": ""},
+            capture_output=True, text=True,
+        )
+
     def test_superseded_return_preserves_this_prs_attribution(self):
         self.commit(RETURN)
         self.commit(self.LATEST)
@@ -237,7 +316,9 @@ class SupersededReturnTest(unittest.TestCase):
         self.commit(self.LATEST)
         event = self.repo / "event.json"
         event.write_text(json.dumps({"pull_request": {
-            "head": {"ref": "copilot/work"}, "body": "Fixes #22", "html_url": self.PR,
+            "head": {"ref": "copilot/work", "sha": self.revision("HEAD")},
+            "base": {"ref": "main", "sha": self.revision("main")},
+            "body": "Fixes #22", "html_url": self.PR,
         }}), encoding="utf-8")
         result = subprocess.run(
             [sys.executable, str(ROOT / "tools/check_return_contract.py"),
@@ -247,6 +328,170 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("superseded attribution", result.stdout)
         self.assertIn("AFS-TOOL check_return_contract.py exit=0", result.stderr)
+
+    def test_cli_fails_explicitly_when_event_shas_are_missing(self):
+        self.commit(RETURN)
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"pull_request": {
+            "head": {"ref": "copilot/work"}, "base": {"ref": "main"},
+            "body": "Fixes #22", "html_url": self.PR,
+        }}), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"),
+             "--base", "main", "--event", str(event)], cwd=self.repo,
+            env={**os.environ, "GITHUB_REPOSITORY": ""},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must include head.sha and base.sha", result.stdout)
+
+    def test_event_pr_must_match_the_completed_return_it_owns(self):
+        self.commit(RETURN.replace("#38", "#40"))
+        ok, message = self.check()
+        self.assertFalse(ok)
+        self.assertIn("must identify this PR", message)
+
+    def test_one_correct_return_does_not_attest_another_new_wrong_pr_return(self):
+        self.commit(RETURN)
+        other = self.repo / ".migration/returns/TC-03.afs-migrator.yaml"
+        other.write_text(RETURN.replace("TC-02", "TC-03").replace("#38", "#40"), encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "add another return directly on this PR")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-03.afs-migrator.yaml", message)
+
+    def test_superseded_proof_does_not_excuse_an_unrelated_new_wrong_pr_return(self):
+        self.commit(RETURN)
+        self.commit(self.LATEST)
+        other = self.repo / ".migration/returns/TC-03.afs-migrator.yaml"
+        other.write_text(RETURN.replace("TC-02", "TC-03").replace("#22", "#24").replace("#38", "#40"),
+                         encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "add unrelated return after superseding the first")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-03.afs-migrator.yaml", message)
+
+    def test_stacked_pr_does_not_revalidate_inherited_return_identity(self):
+        self.commit(RETURN)
+        git(self.repo, "branch", "work-base")
+        git(self.repo, "checkout", "-q", "-b", "copilot/verifier")
+        verifier_path = ".migration/returns/TC-02.afs-verifier.yaml"
+        verifier = (
+            "role: afs-verifier\nticket: TC-02\nissue: martins-vds/ai-factory-pilot-target#34\n"
+            "pr: martins-vds/ai-factory-pilot-target#61\nverdict: pass\n"
+            "gates: {build: 0, behavior: 0, idiom: 0, crap: 0, mutation_changed: 1.0, regression: 0}\n"
+            "evidence_logs: []\nfindings: []\ntests_added: []\nledger_issues: []\nquirk_tickets: []\n"
+        )
+        path = self.repo / verifier_path
+        path.write_text(verifier, encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "verifier return")
+        files = crc.changed_return_files("work-base", self.repo)
+        self.assertEqual(files, [verifier_path])
+        ok, message = crc.check(
+            "Fixes #34", files, self.repo, base="work-base",
+            pr_url="https://github.com/martins-vds/ai-factory-pilot-target/pull/61",
+        )
+        self.assertTrue(ok, message)
+
+    def test_default_branch_pr_preserves_a_merged_childs_original_pr(self):
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        ok, message = self.check()
+        self.assertTrue(ok, message)
+
+    def test_parent_edit_after_child_merge_is_not_mistaken_for_inheritance(self):
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        inherited = self.repo / self.PATH
+        inherited.write_text(inherited.read_text().replace("#61", "#62"), encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "change the child return on the parent PR")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-02.afs-migrator.yaml", message)
+
+    def test_actions_synthetic_merge_uses_event_head_for_owned_return_identity(self):
+        self.commit(RETURN.replace("#38", "#40"))
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must identify this PR", result.stdout)
+
+    def test_actions_synthetic_merge_accepts_correct_event_owned_return(self):
+        self.commit(RETURN)
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_actions_synthetic_merge_preserves_a_child_return_inherited_by_event_head(self):
+        base = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "main"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        head = subprocess.check_output(
+            ["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
+        git(self.repo, "checkout", "-q", "-b", "actions-test-merge", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "GitHub Actions test merge", "copilot/work")
+        result = self.actions_event_result(head, base)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_wrong_pr_cannot_borrow_history(self):
         self.commit(RETURN.replace("#38", "#40"))

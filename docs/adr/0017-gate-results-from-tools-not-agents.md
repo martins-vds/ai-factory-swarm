@@ -41,3 +41,26 @@ converted reports into the harness's format, every conversion would be a chance 
   too slow for every PR, so the journal check is what keeps it honest.
 - Adding a stack means adding an adapter in the harness (and naming it in the stack pack's gate
   commands), not instructing agents.
+
+## PR attribution
+
+The offline return validator also requires a meaningful PR reference on a finished return when its
+generated role contract has a `pr` field. A `owner/repo#N` reference or canonical PR URL is sufficient;
+the validator does not resolve it over the network. A handoff remains partial and may keep `pr: null`,
+and roles without a `pr` contract are unaffected.
+
+The PR-event contract check compares finished returns changed against that PR's base with the event PR.
+It uses the event's `base.sha` and `head.sha`, not the Actions synthetic merge checkout's `HEAD`, to
+identify changed files, current return contents, and reachable history. It treats a return as inherited
+only when the event-head history shows its content arrived unchanged from a merged second parent and no
+later first-parent commit changed that path. Superseded-attribution evidence is limited to the same
+return path; one return cannot attest another. If required event SHAs or merge ancestry are unavailable,
+the check fails rather than assuming ownership or inheritance. These metadata checks do not prove that the
+worker completed the work, that a PR exists or is merged, or that merging is authorized.
+
+For rollout, an unchanged null-PR return whose last change predates the commit introducing this rule
+remains historical and is not rewritten or treated as current work. A later edit to that return is
+checked normally. Returns in `.migration/harness/legacy-returns.json` retain their existing exemption;
+older returns not covered by either history rule or that list are not silently grandfathered. Detecting
+the rule-introduction commit requires local Git history that contains it; if that history is unavailable,
+the validator fails closed and the return needs attribution.

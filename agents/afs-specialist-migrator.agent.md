@@ -51,6 +51,9 @@ change in what users can do is a quirk or decision ticket.
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
 (`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
+An initial WIP return may use `pr: null` before the PR exists. Before finishing, replace it with this
+return's PR as `owner/repo#N` or a canonical PR URL and commit the update. If work is incomplete, record
+a handoff; its `pr` may remain null.
 ```yaml
 ticket: <link>
 specialty: <data | ui | messaging>
