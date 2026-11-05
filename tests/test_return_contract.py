@@ -315,6 +315,30 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("must identify this PR", message)
 
+    def test_one_correct_return_does_not_attest_another_new_wrong_pr_return(self):
+        self.commit(RETURN)
+        other = self.repo / ".migration/returns/TC-03.afs-migrator.yaml"
+        other.write_text(RETURN.replace("TC-02", "TC-03").replace("#38", "#40"), encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "add another return directly on this PR")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-03.afs-migrator.yaml", message)
+
+    def test_superseded_proof_does_not_excuse_an_unrelated_new_wrong_pr_return(self):
+        self.commit(RETURN)
+        self.commit(self.LATEST)
+        other = self.repo / ".migration/returns/TC-03.afs-migrator.yaml"
+        other.write_text(RETURN.replace("TC-02", "TC-03").replace("#22", "#24").replace("#38", "#40"),
+                         encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "add unrelated return after superseding the first")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-03.afs-migrator.yaml", message)
+
     def test_stacked_pr_does_not_revalidate_inherited_return_identity(self):
         self.commit(RETURN)
         git(self.repo, "branch", "work-base")
@@ -337,6 +361,50 @@ class SupersededReturnTest(unittest.TestCase):
             pr_url="https://github.com/martins-vds/ai-factory-pilot-target/pull/61",
         )
         self.assertTrue(ok, message)
+
+    def test_default_branch_pr_preserves_a_merged_childs_original_pr(self):
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        ok, message = self.check()
+        self.assertTrue(ok, message)
+
+    def test_parent_edit_after_child_merge_is_not_mistaken_for_inheritance(self):
+        git(self.repo, "checkout", "-q", "-b", "completed-child")
+        self.commit(RETURN.replace("#38", "#61"))
+        git(self.repo, "checkout", "-q", "copilot/work")
+        own = self.repo / ".migration/returns/TC-02.afs-program-orchestrator.yaml"
+        own.parent.mkdir(parents=True, exist_ok=True)
+        own.write_text(
+            "role: afs-program-orchestrator\nticket: TC-02\n"
+            "issue: martins-vds/ai-factory-pilot-target#22\nphase: 5\n"
+            "decisions: []\ndispatched: []\nawaiting_human: []\nnext_step: continue\n",
+            encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "coordinator owns only its own return")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-qm", "integrate completed child", "completed-child")
+        inherited = self.repo / self.PATH
+        inherited.write_text(inherited.read_text().replace("#61", "#62"), encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "change the child return on the parent PR")
+        ok, message = self.check()
+        self.assertFalse(ok, message)
+        self.assertIn("TC-02.afs-migrator.yaml", message)
 
     def test_wrong_pr_cannot_borrow_history(self):
         self.commit(RETURN.replace("#38", "#40"))

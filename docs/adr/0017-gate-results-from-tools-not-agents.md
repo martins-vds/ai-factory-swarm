@@ -49,10 +49,12 @@ generated role contract has a `pr` field. A `owner/repo#N` reference or canonica
 the validator does not resolve it over the network. A handoff remains partial and may keep `pr: null`,
 and roles without a `pr` contract are unaffected.
 
-The PR-event contract check compares a finished return's reference with the event PR only among return
-files changed against that PR's base. Returns inherited from a stacked base keep their original PR
-identity. These metadata checks do not prove that the worker completed the work, that a PR exists or is
-merged, or that merging is authorized.
+The PR-event contract check compares finished returns changed against that PR's base with the event PR.
+It treats a return as inherited only when Git history shows its content arrived unchanged from a merged
+second parent and no later first-parent commit changed that path. Superseded-attribution evidence is
+limited to the same return path; one return cannot attest another. If the required merge ancestry is
+unavailable, a mismatching return fails rather than being presumed inherited. These metadata checks do
+not prove that the worker completed the work, that a PR exists or is merged, or that merging is authorized.
 
 For rollout, an unchanged null-PR return whose last change predates the commit introducing this rule
 remains historical and is not rewritten or treated as current work. A later edit to that return is

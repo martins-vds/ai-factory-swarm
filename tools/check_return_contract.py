@@ -14,8 +14,9 @@ version in this PR's history may establish attribution for the same ticket/role 
 That proves attribution only, not a passing verdict. A return contract pasted into the PR description (instead of
 linked) produces a warning, not a failure, because later sessions cannot edit the description. For
 finished PR-bearing returns changed against this PR's base, this event check also requires `pr:` to
-identify this PR; inherited stack returns are outside that diff. Neither check proves worker completion
-or merge authorization.
+identify this PR unless first-parent merge history proves the file was inherited unchanged. Superseded
+attribution applies only to the same return path. Neither check proves worker completion or merge
+authorization.
 Needs git, PyYAML and jsonschema.
 """
 import argparse
@@ -75,6 +76,31 @@ def pr_identity(value):
 def identifies_same_pr(actual, expected):
     return (actual is not None and expected is not None and actual[:2] == expected[:2] and
             (actual[2] is None or actual[2] == expected[2]))
+
+
+def inherited_from_merge(base, path, root="."):
+    """Whether an unchanged return arrived on a merged side branch, not this PR's first-parent work."""
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    merges = git("rev-list", "--first-parent", "--merges", f"{base}..HEAD")
+    if merges is None:
+        return False
+    for merge in merges.splitlines():
+        parents = (git("rev-list", "--parents", "-n", "1", merge) or "").split()
+        if len(parents) != 3:
+            continue
+        _, first_parent, second_parent = parents
+        merge_blob = git("rev-parse", "--verify", f"{merge}:{path}")
+        first_blob = git("rev-parse", "--verify", f"{first_parent}:{path}")
+        second_blob = git("rev-parse", "--verify", f"{second_parent}:{path}")
+        if not merge_blob or not second_blob or merge_blob != second_blob or merge_blob == first_blob:
+            continue
+        later_changes = git("log", "--first-parent", "--format=%H", f"{merge}..HEAD", "--", path)
+        if later_changes == "":
+            return True
+    return False
 
 
 def roles_with_pr():
@@ -173,35 +199,42 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=
         # A Verifier or a fix runs on its own issue, a sub-issue of the ticket (agents/README.md): its PR closes
         # that issue while the return file names the ticket. Either counts.
         accepted = issues | {p for p in (parent_of(n) for n in issues) if p}
-        if not accepted & found:
-            rejected = []
-            if base and pr_url:
-                proof, rejected = superseded_attribution(base, current, accepted, pr_url, root)
-                if proof:
-                    return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
-                                  "Historical attribution is not a passing verdict; current gates still apply.")
-            return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
-                           f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
-                           f"{', '.join(files)})"
-                           + (f"; rejected historical evidence: {'; '.join(rejected)}" if rejected else ""))
+    mismatches = []
+    rejected_identity = []
     if pr_url:
         expected = pr_identity(pr_url)
         pr_roles = roles_with_pr()
-        mismatches = []
         for path, doc in current.items():
             if (doc.get("role") not in pr_roles or
                     doc.get("handoff") not in (None, "", "none")):
                 continue
             if not identifies_same_pr(pr_identity(doc.get("pr")), expected):
+                proof = None
+                if base and accepted:
+                    proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root)
+                    rejected_identity.extend(rejected)
+                inherited = bool(base and inherited_from_merge(base, path, root))
+                if proof or inherited:
+                    continue
                 mismatches.append(f"{path} has pr: {doc.get('pr')!r}")
-        if mismatches:
-            if base and accepted:
-                proof, rejected = superseded_attribution(base, current, accepted, pr_url, root)
-                if proof:
+    if issues and not accepted & found:
+        rejected = []
+        if base and pr_url:
+            for path, doc in current.items():
+                proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root)
+                if proof and not mismatches:
                     return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
                                   "Historical attribution is not a passing verdict; current gates still apply.")
-            return False, (f"completed return(s) changed by this PR must identify this PR ({pr_url}); "
-                           f"update {'; '.join(mismatches)}")
+        return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
+                       f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
+                       f"{', '.join(files)})"
+                       + (f"; rejected historical evidence: {'; '.join(rejected or rejected_identity)}"
+                          if rejected or rejected_identity else ""))
+    if mismatches:
+        rejected = "; ".join(rejected_identity)
+        return False, (f"completed return(s) changed by this PR must identify this PR ({pr_url}); "
+                       f"update {'; '.join(mismatches)}"
+                       + (f"; rejected historical evidence: {rejected}" if rejected else ""))
     return True, f"return file(s): {', '.join(files)}"
 
 
