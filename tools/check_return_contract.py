@@ -12,7 +12,11 @@ An agent PR must add or update at least one `.migration/returns/<ticket>.<role>.
 `validate.py` in the same workflow. If a later run supersedes that return, a schema-valid committed
 version in this PR's history may establish attribution for the same ticket/role and this exact PR.
 That proves attribution only, not a passing verdict. A return contract pasted into the PR description (instead of
-linked) produces a warning, not a failure, because later sessions cannot edit the description.
+linked) produces a warning, not a failure, because later sessions cannot edit the description. For
+finished PR-bearing returns changed against this PR's base, this event check also requires `pr:` to
+identify this PR unless first-parent merge history proves the file was inherited unchanged. Superseded
+attribution applies only to the same return path. Neither check proves worker completion or merge
+authorization.
 Needs git, PyYAML and jsonschema.
 """
 import argparse
@@ -28,6 +32,10 @@ from jsonschema import Draft202012Validator
 
 AGENT_AUTHORS = {"Copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
 CLOSES = re.compile(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)")
+PR_REFERENCE = re.compile(
+    r"^(?:(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<ref>[1-9][0-9]*)|"
+    r"https?://(?P<host>[^/\s?#]+)/(?P<url_repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/"
+    r"(?P<url_ref>[1-9][0-9]*)/?)$")
 
 
 def is_agent_pr(pr):
@@ -47,10 +55,62 @@ def pasted_contract(body):
     return False
 
 
-def changed_return_files(base, root="."):
-    out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...HEAD", "--",
+def changed_return_files(base, root=".", head="HEAD"):
+    out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...{head}", "--",
                           ".migration/returns/"], capture_output=True, text=True, check=True).stdout
     return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
+
+
+def pr_identity(value):
+    """Return a normalized repository/number pair for a PR reference, without network lookup."""
+    if not isinstance(value, str):
+        return None
+    match = PR_REFERENCE.fullmatch(value)
+    if not match:
+        return None
+    return ((match.group("repo") or match.group("url_repo")).lower(),
+            int(match.group("ref") or match.group("url_ref")),
+            match.group("host").lower() if match.group("host") else None)
+
+
+def identifies_same_pr(actual, expected):
+    return (actual is not None and expected is not None and actual[:2] == expected[:2] and
+            (actual[2] is None or actual[2] == expected[2]))
+
+
+def inherited_from_merge(base, path, root=".", head="HEAD"):
+    """Whether an unchanged return arrived on a merged side branch, not this PR's first-parent work."""
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    merges = git("rev-list", "--first-parent", "--merges", f"{base}..{head}")
+    if merges is None:
+        return False
+    for merge in merges.splitlines():
+        parents = (git("rev-list", "--parents", "-n", "1", merge) or "").split()
+        if len(parents) != 3:
+            continue
+        _, first_parent, second_parent = parents
+        merge_blob = git("rev-parse", "--verify", f"{merge}:{path}")
+        first_blob = git("rev-parse", "--verify", f"{first_parent}:{path}")
+        second_blob = git("rev-parse", "--verify", f"{second_parent}:{path}")
+        if not merge_blob or not second_blob or merge_blob != second_blob or merge_blob == first_blob:
+            continue
+        later_changes = git("log", "--first-parent", "--format=%H", f"{merge}..{head}", "--", path)
+        if later_changes == "":
+            return True
+    return False
+
+
+def roles_with_pr():
+    schema = pathlib.Path(__file__).resolve().parent.parent / "schemas/return.schema.json"
+    doc = json.loads(schema.read_text(encoding="utf-8"))
+    return {
+        clause["if"]["properties"]["role"]["const"]
+        for clause in doc.get("allOf", [])
+        if "pr" in clause.get("then", {}).get("required", [])
+    }
 
 
 def github_parent(number):
@@ -70,7 +130,7 @@ def github_parent(number):
     return m.group(1) if m else None
 
 
-def superseded_attribution(base, current, accepted, pr_url, root):
+def superseded_attribution(base, current, accepted, pr_url, root, head="HEAD"):
     """Find this PR's own valid return before a later run replaced its attribution."""
     identity = re.fullmatch(r"https?://[^/]+/([^/]+/[^/]+)/pull/(\d+)", pr_url.rstrip("/"))
     if not identity:
@@ -87,7 +147,7 @@ def superseded_attribution(base, current, accepted, pr_url, root):
             continue
         commits = subprocess.run(
             ["git", "-C", str(root), "log", "--format=%H", "--no-merges", "--diff-filter=AM",
-             f"{base}..HEAD", "--", path], capture_output=True, text=True, check=True,
+             f"{base}..{head}", "--", path], capture_output=True, text=True, check=True,
         ).stdout.splitlines()
         for commit in commits:
             text = subprocess.run(
@@ -116,39 +176,72 @@ def superseded_attribution(base, current, accepted, pr_url, root):
     return None, rejected
 
 
-def check(body, files, root=".", parent_of=lambda n: None, *, base=None, pr_url=None):
+def check(body, files, root=".", parent_of=lambda n: None, *, base=None, head="HEAD", pr_url=None):
     if not files:
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
     issues = set(CLOSES.findall(body or ""))
+    found = set()
+    current = {}
+    for f in files:
+        try:
+            if head == "HEAD":
+                text = pathlib.Path(root, f).read_text(encoding="utf-8")
+            else:
+                text = subprocess.run(
+                    ["git", "-C", str(root), "show", f"{head}:{f}"],
+                    capture_output=True, text=True, check=True,
+                ).stdout
+            doc = yaml.safe_load(text) or {}
+        except (OSError, yaml.YAMLError, subprocess.CalledProcessError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        current[f] = doc
+        m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
+        if m:
+            found.add(m.group(1))
+    accepted = set()
     if issues:
-        found = set()
-        current = {}
-        for f in files:
-            try:
-                doc = yaml.safe_load(pathlib.Path(root, f).read_text(encoding="utf-8")) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-            if not isinstance(doc, dict):
-                continue
-            current[f] = doc
-            m = re.search(r"#(\d+)$", str(doc.get("issue") or ""))
-            if m:
-                found.add(m.group(1))
         # A Verifier or a fix runs on its own issue, a sub-issue of the ticket (agents/README.md): its PR closes
         # that issue while the return file names the ticket. Either counts.
         accepted = issues | {p for p in (parent_of(n) for n in issues) if p}
-        if not accepted & found:
-            rejected = []
-            if base and pr_url:
-                proof, rejected = superseded_attribution(base, current, accepted, pr_url, root)
-                if proof:
+    mismatches = []
+    rejected_identity = []
+    if pr_url:
+        expected = pr_identity(pr_url)
+        pr_roles = roles_with_pr()
+        for path, doc in current.items():
+            if (doc.get("role") not in pr_roles or
+                    doc.get("handoff") not in (None, "", "none")):
+                continue
+            if not identifies_same_pr(pr_identity(doc.get("pr")), expected):
+                proof = None
+                if base and accepted:
+                    proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root, head)
+                    rejected_identity.extend(rejected)
+                inherited = bool(base and inherited_from_merge(base, path, root, head))
+                if proof or inherited:
+                    continue
+                mismatches.append(f"{path} has pr: {doc.get('pr')!r}")
+    if issues and not accepted & found:
+        rejected = []
+        if base and pr_url:
+            for path, doc in current.items():
+                proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root, head)
+                if proof and not mismatches:
                     return True, (f"return file(s): {', '.join(files)}; superseded attribution: {proof}. "
                                   "Historical attribution is not a passing verdict; current gates still apply.")
-            return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
-                           f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
-                           f"{', '.join(files)})"
-                           + (f"; rejected historical evidence: {'; '.join(rejected)}" if rejected else ""))
+        return False, (f"the PR closes #{', #'.join(sorted(issues))} but no changed return file has a "
+                       f"matching `issue:` (the issue, or the ticket it is a sub-issue of; files: "
+                       f"{', '.join(files)})"
+                       + (f"; rejected historical evidence: {'; '.join(rejected or rejected_identity)}"
+                          if rejected or rejected_identity else ""))
+    if mismatches:
+        rejected = "; ".join(rejected_identity)
+        return False, (f"completed return(s) changed by this PR must identify this PR ({pr_url}); "
+                       f"update {'; '.join(mismatches)}"
+                       + (f"; rejected historical evidence: {rejected}" if rejected else ""))
     return True, f"return file(s): {', '.join(files)}"
 
 
@@ -167,8 +260,32 @@ def main():
     if not is_agent_pr(pr):
         print(f"not an agent PR ({pr['head']['ref']}); skipped")
         return 0
-    ok, msg = check(pr.get("body") or "", changed_return_files(a.base), parent_of=github_parent,
-                    base=a.base, pr_url=pr.get("html_url"))
+    head = (pr.get("head") or {}).get("sha")
+    base = (pr.get("base") or {}).get("sha")
+    if not head or not base:
+        print("::error title=Return ownership context missing::PR event must include head.sha and base.sha; "
+              "cannot establish changed return ownership.")
+        return 1
+    for label, revision in (("head", head), ("base", base)):
+        exists = subprocess.run(
+            ["git", "-C", ".", "cat-file", "-e", f"{revision}^{{commit}}"],
+            capture_output=True,
+        )
+        if exists.returncode:
+            print(f"::error title=Return ownership context unavailable::Event {label} commit {revision} "
+                  "is not available locally; fetch full PR history and retry.")
+            return 1
+    configured_base = subprocess.run(
+        ["git", "-C", ".", "rev-parse", "--verify", f"{a.base}^{{commit}}"],
+        capture_output=True, text=True,
+    )
+    if configured_base.returncode or configured_base.stdout.strip() != base:
+        print(f"::error title=Return ownership context inconsistent::Configured --base {a.base!r} does not "
+              f"resolve to event base.sha {base}; refresh the event/base checkout and retry.")
+        return 1
+    files = changed_return_files(base, head=head)
+    ok, msg = check(pr.get("body") or "", files, parent_of=github_parent,
+                    base=base, head=head, pr_url=pr.get("html_url"))
     if pasted_contract(pr.get("body") or ""):
         # A warning, not a failure: a follow-up session cannot edit the description to fix it.
         print("::warning title=Return contract pasted into the PR description::Link to "
@@ -177,7 +294,7 @@ def main():
     if ok:
         print(msg)
         return 0
-    print(f"::error title=Return file missing::{msg}. See afs-migration-contract → Return files.")
+    print(f"::error title=Return contract invalid::{msg}. See afs-migration-contract → Return files.")
     return 1
 
 

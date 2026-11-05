@@ -11,9 +11,9 @@ Usage: validate.py <folder> [--schemas <dir>]
                        (ADR-0018) every evidence item exists, is committed (never .migration/runs/),
                        and a test id's symbol is still defined
   returns/*.yaml     → schemas/return.schema.json, plus: file name == `<ticket>.<role>.yaml`; and (ADR-0017)
-                       a finished return has no null gates, and each score equals the last mutation
-                       gate run's AFS-RESULT in evidence/runs/<ticket>.md (returns in
-                       harness/legacy-returns.json are exempt)
+                       a finished return has no null gates, each score equals the last mutation
+                       gate run's AFS-RESULT, and PR-bearing roles have a meaningful PR reference
+                       (legacy returns and unchanged null-PR history from before this rule are exempt)
   handoffs/*.md      → every `## Handoff — <role> · <UTC>` section has its required subsections
   quirks/*.md        → quirk drafts have Question, Evidence, Impact and Options sections
 Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
@@ -32,6 +32,7 @@ import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
 HERE = pathlib.Path(__file__).resolve().parent
+PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for rollout compatibility.
 
 
 def load_schema(schemas, name):
@@ -86,6 +87,51 @@ def check_markdown(folder, errors):
 
 SCORE_KEYS = {"mutation_changed", "mutation_full", "mutation_score"}
 NOT_RUN = re.compile(r"^n/a: \S")
+PR_REFERENCE = re.compile(
+    r"^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*|"
+    r"https?://[^/\s?#]+/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*/?)$")
+
+
+def roles_with_pr(validator):
+    """Roles whose generated return contract contains a PR field."""
+    return {
+        clause["if"]["properties"]["role"]["const"]
+        for clause in validator.schema.get("allOf", [])
+        if "pr" in clause.get("then", {}).get("required", [])
+    }
+
+
+def meaningful_pr_reference(value):
+    return isinstance(value, str) and PR_REFERENCE.fullmatch(value) is not None
+
+
+def pre_rule_null_pr(path, folder):
+    """Keep an unchanged null-PR return that predates this validator rule as historical output."""
+    def git(*args):
+        result = subprocess.run(["git", *args], cwd=folder, capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    top = git("rev-parse", "--show-toplevel")
+    if not top:
+        return False
+    top = pathlib.Path(top)
+    tool_path = pathlib.Path(os.path.relpath(HERE / "validate.py", top))
+    return_path = pathlib.Path(os.path.relpath(path.resolve(), top))
+
+    def git_from_top(*args):
+        result = subprocess.run(["git", *args], cwd=top, capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    if git_from_top("status", "--porcelain", "--", str(return_path)):
+        return False
+    rule_commit = git_from_top("log", "-1", "--format=%H", "-S", PR_ATTRIBUTION_RULE_V1, "--", str(tool_path))
+    return_commit = git_from_top("log", "-1", "--format=%H", "--", str(return_path))
+    if not rule_commit or not return_commit or return_commit == rule_commit:
+        return False
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", return_commit, rule_commit],
+        cwd=top, capture_output=True,
+    ).returncode == 0
 
 
 def cell(text, limit=400):
@@ -158,13 +204,17 @@ def journal_as_of(ret, journal):
     return read_journal(journal)[0] if journal.is_file() else []
 
 
-def check_return_evidence(folder, path, doc, profile, errors):
+def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
     """ADR-0017: a finished return reports every gate, and every score matches a gate run's AFS-RESULT."""
     ticket = doc.get("ticket")
     journal = folder / "evidence" / "runs" / f"{ticket}.md"
     rows = journal_as_of(path, journal)
     finished = doc.get("handoff") in (None, "", "none")
     if finished:
+        if (doc.get("role") in pr_roles and not meaningful_pr_reference(doc.get("pr")) and
+                not (doc.get("pr") is None and pre_rule_null_pr(path, folder))):
+            errors.append(f"{path}: finished return requires a meaningful PR reference; fill `pr:` before "
+                          "finishing (or record a handoff while work is incomplete)")
         for key, value in (doc.get("gates") or {}).items():
             if value is None:
                 errors.append(f"{path}: gates.{key} is null in a finished return; give the value, or "
@@ -264,6 +314,7 @@ def main():
     returns = folder / "returns"
     if returns.is_dir():
         validator = load_schema(schemas, "return.schema.json")
+        pr_roles = roles_with_pr(validator)
         profile = load_yaml(folder / "profile.yaml") if (folder / "profile.yaml").exists() else {}
         # Returns committed before ADR-0017, listed once by bootstrap; CI keeps the list unchanged.
         legacy_file = folder / "harness" / "legacy-returns.json"
@@ -272,7 +323,7 @@ def main():
             doc = check(validator, path, errors)
             checked += 1
             if isinstance(doc, dict) and doc.get("ticket") and path.name not in legacy:
-                check_return_evidence(folder, path, doc, profile, errors)
+                check_return_evidence(folder, path, doc, profile, pr_roles, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:
