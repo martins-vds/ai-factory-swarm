@@ -406,7 +406,7 @@ handoff: none
                                "https://api.github.com/repos/o/r/issues/1"}},
         )
         self.assertEqual(result, 1, output)
-        self.assertIn("does not close child issue #2", output)
+        self.assertIn("does not close its parent ticket or current child issue", output)
         result, output, _ = self.run_reconciliation(
             [issue], {102: self.pull(102, head=landed, merged=True, body="Fixes #2")},
             report_exists=False,
@@ -416,7 +416,7 @@ handoff: none
                                "https://api.github.com/repos/o/r/issues/3"}},
         )
         self.assertEqual(result, 1, output)
-        self.assertIn("not a child of return ticket #1", output)
+        self.assertIn("not the parent or a sibling of the child", output)
 
     def test_parent_ticket_return_accepts_same_path_supersession_with_cited_child_pr(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
@@ -427,20 +427,48 @@ handoff: none
                                                                            "verdict: changes-required")
         (self.root / path).write_text(failed, encoding="utf-8")
         failed_head = self.commit("failed child verifier return")
-        passed = self.RETURN.replace("pr: o/r#101", "pr: o/r#103")
+        passed = self.RETURN.replace("issue: o/r#1", "issue: o/r#3").replace("pr: o/r#101", "pr: o/r#103")
         (self.root / path).write_text(passed, encoding="utf-8")
         current_head = self.commit("current passing parent-owned return")
         issue = {"number": 2, "disposition": "completed", "pull_requests": [102, 103], "returns": [path]}
         result, output, _ = self.run_reconciliation(
             [issue], {
                 102: self.pull(102, head=failed_head, body="Fixes #2"),
-                103: self.pull(103, head=current_head, merged=True, body="Fixes #1"),
+                103: self.pull(103, head=current_head, merged=True, body="Fixes #3"),
+            },
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={
+                2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"},
+                3: {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"},
+            },
+        )
+        self.assertEqual(result, 0, output)
+
+    def test_parent_ticket_history_does_not_replace_an_unlanded_current_owner(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        failed = self.RETURN.replace("pr: o/r#101", "pr: o/r#102")
+        (self.root / path).write_text(failed, encoding="utf-8")
+        failed_head = self.commit("landed child return")
+        passed = self.RETURN.replace("pr: o/r#101", "pr: o/r#103")
+        (self.root / path).write_text(passed, encoding="utf-8")
+        self.commit("current pass from open owner")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [102, 103], "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {
+                102: self.pull(102, head=failed_head, body="Fixes #2"),
+                103: {"number": 103, "state": "open", "merged_at": None, "head": {"sha": "f" * 40},
+                      "body": "Fixes #1"},
             },
             labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
                      "labels": []}],
             issue_details={2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
         )
-        self.assertEqual(result, 0, output)
+        self.assertEqual(result, 1, output)
+        self.assertIn("PR #103 is still open", output)
 
     def test_generic_history_cannot_bypass_parent_child_pr_proof(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")

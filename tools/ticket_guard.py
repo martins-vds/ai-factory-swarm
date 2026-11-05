@@ -130,31 +130,11 @@ def _return_at_head(path, repo, issue_number, cited_prs=None):
     if match and f"{match[1]}/{match[2]}#{match[3]}" == expected:
         return doc, []
     if cited_prs is not None:
-        continuation_problems = []
-        try:
-            owner_pr = _return_pr_number(doc, repo, return_path=path)
-        except ValueError as exc:
-            owner_pr = None
-            continuation_problems.append(str(exc))
-        if owner_pr in cited_prs:
-            try:
-                _parent_ticket_return(repo, issue_number, path, doc)
-                return doc, [f"{path}: parent-ticket continuation verified through child issue #{issue_number} "
-                             f"and PR #{owner_pr}"]
-            except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
-                continuation_problems.append(str(exc))
-        elif owner_pr is not None:
-            continuation_problems.append(f"current owning PR #{owner_pr} is not among the cited landing PRs")
-        if _parent_ticket_history(repo, issue_number, path, doc, cited_prs, continuation_problems):
-            return doc, [f"{path}: parent-ticket continuation verified through same-path "
-                         f"ticket/role history for child issue #{issue_number}"]
-        try:
-            actual_parent = _parent_issue_number(repo, issue_number)
-        except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
-            raise ValueError(f"GitHub parent relationship for issue #{issue_number} is unavailable; "
-                             "generic history cannot establish parent-ticket attribution") from exc
-        if match and f"{match[1]}/{match[2]}".lower() == repo.lower() and \
-                actual_parent == int(match[3]):
+        attributed, relevant, continuation_problems = _parent_ticket_attribution(
+            repo, issue_number, path, doc, cited_prs)
+        if attributed:
+            return doc, [f"{path}: {'; '.join(continuation_problems)}"]
+        if relevant:
             detail = f": {'; '.join(continuation_problems)}" if continuation_problems else ""
             raise ValueError(f"parent-ticket continuation for issue #{issue_number} is not verified{detail}")
     try:
@@ -164,10 +144,8 @@ def _return_at_head(path, repo, issue_number, cited_prs=None):
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as exc:
         raise ValueError(f"return attribution history for {path} is unavailable: {exc}") from exc
     if expected not in attributed:
-        detail = f"; parent-ticket continuation evidence: {'; '.join(continuation_problems)}" \
-            if cited_prs is not None and continuation_problems else ""
         raise ValueError(f"return evidence {path} does not attribute to issue #{issue_number} "
-                         f"directly or through same-path ticket/role history{detail}")
+                         "directly or through same-path ticket/role history")
     return doc, diagnostics
 
 
@@ -222,52 +200,107 @@ def _parent_ticket_return(repo, issue_number, path, doc, *, pull=None, require_l
     return pull["number"]
 
 
-def _parent_ticket_history(repo, issue_number, path, current, cited_prs, problems=None):
-    outcome_problem = _role_outcome_problem(current)
-    if outcome_problem:
-        if problems is not None:
-            problems.append(f"current role outcome does not pass: {outcome_problem}")
-        return False
+def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None):
+    problems = []
     try:
         parent_number = _parent_issue_number(repo, issue_number)
-    except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
-        if problems is not None:
-            problems.append(f"GitHub parent relationship for issue #{issue_number} is unavailable")
-        return False
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+        return False, True, [f"GitHub parent relationship for issue #{issue_number} is unavailable: {exc}"]
     if parent_number is None:
-        if problems is not None:
-            problems.append(f"GitHub does not confirm issue #{issue_number} has a direct parent")
-        return False
+        return False, False, []
+    relevant = True
+    current_issue = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
+                                 current.get("issue", ""))
+    if not current_issue or f"{current_issue[1]}/{current_issue[2]}".lower() != repo.lower():
+        return False, relevant, ["current return does not name a same-repository issue"]
+    current_number = int(current_issue[3])
+    if current_number == parent_number:
+        current_work_issues = {issue_number, parent_number}
+    else:
+        try:
+            current_parent = _parent_issue_number(repo, current_number)
+        except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+            return False, relevant, [f"current return issue #{current_number} parent is unavailable: {exc}"]
+        if current_parent != parent_number:
+            return False, relevant, ["current return issue is not the parent or a sibling of the child"]
+        current_work_issues = {current_number}
+
     path = _return_path(path)
     try:
+        committed = _valid_return(git("show", f"HEAD:{path}"), path)
+    except ValueError as exc:
+        return False, True, [f"current return snapshot is unavailable at HEAD: {exc}"]
+    if committed != current:
+        return False, True, [f"current return at {path} differs from its committed HEAD snapshot"]
+    outcome_problem = _role_outcome_problem(current)
+    if outcome_problem:
+        return False, True, [f"current role outcome does not pass: {outcome_problem}"]
+    try:
+        current_pr = _return_pr_number(current, repo, return_path=path)
+    except ValueError as exc:
+        return False, True, [str(exc)]
+    if current_pr is None:
+        return False, True, ["current parent-ticket return has no owning PR"]
+    if cited_prs is not None and current_pr not in cited_prs:
+        return False, True, [f"current owning PR #{current_pr} is not among the cited landing PRs"]
+    try:
+        current_pull = _pull(repo, current_pr)
+        if not any(_pull_closes_issue(current_pull, repo, work_issue)
+                   for work_issue in current_work_issues):
+            return False, True, [f"current owning PR #{current_pr} does not close its parent ticket or "
+                                 "current child issue"]
+        current_commit = _landed_pull(repo, current_pr)
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+        return False, True, [f"current owning PR #{current_pr} has no verified landing: {exc}"]
+    if not _return_in_commit(path, current, current_commit):
+        return False, True, [f"current owning PR #{current_pr} does not contain the exact current return"]
+
+    try:
         commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path)
-    except ValueError:
-        return False
+    except ValueError as exc:
+        return False, True, [f"return history is unavailable: {exc}"]
+    candidates = [current]
     for commit in commits.splitlines():
         try:
             previous = _valid_return(git("show", f"{commit}:{path}"), path)
         except ValueError:
             continue
-        if not previous or any(previous.get(key) != current.get(key) for key in ("issue", "ticket", "role")):
+        if not previous or any(previous.get(key) != current.get(key) for key in ("ticket", "role")):
+            continue
+        candidates.append(previous)
+
+    parent_ref = _issue_ref(repo, parent_number)
+    for previous in candidates:
+        previous_issue = previous.get("issue")
+        if previous_issue not in {parent_ref, _issue_ref(repo, issue_number)}:
             continue
         try:
             owner_pr = _return_pr_number(previous, repo, return_path=path)
         except ValueError as exc:
-            if problems is not None:
-                problems.append(str(exc))
+            problems.append(str(exc))
             continue
-        if owner_pr not in cited_prs:
-            if problems is not None:
-                problems.append(f"historical child PR #{owner_pr} is not among the cited landing PRs")
+        if owner_pr is None:
+            problems.append("historical parent-ticket return has no owning PR")
+            continue
+        if cited_prs is not None and owner_pr not in cited_prs:
+            problems.append(f"historical child PR #{owner_pr} is not among the cited landing PRs")
             continue
         try:
-            _parent_ticket_return(repo, issue_number, path, previous, verified_parent=parent_number)
+            if previous_issue == parent_ref:
+                _parent_ticket_return(repo, issue_number, path, previous, verified_parent=parent_number)
+            else:
+                pull = _pull(repo, owner_pr)
+                if not _pull_closes_issue(pull, repo, issue_number):
+                    raise ValueError(f"historical PR #{owner_pr} does not close child issue #{issue_number}")
+                commit = _landed_pull(repo, owner_pr)
+                if not _return_in_commit(path, previous, commit):
+                    raise ValueError(f"historical PR #{owner_pr} does not contain its exact child return")
         except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
-            if problems is not None:
-                problems.append(str(exc))
+            problems.append(str(exc))
             continue
-        return True
-    return False
+        return True, relevant, [f"parent-ticket continuation verified by current PR #{current_pr} and "
+                                f"child PR #{owner_pr}"]
+    return False, relevant, problems or ["no landed parent-ticket return proves the child work"]
 
 
 def _pull(repo, number):

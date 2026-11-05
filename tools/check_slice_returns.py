@@ -108,13 +108,10 @@ def superseded_attribution(required, current, repo=None):
         committed = git("show", f"HEAD:{path}")
         if valid_return(committed, path) != latest:
             continue
-        latest_match = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([1-9][0-9]*)", latest["issue"])
-        parent_number = int(latest_match[1]) if latest_match else None
         candidates = {
             issue for issue in required - found
             if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]
-            and (not repo or (parent_numbers.get(issue) != "unavailable"
-                              and parent_numbers.get(issue) != parent_number))
+            and (not repo or parent_numbers.get(issue) is None)
         }
         if not candidates:
             continue
@@ -133,71 +130,22 @@ def superseded_attribution(required, current, repo=None):
             if not candidates:
                 break
     if repo:
-        from ticket_guard import _parent_ticket_return, _return_pr_number, _role_outcome_problem
-        for issue in sorted(required - found):
-            child_repo, child_number = issue.rsplit("#", 1)
-            if child_repo.lower() != repo.lower():
-                continue
-            try:
-                parent_numbers[issue] = _parent_issue_number(repo, int(child_number))
-            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
-                parent_numbers[issue] = "unavailable"
-
+        from ticket_guard import _parent_ticket_attribution
         for path, latest in current.items():
             path = path.resolve().relative_to(root).as_posix()
-            issue_match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
-                                      latest.get("issue", ""))
-            if not issue_match or f"{issue_match[1]}/{issue_match[2]}".lower() != repo.lower():
-                continue
-            children = [
-                (issue, int(issue.rsplit("#", 1)[1]), parent)
-                for issue, parent in parent_numbers.items()
-                if parent == int(issue_match[3])
-            ]
-            if not children:
-                continue
-            outcome_problem = _role_outcome_problem(latest)
-            if outcome_problem:
-                diagnostics.extend(f"parent-ticket continuation for {issue} rejected: current role outcome "
-                                   f"does not pass ({outcome_problem})" for issue, _, _ in children)
-                continue
-
-            candidates = [latest]
-            commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD",
-                          "--", path).splitlines()
-            for commit in commits:
-                previous = valid_return(git("show", f"{commit}:{path}"), path)
-                if (previous and all(previous.get(key) == latest.get(key)
-                                     for key in ("issue", "ticket", "role"))):
-                    candidates.append(previous)
-
-            for issue, child_number, parent in children:
-                proof_problems = []
-                for candidate in candidates:
-                    try:
-                        owner_pr = _return_pr_number(candidate, repo, return_path=path)
-                    except ValueError as exc:
-                        proof_problems.append(str(exc))
-                        continue
-                    if owner_pr is None:
-                        proof_problems.append("parent-owned return has no owning PR")
-                        continue
-                    try:
-                        _parent_ticket_return(repo, child_number, path, candidate, verified_parent=parent)
-                    except (OSError, ValueError, subprocess.SubprocessError) as exc:
-                        proof_problems.append(str(exc))
-                        continue
-                    except SystemExit:
-                        proof_problems.append("GitHub API evidence for the owning PR is unavailable")
-                        continue
+            for issue in sorted(required - found):
+                child_repo, child_number = issue.rsplit("#", 1)
+                if child_repo.lower() != repo.lower():
+                    continue
+                attributed, relevant, proof = _parent_ticket_attribution(
+                    repo, int(child_number), path, latest)
+                if attributed:
                     found.add(issue)
-                    diagnostics.append(f"parent-ticket continuation: {issue} is attributed to {path} "
-                                       f"through its actual parent and landed child PR #{owner_pr}; "
-                                       "current role outcome passes")
-                    break
-                if issue not in found:
+                    diagnostics.append(f"parent-ticket continuation: {issue} is attributed to {path}: "
+                                       + "; ".join(proof))
+                elif relevant:
                     diagnostics.append(f"parent-ticket continuation for {issue} blocked: "
-                                       + "; ".join(dict.fromkeys(proof_problems)))
+                                       + "; ".join(proof))
     return found, diagnostics
 
 

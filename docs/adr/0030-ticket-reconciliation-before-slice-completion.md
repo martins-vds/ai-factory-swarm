@@ -22,8 +22,10 @@ related issue tree is stale.
     ancestry. A return must identify this issue directly or through same-path, same-ticket/role committed
     history. A parent-ticket return may cover its direct child only when GitHub confirms the parent
     relationship, the relevant child-closing PR is cited and contains the exact return (or same-path,
-    same-ticket/role history), and the current applicable role outcome passes. Its owning PR must be among
-    the cited landing PRs and contain the exact committed return. This supports a correction carried by a
+    same-ticket/role history), and the current applicable role outcome passes. A superseding return that
+    names a sibling must have the same verified direct parent. The current return must match its committed
+    HEAD snapshot, and its own cited owning PR must contain that exact snapshot in default-branch history;
+    historical attribution alone never proves the current result. This supports a correction carried by a
     later PR without treating a closed PR as proof. Applicable outcomes are checked against their role
     contracts: Verifier returns must pass, Bootstrapper validation must explicitly pass (including
     pass-with-limitations), Migrator gates must show passing outcomes with no outstanding handoff (`none`

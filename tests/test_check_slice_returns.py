@@ -338,7 +338,7 @@ class HistoricalAttributionTest(unittest.TestCase):
             result = csr.main(["--repo", REPO, "--epic", "99"])
         self.assertEqual(result, 1, output.getvalue())
         self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
-        self.assertIn("does not close child issue #2", output.getvalue())
+        self.assertIn("does not close its parent ticket or current child issue", output.getvalue())
 
     def test_parent_ticket_continuation_can_use_same_path_history_after_current_pass(self):
         failed = RETURN.replace("pr: o/r#10", "pr: o/r#12")
@@ -415,6 +415,78 @@ class HistoricalAttributionTest(unittest.TestCase):
             attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
         self.assertEqual(attributed, set())
         self.assertTrue(any("current role outcome does not pass" in item for item in diagnostics))
+
+    def test_parent_ticket_continuation_rejects_a_dirty_current_return(self):
+        original_pass = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#12")
+        original_head = self.commit(original_pass, "landed parent-owned pass")
+        current_failure = RETURN.replace("pr: o/r#10", "pr: o/r#13")
+        self.commit(current_failure, "newer parent-owned failure")
+        self.path.write_text(original_pass)
+        current = csr.current_returns()
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": original_head, "head": {"sha": original_head}, "body": "Fixes #2"}
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
+        self.assertEqual(attributed, set())
+        self.assertTrue(any("differs from its committed HEAD snapshot" in item for item in diagnostics), diagnostics)
+
+    def test_parent_ticket_continuation_requires_current_owners_landed_snapshot(self):
+        original_failure = RETURN.replace("pr: o/r#10", "pr: o/r#12")
+        child_head = self.commit(original_failure, "landed child failure")
+        current_pass = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#13")
+        self.commit(current_pass, "unlanded current pass")
+        current = csr.current_returns()
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": None,
+                        "merge_commit_sha": None, "head": {"sha": child_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "open", "merged_at": None,
+                        "merge_commit_sha": None, "head": {"sha": "f" * 40}, "body": "Fixes #1"}
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
+        self.assertEqual(attributed, set())
+        self.assertTrue(any("current owning PR" in item for item in diagnostics))
+
+    def test_parent_ticket_lineage_survives_current_sibling_issue_return(self):
+        parent_failure = RETURN.replace("pr: o/r#10", "pr: o/r#12")
+        child_head = self.commit(parent_failure, "landed child-owned parent failure")
+        sibling_pass = RETURN.replace("changes-required", "pass").replace("o/r#1\n", "o/r#3\n") \
+            .replace("pr: o/r#10", "pr: o/r#13")
+        sibling_head = self.commit(sibling_pass, "landed sibling re-verification")
+        current = csr.current_returns()
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/3":
+                return {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": None,
+                        "merge_commit_sha": None, "head": {"sha": child_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": sibling_head, "head": {"sha": sibling_head}, "body": "Fixes #3"}
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
+        self.assertEqual(attributed, {"o/r#2"}, diagnostics)
+        self.assertTrue(any("verified by current PR #13 and child PR #12" in item for item in diagnostics))
 
     def test_malformed_intermediate_revision_does_not_hide_valid_ancestry(self):
         old = self.commit(RETURN)
