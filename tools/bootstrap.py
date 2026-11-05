@@ -27,22 +27,26 @@ refuses to write a `new` ticket. Labels for the tracker are created with the sam
 dry runs, never for the setup PR. Needs git, network access to GitHub, jsonschema and pyyaml.
 """
 import argparse
+import contextlib
 import datetime
 import hashlib
 import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import check_runtime  # noqa: E402
+import check_installed  # noqa: E402
 import validate  # noqa: E402
 
 HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
@@ -55,6 +59,14 @@ COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
 DEFAULT_PYTHON = "3.12"   # when the profile declares no python-X.Y stack
+BOOTSTRAP_LOCK = ".afs-bootstrap.lock"
+TRANSACTION_PREFIX = ".afs-bootstrap-txn-"
+TRANSACTION_MARKER = ".afs-bootstrap-transaction"
+TRANSACTION_MARKER_CONTENT = "AI Factory Swarm bootstrap transaction\n"
+PUBLISH_PATHS = (".github/skills", ".github/agents", ".github/workflows", ".github/hooks",
+                 ".github/copilot-instructions.md", ".gitignore", ".migration/source.lock",
+                 ".migration/profile.yaml", ".migration/capabilities.yaml", ".migration/ledger",
+                 ".migration/harness")
 BLOCKS = {
     "afs": ("<!-- afs-instructions v", "<!-- /afs-instructions -->"),
     "rtk": ("<!-- rtk-instructions v", "<!-- /rtk-instructions -->"),
@@ -86,6 +98,10 @@ OPERATOR_CHECKLIST = [
 
 
 class BootstrapError(Exception):
+    pass
+
+
+class BootstrapLockError(BootstrapError):
     pass
 
 
@@ -123,6 +139,208 @@ def write(path, text, mode=None):
     path.write_text(text, encoding="utf-8")
     if mode:
         path.chmod(mode)
+
+
+@contextlib.contextmanager
+def bootstrap_lock(target):
+    target = pathlib.Path(target).resolve()
+    path = target / BOOTSTRAP_LOCK
+    lock = {"pid": os.getpid(),
+            "started_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "token": uuid.uuid4().hex}
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        try:
+            owner = json.loads(path.read_text(encoding="utf-8"))
+            pid = int(owner["pid"])
+            if pid <= 0:
+                raise ValueError("PID must be positive")
+        except (OSError, ValueError, KeyError, TypeError):
+            raise BootstrapLockError(
+                f"bootstrap lock {path} exists but its owner cannot be read; verify no bootstrap is running "
+                f"before removing it with: rm -f -- {shlex.quote(str(path))}") from exc
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            raise BootstrapLockError(
+                f"stale bootstrap lock {path}: PID {pid} is not running; after confirming the target is idle, "
+                f"clear it with: rm -f -- {shlex.quote(str(path))}; rerun bootstrap to recover any staged install"
+            ) from exc
+        except PermissionError:
+            pass
+        raise BootstrapLockError(
+            f"bootstrap is already running for {target} (PID {pid}); wait for it to finish") from exc
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as lock_file:
+            lock_file.write(json.dumps(lock) + "\n")
+            lock_file.flush()
+            os.fsync(lock_file.fileno())
+        yield
+    finally:
+        try:
+            owner = json.loads(path.read_text(encoding="utf-8"))
+            if owner.get("token") == lock["token"]:
+                path.unlink()
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+
+
+def _exists(path):
+    return path.exists() or path.is_symlink()
+
+
+def _remove(path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif _exists(path):
+        path.unlink()
+
+
+def _save_transaction(path, transaction):
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8") as stream:
+        json.dump(transaction, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(tmp, path)
+
+
+def _load_transaction(journal):
+    try:
+        transaction = json.loads(journal.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BootstrapError(f"cannot read interrupted bootstrap journal {journal}: {exc}") from exc
+    if not isinstance(transaction, dict):
+        raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    valid_states = {"publishing", "committed"}
+    state = transaction.get("state")
+    outputs = transaction.get("outputs")
+    if not isinstance(state, str) or state not in valid_states or not isinstance(outputs, list) \
+            or len(outputs) != len(PUBLISH_PATHS):
+        raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    valid_statuses = {"pending", "publishing", "published"}
+    for i, (entry, rel) in enumerate(zip(outputs, PUBLISH_PATHS)):
+        status = entry.get("status") if isinstance(entry, dict) else None
+        if (not isinstance(entry, dict) or entry.get("path") != rel or entry.get("backup") != str(i)
+                or type(entry.get("had_old")) is not bool or not isinstance(status, str)
+                or status not in valid_statuses):
+            raise BootstrapError(f"invalid interrupted bootstrap journal {journal}; leave it in place for inspection")
+    return transaction
+
+
+def _publish_output(target, staging, backup, entry):
+    destination = target / entry["path"]
+    staged = staging / entry["path"]
+    saved = backup / entry["backup"]
+    if _exists(destination):
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(destination, saved)
+    if _exists(staged):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(staged, destination)
+
+
+def _rollback_transaction(target, transaction_dir):
+    journal = transaction_dir / "transaction.json"
+    transaction = _load_transaction(journal)
+    errors = []
+    for entry in reversed(transaction["outputs"]):
+        destination = target / entry["path"]
+        saved = transaction_dir / "backup" / entry["backup"]
+        try:
+            if _exists(saved):
+                _remove(destination)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(saved, destination)
+            elif not entry["had_old"] and entry["status"] != "pending":
+                _remove(destination)
+        except OSError as exc:
+            errors.append(f"{entry['path']}: {exc}")
+    if errors:
+        raise BootstrapError("could not restore the previous install; transaction journal remains at "
+                             f"{journal}:\n  " + "\n  ".join(errors))
+    shutil.rmtree(transaction_dir)
+
+
+def recover_interrupted_install(target):
+    """Roll back an incomplete publication or discard an unpublished staging directory."""
+    target = pathlib.Path(target)
+    for transaction_dir in sorted(target.glob(f"{TRANSACTION_PREFIX}*")):
+        marker = transaction_dir / TRANSACTION_MARKER
+        if transaction_dir.is_symlink() or not transaction_dir.is_dir():
+            raise BootstrapError(f"unrecognized bootstrap transaction path {transaction_dir}; inspect it before "
+                                 "removing it")
+        try:
+            is_ours = not marker.is_symlink() and marker.read_text(encoding="utf-8") == TRANSACTION_MARKER_CONTENT
+        except (OSError, UnicodeDecodeError):
+            is_ours = False
+        if not is_ours:
+            continue
+        journal = transaction_dir / "transaction.json"
+        if not journal.exists():
+            shutil.rmtree(transaction_dir)
+            continue
+        transaction = _load_transaction(journal)
+        if transaction.get("state") == "committed":
+            try:
+                shutil.rmtree(transaction_dir)
+            except OSError as exc:
+                raise BootstrapError(f"could not clean committed bootstrap transaction {transaction_dir}: {exc}") from exc
+        else:
+            _rollback_transaction(target, transaction_dir)
+
+
+def publish_install(target, transaction_dir):
+    """Publish staged paths individually; the journal permits rollback, not multi-path atomicity."""
+    target = pathlib.Path(target)
+    transaction_dir = pathlib.Path(transaction_dir)
+    staging = transaction_dir / "stage"
+    backup = transaction_dir / "backup"
+    outputs = [{"path": rel, "backup": str(i), "had_old": _exists(target / rel), "status": "pending"}
+               for i, rel in enumerate(PUBLISH_PATHS)]
+    transaction = {"state": "publishing", "outputs": outputs}
+    journal = transaction_dir / "transaction.json"
+    _save_transaction(journal, transaction)
+    try:
+        for entry in outputs:
+            entry["status"] = "publishing"
+            _save_transaction(journal, transaction)
+            _publish_output(target, staging, backup, entry)
+            entry["status"] = "published"
+            _save_transaction(journal, transaction)
+        transaction["state"] = "committed"
+        _save_transaction(journal, transaction)
+    except BaseException as exc:
+        try:
+            _rollback_transaction(target, transaction_dir)
+        except Exception as rollback_exc:
+            raise BootstrapError(f"publication failed ({exc}); recovery is required: {rollback_exc}") from exc
+        if isinstance(exc, Exception):
+            raise BootstrapError(f"publication failed; previous install was restored: {exc}") from exc
+        raise
+    try:
+        shutil.rmtree(transaction_dir)
+    except OSError as exc:
+        raise BootstrapError(f"install was published, but transaction cleanup failed at {transaction_dir}: {exc}; "
+                             "the next bootstrap run will retry cleanup") from exc
+
+
+def _copy_existing(source, destination):
+    if source.is_dir():
+        root = source.resolve() if source.is_symlink() else source
+        shutil.copytree(root, destination, symlinks=True, dirs_exist_ok=True)
+    elif source.is_file():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _seed_staging(target, staging):
+    for rel in (".github/agents", ".github/workflows", ".github/hooks", ".migration/ledger",
+                ".migration/returns", ".migration/evidence/runs",
+                ".migration/harness/legacy-returns.json", ".github/copilot-instructions.md", ".gitignore"):
+        _copy_existing(target / rel, staging / rel)
 
 
 def frontmatter_name(skill_md):
@@ -419,6 +637,13 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
     target = pathlib.Path(target)
     if not target.is_dir():
         raise BootstrapError(f"target {target} is not a directory")
+    with bootstrap_lock(target):
+        recover_interrupted_install(target)
+        return _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_issues, offline,
+                                 skip_private)
+
+
+def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_issues, offline, skip_private):
     profile, caps = load_inputs(profile_path, caps_path)
     caps_doc = yaml.safe_load(pathlib.Path(caps_path).read_text(encoding="utf-8"))
     new_gaps = [c["id"] for c in caps_doc["capabilities"] if c["status"] == "gap" and c.get("ticket") == "new"]
@@ -435,32 +660,50 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
     if missing:
         notes.append(f"offline: {len(missing)} profile skill reference(s) not installed")
 
+    transaction_dir = pathlib.Path(tempfile.mkdtemp(prefix=TRANSACTION_PREFIX, dir=target))
+    staging = transaction_dir / "stage"
     cache = {}
     try:
-        install_skills(target, plan, cache, notes)
+        (transaction_dir / TRANSACTION_MARKER).write_text(TRANSACTION_MARKER_CONTENT, encoding="utf-8")
+        staging.mkdir()
+        _seed_staging(target, staging)
+    except BaseException:
+        shutil.rmtree(transaction_dir, ignore_errors=True)
+        raise
+    try:
+        install_skills(staging, plan, cache, notes)
+        install_harness(staging, lock)
+        install_agents(staging)
+        write_copilot_files(staging, lock, version, commit, profile)
+        merge_gitignore(staging)
+        write_manifest(staging, version, commit, plan)
+
+        created = []
+        if create_gap_issues:
+            ensure_labels(profile["target"]["repo"])
+            created = open_gap_issues(caps_doc, profile["target"]["repo"])
+        caps_doc["checked_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        write_state(staging, profile, profile_path, caps_doc)
+
+        errors = []
+        validate.check(validate.load_schema(ROOT / "schemas", "capabilities.schema.json"),
+                       staging / ".migration/capabilities.yaml", errors)
+        if errors:
+            raise BootstrapError("staged capabilities.yaml is invalid:\n  " + "\n  ".join(errors))
+        _, problems = check_installed.check(staging)
+        if problems:
+            raise BootstrapError("staged install failed its drift check:\n  " + "\n  ".join(problems))
+
+        publish_install(target, transaction_dir)
+    except BaseException:
+        if transaction_dir.exists() and not (transaction_dir / "transaction.json").exists():
+            shutil.rmtree(transaction_dir, ignore_errors=True)
+        raise
     finally:
         # fetch() checks each upstream out into its own temp folder; remove them (one run left 13, ~260 MB).
         for d in cache.values():
             if isinstance(d, pathlib.Path) and d.name.startswith("afs-src-"):
                 shutil.rmtree(d, ignore_errors=True)
-    install_harness(target, lock)
-    install_agents(target)
-    write_copilot_files(target, lock, version, commit, profile)
-    merge_gitignore(target)
-    write_manifest(target, version, commit, plan)
-
-    created = []
-    if create_gap_issues:
-        ensure_labels(profile["target"]["repo"])
-        created = open_gap_issues(caps_doc, profile["target"]["repo"])
-    caps_doc["checked_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    write_state(target, profile, profile_path, caps_doc)
-
-    errors = []
-    validate.check(validate.load_schema(ROOT / "schemas", "capabilities.schema.json"),
-                   target / ".migration/capabilities.yaml", errors)
-    if errors:
-        raise BootstrapError("written capabilities.yaml is invalid:\n  " + "\n  ".join(errors))
     gaps = [f"{c['id']} → {c.get('ticket')}" for c in caps_doc["capabilities"] if c["status"] == "gap"]
     return {"skills": len(plan), "agents": len(list((target / ".github/agents").glob("afs-*.agent.md"))),
             "gaps": gaps, "issues_created": created, "notes": notes, "harness": f"{version} ({commit[:7]})"}
@@ -482,7 +725,7 @@ def main():
                       a.skip_private_sources)
     except BootstrapError as e:
         print(f"bootstrap: {e}", file=sys.stderr)
-        return 1
+        return 2 if isinstance(e, BootstrapLockError) else 1
     print(f"harness {r['harness']}: {r['agents']} agents, {r['skills']} skills installed")
     for g in r["gaps"]:
         print(f"gap: {g}")
