@@ -329,7 +329,8 @@ def publish_install(target, transaction_dir):
 
 def _copy_existing(source, destination):
     if source.is_dir():
-        shutil.copytree(source, destination, dirs_exist_ok=True)
+        root = source.resolve() if source.is_symlink() else source
+        shutil.copytree(root, destination, symlinks=True, dirs_exist_ok=True)
     elif source.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)

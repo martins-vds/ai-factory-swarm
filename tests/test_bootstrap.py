@@ -35,14 +35,15 @@ def bootstrap_process(target, ready, release, pause_at, outcomes):
         nonlocal count
         result = original_output(*args, **kwargs)
         count += 1
-        if count == 1:
+        if ((pause_at == "after-first-output" and count == 1)
+                or (pause_at == "after-agent-output" and args[-1]["path"] == ".github/agents")):
             ready.set()
             release.wait(30)
         return result
 
     if pause_at == "before-publish":
         bootstrap.publish_install = pause_publish
-    elif pause_at == "after-first-output":
+    elif pause_at in ("after-first-output", "after-agent-output"):
         bootstrap._publish_output = pause_output
     try:
         bootstrap.bootstrap(target, PROFILE, CAPS, [PACK], offline=True)
@@ -199,6 +200,88 @@ class BootstrapTest(unittest.TestCase):
         self.assertNotEqual((self.target / ".github/skills/afs-ledger/SKILL.md").read_text(), "edited")
         self.assertFalse((self.target / ".github/agents/afs-stale.agent.md").exists())
         self.assertTrue((self.target / ".github/agents/team.agent.md").exists())
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX symlink support")
+    def test_team_agent_symlink_survives_bootstrap_without_dereferencing(self):
+        source = self.target / ".github/team-template.md"
+        source.parent.mkdir(parents=True)
+        source.write_text("Existing team-owned agent content\n")
+        agent = self.target / ".github/agents/team.agent.md"
+        agent.parent.mkdir()
+        agent.symlink_to("../team-template.md")
+
+        self.run_bootstrap(offline=True)
+
+        self.assertTrue(agent.is_symlink())
+        self.assertEqual(agent.readlink(), pathlib.Path("../team-template.md"))
+        self.assertEqual(agent.read_text(), "Existing team-owned agent content\n")
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX symlink support")
+    def test_dangling_team_symlink_survives_bootstrap(self):
+        agent = self.target / ".github/agents/team.agent.md"
+        agent.parent.mkdir(parents=True)
+        agent.symlink_to("../missing-team-template.md")
+
+        self.run_bootstrap(offline=True)
+
+        self.assertTrue(agent.is_symlink())
+        self.assertEqual(agent.readlink(), pathlib.Path("../missing-team-template.md"))
+        self.assertFalse(agent.exists())
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX symlink support")
+    def test_symlink_creation_failure_leaves_live_install_unchanged(self):
+        self.run_bootstrap()
+        agent = self.target / ".github/agents/team.agent.md"
+        agent.symlink_to("../missing-team-template.md")
+        before = managed_snapshot(self.target)
+
+        with mock.patch.object(os, "symlink", side_effect=OSError("symlinks unsupported")):
+            with self.assertRaisesRegex(shutil.Error, "symlinks unsupported"):
+                self.run_bootstrap(offline=True)
+
+        self.assertEqual(managed_snapshot(self.target), before)
+        self.assertTrue(agent.is_symlink())
+        self.assertEqual(agent.readlink(), pathlib.Path("../missing-team-template.md"))
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX symlink support")
+    def test_team_symlink_survives_rollback_and_interrupted_publication_recovery(self):
+        self.run_bootstrap()
+        agent = self.target / ".github/agents/team.agent.md"
+        agent.symlink_to("../missing-team-template.md")
+        link_target = agent.readlink()
+        original_publish = bootstrap._publish_output
+
+        def fail_after_agents(target, staging, backup, entry):
+            original_publish(target, staging, backup, entry)
+            if entry["path"] == ".github/workflows":
+                raise OSError("injected failure after agents publication")
+
+        with mock.patch.object(bootstrap, "_publish_output", fail_after_agents):
+            with self.assertRaisesRegex(bootstrap.BootstrapError, "previous install was restored"):
+                self.run_bootstrap(offline=True)
+        self.assertTrue(agent.is_symlink())
+        self.assertEqual(agent.readlink(), link_target)
+
+        context = multiprocessing.get_context("fork")
+        ready, release, outcomes = context.Event(), context.Event(), context.Queue()
+        process = context.Process(
+            target=bootstrap_process,
+            args=(self.target, ready, release, "after-agent-output", outcomes))
+        process.start()
+        self.addCleanup(lambda: process.is_alive() and process.kill())
+        reached_agents = ready.wait(20)
+        if not reached_agents and not process.is_alive():
+            self.fail(f"bootstrap exited before publishing agents: {outcomes.get(timeout=2)}")
+        self.assertTrue(reached_agents, "bootstrap did not publish the agents directory")
+        process.kill()
+        process.join(10)
+
+        lock_path = self.target / ".afs-bootstrap.lock"
+        lock_path.unlink()
+        with bootstrap.bootstrap_lock(self.target):
+            bootstrap.recover_interrupted_install(self.target)
+        self.assertTrue(agent.is_symlink())
+        self.assertEqual(agent.readlink(), link_target)
 
     @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "requires POSIX process semantics")
     def test_concurrent_process_is_refused_with_lock_owner_pid(self):

@@ -74,6 +74,10 @@ Bootstrap stages and validates the install before publishing. Publication swaps 
 individually, not as one filesystem-atomic transaction: failures during publication roll back, and a later
 run recovers an interrupted publication from its journal. Treat the target as unavailable until that
 recovery run completes.
+Nested symlinks in preserved team-owned directory trees are copied as symlinks, including dangling
+links; their referents are not traversed. Staging requires the target filesystem and process permissions
+to support creating symlinks. If that is unavailable, bootstrap fails before publishing and leaves live
+managed paths intact.
 
 ## Status
 
