@@ -84,7 +84,7 @@ quirk_tickets: []
         self.cwd = os.getcwd()
         os.chdir(self.root)
         self.addCleanup(os.chdir, self.cwd)
-        self.git("init", "-q")
+        self.git("init", "-q", "--initial-branch=fixture-base")
         self.git("config", "user.name", "test")
         self.git("config", "user.email", "test@example.invalid")
 
@@ -217,6 +217,18 @@ quirk_tickets: []
         })
         self.assertEqual(result, 1, output)
         self.assertIn("owning PR #101", output)
+
+    def test_carrier_copy_regression_is_independent_of_initial_branch_setting(self):
+        for branch in ("main", "master", "default-branch"):
+            with self.subTest(branch=branch), mock.patch.dict(os.environ, {
+                    "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_KEY_0": "init.defaultBranch",
+                    "GIT_CONFIG_VALUE_0": branch,
+            }):
+                result = unittest.TestResult()
+                type(self)("test_completed_return_requires_its_own_landed_pr_not_a_carrier_copy").run(result)
+                self.assertEqual(result.testsRun, 1)
+                self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
 
     def test_bootstrapper_blocked_validation_is_not_completed_evidence(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
