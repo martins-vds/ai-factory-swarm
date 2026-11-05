@@ -67,6 +67,18 @@ python tools/bootstrap.py --target ../target-repo --profile profile.yaml --capab
   --stack-pack stacks/java-to-django.json --create-gap-issues
 ```
 
+Bootstrap serializes writes to a target with `.afs-bootstrap.lock` at the target root; a competing run
+exits with status 2 and reports the owning PID. If a process is killed, first confirm that PID is no longer
+running, then use the exact `rm -f -- .../.afs-bootstrap.lock` command printed by bootstrap and rerun it.
+Bootstrap stages and validates the install before publishing. Publication swaps several managed paths
+individually, not as one filesystem-atomic transaction: failures during publication roll back, and a later
+run recovers an interrupted publication from its journal. Treat the target as unavailable until that
+recovery run completes.
+Nested symlinks in preserved team-owned directory trees are copied as symlinks, including dangling
+links; their referents are not traversed. Staging requires the target filesystem and process permissions
+to support creating symlinks. If that is unavailable, bootstrap fails before publishing and leaves live
+managed paths intact.
+
 ## Status
 
 M0–M4 are done (design, spikes, harness skeleton, role agents, bootstrap); M5 (pilot slice) is next — see the
