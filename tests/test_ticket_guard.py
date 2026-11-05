@@ -15,6 +15,8 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import ticket_guard  # noqa: E402
+import check_slice_returns  # noqa: E402
+import fog_rewalk  # noqa: E402
 
 
 class TicketGuardTest(unittest.TestCase):
@@ -198,7 +200,7 @@ quirk_tickets: []
         (returns / "T1.afs-verifier.yaml").write_text(self.RETURN, encoding="utf-8")
         (self.root / "work.txt").write_text("work from PR 101\n", encoding="utf-8")
         work_head = self.commit("work and verifier return")
-        self.git("checkout", "-qb", "main", base)
+        self.git("checkout", "-qb", "default-branch", base)
         (self.root / "docs.txt").write_text("unrelated docs\n", encoding="utf-8")
         self.git("add", "docs.txt")
         self.git("commit", "-qm", "unrelated PR 201")
@@ -361,6 +363,147 @@ quirk_tickets: []
             ])
         self.assertEqual(result, 1, output)
         self.assertIn("does not belong to issue #3", output)
+
+    def test_superseded_characterizer_failure_uses_exact_pr_head_without_pr_field(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        base = self.commit("base")
+        self.git("checkout", "-qb", "failed-characterization")
+        failed_path = ".migration/returns/C3.afs-characterizer.yaml"
+        (self.root / failed_path).parent.mkdir(parents=True)
+        failed = """role: afs-characterizer
+ticket: C3
+issue: o/r#3
+tier_used: {A: 0, B: 1, C: 0}
+suite: {path: tests/fixture, cases: 2, passing: 1, run_log: .migration/evidence/runs/C3.md}
+predicted_vs_observed: {match: 1, differs: 1}
+ledger_updated: []
+quirk_tickets: []
+review_only_requests: []
+"""
+        self.assertIsNotNone(ticket_guard._valid_return(failed, failed_path))
+        (self.root / failed_path).write_text(failed, encoding="utf-8")
+        failed_head = self.commit("failed characterization")
+        self.git("checkout", "-q", "--detach", base)
+        replacement_path = ".migration/returns/T4.afs-verifier.yaml"
+        (self.root / replacement_path).parent.mkdir(parents=True, exist_ok=True)
+        passing = self.RETURN.replace("ticket: T1", "ticket: T4").replace("issue: o/r#1", "issue: o/r#4") \
+            .replace("pr: o/r#101", "pr: o/r#104")
+        (self.root / replacement_path).write_text(passing, encoding="utf-8")
+        replacement_head = self.commit("replacement accepted")
+        report = [
+            {"number": 3, "disposition": "superseded", "replacement": 4,
+             "failure": {"pull_request": 103, "return": failed_path}},
+            {"number": 4, "disposition": "completed", "pull_requests": [104], "returns": [replacement_path]},
+        ]
+        content_path = f"repos/o/r/contents/{failed_path}?ref={failed_head}"
+        result, output, _ = self.run_reconciliation(
+            [{"number": 3, "disposition": "superseded"}, {"number": 4, "disposition": "completed"}], {
+                103: self.pull(103, head=failed_head),
+                104: self.pull(104, head=replacement_head, merged=True),
+            }, contents={content_path: {"encoding": "base64",
+                                        "content": base64.b64encode(failed.encode()).decode()}},
+            report_issues=report,
+            labels=[
+                {"number": 3, "title": "failed characterization", "state": "closed",
+                 "state_reason": "not_planned", "labels": []},
+                {"number": 4, "title": "replacement", "state": "closed", "state_reason": "completed",
+                 "labels": []},
+            ])
+        self.assertEqual(result, 0, output)
+
+    def test_superseded_characterizer_return_from_another_issue_is_rejected(self):
+        char_return = """role: afs-characterizer
+ticket: C4
+issue: o/r#4
+tier_used: {A: 0, B: 1, C: 0}
+suite: {path: tests/fixture, cases: 2, passing: 1, run_log: .migration/evidence/runs/C4.md}
+predicted_vs_observed: {match: 1, differs: 1}
+ledger_updated: []
+quirk_tickets: []
+review_only_requests: []
+"""
+        self.assertIsNotNone(ticket_guard._valid_return(char_return, ".migration/returns/C4.afs-characterizer.yaml"))
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / ".migration/returns/C4.afs-characterizer.yaml"
+            path.parent.mkdir(parents=True)
+            path.write_text(char_return)
+            with mock.patch.object(ticket_guard, "gh", return_value={
+                    "encoding": "base64", "content": base64.b64encode(char_return.encode()).decode()}):
+                with self.assertRaisesRegex(ValueError, "does not belong to issue #3"):
+                    ticket_guard._failed_role_return("o/r", 3, 103, path.relative_to(d).as_posix(),
+                                                     {"head": {"sha": "a" * 40}})
+
+    def test_real_gate_sequence_blocks_fog_for_open_nested_descendant(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        (returns / "T1.afs-verifier.yaml").write_text(self.RETURN, encoding="utf-8")
+        main = self.commit("completed work and return")
+        report = [
+            {"number": 1, "disposition": "completed", "pull_requests": [101],
+             "returns": [".migration/returns/T1.afs-verifier.yaml"]},
+            {"number": 5, "disposition": "retained-open", "outstanding": "Finish the wrapper task.",
+             "blocker": "Waiting on its owner."},
+        ]
+        self.write_report(report)
+        self.commit("ticket dispositions")
+        issues = {
+            99: {"number": 99, "title": "slice", "html_url": "https://example.invalid/issues/99",
+                "state": "closed", "labels": [{"name": "afs:slice"}]},
+            1: {"number": 1, "title": "work", "state": "closed", "state_reason": "completed",
+                "closed_at": "2026-11-05T12:00:00Z", "labels": []},
+            5: {"number": 5, "title": "wrapper", "state": "open", "state_reason": None, "labels": []},
+        }
+        responses = {
+            "repos/o/r/issues/99/sub_issues?per_page=100&page=1": [issues[1]],
+            "repos/o/r/issues/1/sub_issues?per_page=100&page=1": [issues[5]],
+            "repos/o/r/issues/5/sub_issues?per_page=100&page=1": [],
+        }
+        calls = []
+
+        def gh(endpoint, *args, data=None):
+            calls.append((endpoint, args, data))
+            if endpoint == "repos/o/r/issues/99":
+                return issues[99]
+            if endpoint == "repos/o/r/issues/1":
+                return issues[1]
+            if endpoint == "repos/o/r/issues/5":
+                return issues[5]
+            if endpoint.startswith("repos/o/r/pulls/"):
+                return self.pull(101, head=main, merged=True)
+            if endpoint in responses:
+                return responses[endpoint]
+            if endpoint == "repos/o/r/issues?labels=wayfinder:map&state=open&per_page=10":
+                return [{"number": 3, "title": "map", "body": "## Not yet specified\n- future question",
+                         "html_url": "https://example.invalid/map"}]
+            if endpoint == "repos/o/r/issues/3/sub_issues?per_page=100":
+                return []
+            if endpoint == "repos/o/r/issues":
+                return {"id": 505, "html_url": "fixture-only-created"}
+            return {}
+
+        outputs = []
+        output = io.StringIO()
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh), \
+                mock.patch.object(check_slice_returns.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(check_slice_returns, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            reconciliation = ticket_guard.main(["--repo", "o/r", "--reconcile-epic", "99", "--reopen"])
+            outputs.append(reconciliation)
+            if reconciliation == 0:
+                returns_result = check_slice_returns.main(["--repo", "o/r", "--epic", "99", "--reopen"])
+                outputs.append(returns_result)
+                if returns_result == 0:
+                    outputs.append(fog_rewalk.main(["--repo", "o/r", "--epic", "99", "--closed-by", "alice"]))
+        self.assertEqual(outputs, [0, 1])
+        self.assertIn("#5 disposition=retained-open", output.getvalue())
+        self.assertIn("#5 wrapper: still open", output.getvalue())
+        self.assertFalse(any(c[0] == "repos/o/r/issues" for c in calls),
+                         "the actual fog workflow function must not run after either failed gate")
+        self.assertTrue(any(c[0] == "repos/o/r/issues/99" and c[1] == ("-X", "PATCH")
+                            and c[2] == {"state": "open"} for c in calls),
+                        "the existing return gate must reopen the epic")
 
     def test_same_path_historical_return_attributes_superseded_issue_but_current_pass_is_required(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")

@@ -68,14 +68,15 @@ def integrated(commit):
     return result.returncode == 0
 
 
-def descendants(repo, epic):
+def descendants(repo, epic, gh_func=None):
     """All work issues under the slice epic; decision-map/research issues are out of scope."""
+    gh_func = gh_func or gh
     found, seen, pending = {}, {epic}, [epic]
     while pending:
         parent = pending.pop()
         page = 1
         while True:
-            batch = gh(f"repos/{repo}/issues/{parent}/sub_issues?per_page=100&page={page}") or []
+            batch = gh_func(f"repos/{repo}/issues/{parent}/sub_issues?per_page=100&page={page}") or []
             for issue in batch:
                 number = issue.get("number")
                 if not isinstance(number, int) or number <= 0 or number in seen:
@@ -264,7 +265,7 @@ def _failed_role_return(repo, issue_number, pull_number, path, pull):
     if outcome_problem:
         raise ValueError(f"{path} does not preserve an explicit failed role outcome: {outcome_problem}")
     owner_pr = _return_pr_number(doc, repo)
-    if owner_pr != pull_number:
+    if owner_pr is not None and owner_pr != pull_number:
         raise ValueError(f"{path} does not identify failed PR #{pull_number} as its owning PR")
 
 
