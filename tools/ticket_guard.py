@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reopen a ticket that closed before its work reached the default branch (ADR-0029).
+"""Guard premature ticket closure and require evidence-backed slice reconciliation.
 
 GitHub closes an issue when a PR that says "Fixes #N" merges, and it also closes the issues of a whole
 stack when a PR merges into another PR's branch (pilot HR-04C: merging a Verifier PR into the work branch
@@ -8,17 +8,26 @@ lift, and the slice-epic check counts it. So when a ticket closes as completed w
 default branch** still says it fixes, closes or resolves that ticket, the ticket is reopened, with a
 comment naming the PR. Closing as "not planned", or with no such PR, is left alone.
 
-  ticket_guard.py --repo owner/repo --issue 129        (the AFS ticket guard workflow runs this)
+  ticket_guard.py --repo owner/repo --issue 129
+  ticket_guard.py --repo owner/repo --reconcile-epic 9 --reopen
 
-Uses `gh api`. Exit 0 (reopened or not); 1 only if the API fails.
+Uses `gh api`; reconciliation also requires PyYAML and complete Git history.
 """
 import argparse
+import base64
 import json
+import pathlib
 import re
 import subprocess
 import sys
+from urllib.parse import quote
 
 CLOSES = r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+(?:[\w.-]+/[\w.-]+)?#{n}\b"
+RECONCILIATION_DIR = pathlib.Path(".migration/evidence/ticket-reconciliation")
+RESEARCH_LABELS = {"wayfinder:map", "wayfinder:research", "wayfinder:prototype",
+                   "wayfinder:grilling", "wayfinder:task"}
+COMPLETED_ROLES = {"afs-analyst", "afs-bootstrapper", "afs-characterizer", "afs-migrator",
+                   "afs-specialist-migrator", "afs-verifier"}
 
 
 def gh(*args, data=None):
@@ -35,11 +44,288 @@ def open_fixers(pulls, number):
     return [p for p in pulls if p.get("state") == "open" and pat.search(p.get("body") or "")]
 
 
+def git(*args):
+    result = subprocess.run(["git", "--no-replace-objects", *args], capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout.strip()
+
+
+def has_complete_history():
+    return git("rev-parse", "--is-shallow-repository") == "false"
+
+
+def integrated(commit):
+    """Whether an evidence commit is present in the checked-out default-branch history."""
+    if not re.fullmatch(r"[0-9a-f]{40,64}", str(commit or "")):
+        raise ValueError(f"invalid or unavailable landing commit: {commit!r}")
+    check = subprocess.run(["git", "--no-replace-objects", "cat-file", "-e", f"{commit}^{{commit}}"],
+                           capture_output=True, text=True)
+    if check.returncode:
+        raise ValueError(f"landing commit {commit} is unavailable in local history")
+    result = subprocess.run(["git", "--no-replace-objects", "merge-base", "--is-ancestor", commit, "HEAD"],
+                            capture_output=True, text=True)
+    if result.returncode not in (0, 1):
+        raise ValueError(result.stderr.strip() or f"cannot check ancestry for {commit}")
+    return result.returncode == 0
+
+
+def descendants(repo, epic):
+    """All work issues under the slice epic; decision-map/research issues are out of scope."""
+    found, seen, pending = {}, {epic}, [epic]
+    while pending:
+        parent = pending.pop()
+        page = 1
+        while True:
+            batch = gh(f"repos/{repo}/issues/{parent}/sub_issues?per_page=100&page={page}") or []
+            for issue in batch:
+                number = issue.get("number")
+                if not isinstance(number, int) or number <= 0 or number in seen:
+                    continue
+                seen.add(number)
+                labels = {label.get("name") for label in issue.get("labels", [])}
+                if labels & RESEARCH_LABELS:
+                    continue
+                found[number] = issue
+                pending.append(number)
+            if len(batch) < 100:
+                break
+            page += 1
+    return found
+
+
+def _return_path(value):
+    path = pathlib.PurePosixPath(value) if isinstance(value, str) else None
+    if (path is None or path.is_absolute() or path.as_posix() != value
+            or not path.parts or path.parts[0:2] != (".migration", "returns")
+            or ".." in path.parts):
+        raise ValueError(f"return evidence must name a committed `.migration/returns/` file: {value!r}")
+    return value
+
+
+def _valid_return(text, path):
+    import yaml
+    from check_slice_returns import valid_return
+    try:
+        return valid_return(text, path)
+    except (UnicodeError, yaml.YAMLError):
+        return None
+
+
+def _return_at_head(path, repo, scope):
+    path = _return_path(path)
+    try:
+        text = git("show", f"HEAD:{path}")
+    except ValueError as exc:
+        raise ValueError(f"return evidence {path} is unavailable at HEAD: {exc}") from exc
+    doc = _valid_return(text, path)
+    if not doc:
+        raise ValueError(f"return evidence {path} is not a valid role return")
+    match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)", doc.get("issue", ""))
+    if not match or f"{match[1]}/{match[2]}" != repo or int(match[3]) not in scope:
+        raise ValueError(f"return evidence {path} does not identify an issue in this slice")
+    return doc
+
+
+def _pull(repo, number):
+    if not isinstance(number, int) or number <= 0:
+        raise ValueError(f"invalid pull request number: {number!r}")
+    pull = gh(f"repos/{repo}/pulls/{number}")
+    if not isinstance(pull, dict) or pull.get("number") != number:
+        raise ValueError(f"pull request #{number} evidence is unavailable")
+    return pull
+
+
+def _landed_pull(repo, number):
+    pull = _pull(repo, number)
+    if pull.get("state") != "closed":
+        raise ValueError(f"PR #{number} is still open")
+    commit = pull.get("merge_commit_sha") if pull.get("merged_at") else (pull.get("head") or {}).get("sha")
+    if not commit or not integrated(commit):
+        raise ValueError(f"PR #{number} has no verified landing in default-branch history")
+    return commit
+
+
+def _failed_verifier_return(repo, pull_number, path, pull, scope):
+    path = _return_path(path)
+    head = (pull.get("head") or {}).get("sha")
+    if not re.fullmatch(r"[0-9a-f]{40,64}", str(head or "")):
+        raise ValueError(f"failed PR #{pull_number} has no exact head SHA")
+    content = gh(f"repos/{repo}/contents/{quote(path, safe='/')}?ref={head}")
+    if not isinstance(content, dict) or content.get("encoding") != "base64":
+        raise ValueError(f"failure return {path} at PR #{pull_number} is unavailable")
+    try:
+        text = base64.b64decode(content["content"], validate=False).decode("utf-8")
+    except (KeyError, ValueError, UnicodeError) as exc:
+        raise ValueError(f"failure return {path} at PR #{pull_number} is unreadable: {exc}") from exc
+    doc = _valid_return(text, path)
+    match = re.fullmatch(r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)",
+                         doc.get("issue", "") if doc else "")
+    if (not doc or doc.get("role") != "afs-verifier"
+            or doc.get("verdict") not in {"changes-required", "blocked"}
+            or not match or f"{match[1]}/{match[2]}" != repo or int(match[3]) not in scope
+            or not re.search(rf"(?:#|/pull/){pull_number}\b", str(doc.get("pr") or ""))):
+        raise ValueError(f"{path} does not preserve a failed verifier return for PR #{pull_number}")
+
+
+def reconciliation_problems(repo, epic_number, epic, report_path=None):
+    """Validate a committed, explicit disposition for every non-decision descendant of a slice epic."""
+    from fog_rewalk import is_slice_epic
+    labels = [label.get("name") for label in epic.get("labels", [])]
+    if not is_slice_epic(epic_number, labels):
+        return None, []
+
+    descendants_by_number = descendants(repo, epic_number)
+    scope = set(descendants_by_number)
+    path = pathlib.Path(report_path or (RECONCILIATION_DIR / f"{epic_number}.yaml"))
+    load_problem = None
+    import yaml
+    try:
+        report = yaml.safe_load(git("show", f"HEAD:{path.as_posix()}"))
+    except ValueError:
+        report = None
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        report = None
+        load_problem = f"cannot read or parse reconciliation evidence {path}: {exc}"
+    else:
+        load_problem = None
+
+    problems = []
+    if load_problem:
+        problems.append(load_problem)
+    elif not isinstance(report, dict):
+        problems.append(f"missing reconciliation evidence `{path}`")
+    elif report.get("epic") != epic_number or report.get("scope") != "slice-epic-descendants":
+        problems.append(f"`{path}` must name epic {epic_number} and scope `slice-epic-descendants`")
+    entries = report.get("issues") if isinstance(report, dict) else None
+    if not isinstance(entries, list):
+        entries = []
+        if report is not None:
+            problems.append(f"`{path}` must contain an `issues` list")
+
+    by_number = {}
+    for item in entries:
+        number = item.get("number") if isinstance(item, dict) else None
+        if not isinstance(number, int) or number <= 0:
+            problems.append(f"`{path}` contains an issue without a positive number")
+        elif number in by_number:
+            problems.append(f"`{path}` lists issue #{number} more than once")
+        else:
+            by_number[number] = item
+    for number in sorted(scope - by_number.keys()):
+        problems.append(f"#{number}: missing explicit disposition")
+    for number in sorted(by_number.keys() - scope):
+        problems.append(f"#{number}: outside slice-epic descendant scope")
+    for number in sorted(scope & by_number.keys()):
+        print(f"::notice::#{number} disposition={by_number[number].get('disposition')}")
+    try:
+        complete_history = has_complete_history()
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        complete_history = False
+        history_problem = f"default-branch history unavailable: {exc}"
+    else:
+        history_problem = "default-branch history unavailable or shallow; fetch complete history and retry"
+    if not complete_history:
+        problems.append(history_problem)
+    else:
+        for number in sorted(scope & by_number.keys()):
+            item = by_number[number]
+            issue = descendants_by_number[number]
+            disposition = item.get("disposition")
+            if disposition == "completed":
+                if issue.get("state") != "closed" or issue.get("state_reason") != "completed":
+                    problems.append(f"#{number}: completed disposition requires an issue closed as completed")
+                    continue
+                prs = item.get("pull_requests")
+                returns = item.get("returns")
+                if not isinstance(prs, list) or not prs:
+                    problems.append(f"#{number}: completed disposition needs verified landing PR(s)")
+                    continue
+                if not isinstance(returns, list) or not returns:
+                    problems.append(f"#{number}: completed disposition needs relevant role return(s)")
+                    continue
+                for pr_number in prs:
+                    try:
+                        _landed_pull(repo, pr_number)
+                    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                        problems.append(f"#{number}: {exc}")
+                for return_path in returns:
+                    try:
+                        doc = _return_at_head(return_path, repo, scope)
+                        if doc["role"] not in COMPLETED_ROLES:
+                            raise ValueError("return does not identify a completion role")
+                        if doc["role"] == "afs-verifier" and doc.get("verdict") != "pass":
+                            raise ValueError("verifier return is not a pass")
+                    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                        problems.append(f"#{number}: {exc}")
+            elif disposition == "superseded":
+                if issue.get("state") != "closed" or issue.get("state_reason") != "not_planned":
+                    problems.append(f"#{number}: superseded disposition requires closure as not planned")
+                replacement = item.get("replacement")
+                if not isinstance(replacement, int) or replacement <= 0 or replacement == number:
+                    problems.append(f"#{number}: superseded disposition needs a replacement issue link")
+                else:
+                    try:
+                        replacement_issue = gh(f"repos/{repo}/issues/{replacement}")
+                        if replacement_issue.get("pull_request"):
+                            raise ValueError(f"replacement #{replacement} is not an issue")
+                    except (AttributeError, ValueError) as exc:
+                        problems.append(f"#{number}: invalid replacement issue #{replacement}: {exc}")
+                failure = item.get("failure")
+                if not isinstance(failure, dict) or not isinstance(failure.get("pull_request"), int):
+                    problems.append(f"#{number}: superseded disposition needs failed PR and verifier return evidence")
+                    continue
+                try:
+                    failed_pull = _pull(repo, failure["pull_request"])
+                    if failed_pull.get("state") != "closed" or failed_pull.get("merged_at"):
+                        raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged")
+                    _failed_verifier_return(repo, failure["pull_request"], failure.get("return"), failed_pull, scope)
+                except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                    problems.append(f"#{number}: {exc}")
+            elif disposition == "retained-open":
+                if issue.get("state") != "open":
+                    problems.append(f"#{number}: retained-open disposition requires an open issue")
+                for field in ("outstanding", "blocker"):
+                    if not isinstance(item.get(field), str) or not item[field].strip():
+                        problems.append(f"#{number}: retained-open disposition needs actual `{field}` work")
+            else:
+                problems.append(f"#{number}: disposition must be completed, superseded or retained-open")
+    return len(scope), problems
+
+
+def reconcile_epic(repo, number, reopen=False):
+    R = f"repos/{repo}"
+    epic = gh(f"{R}/issues/{number}")
+    count, problems = reconciliation_problems(repo, number, epic)
+    if count is None:
+        print(f"#{number} is not a slice epic; ticket reconciliation is out of scope.")
+        return 0
+    print(f"slice epic #{number}: {count} in-scope issue(s)")
+    for problem in problems:
+        print(f"::error::{problem}")
+    print(f"AFS-RESULT gate=ticket-reconciliation epic={number} "
+          f"verdict={'fail' if problems else 'pass'} tickets={count} failures={len(problems)}")
+    if problems and reopen and epic.get("state") == "closed":
+        body = ("**Reopened by the harness (ADR-0030):** ticket lifecycle reconciliation is incomplete.\n\n"
+                + "\n".join(f"- {problem}" for problem in problems)
+                + "\n\nCommit `.migration/evidence/ticket-reconciliation/"
+                f"{number}.yaml` with evidence-backed dispositions, then close this epic again.")
+        gh(f"{R}/issues/{number}/comments", "-X", "POST", data={"body": body})
+        gh(f"{R}/issues/{number}", "-X", "PATCH", data={"state": "open"})
+        print(f"reopened #{number}")
+    return 1 if problems else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", required=True)
-    ap.add_argument("--issue", type=int, required=True)
+    operation = ap.add_mutually_exclusive_group(required=True)
+    operation.add_argument("--issue", type=int)
+    operation.add_argument("--reconcile-epic", type=int)
+    ap.add_argument("--reopen", action="store_true", help="reopen a failing slice epic")
     a = ap.parse_args(argv)
+    if a.reconcile_epic is not None:
+        return reconcile_epic(a.repo, a.reconcile_epic, a.reopen)
     R = f"repos/{a.repo}"
     issue = gh(f"{R}/issues/{a.issue}")
     if issue.get("pull_request") or issue.get("state") != "closed" or issue.get("state_reason") != "completed":
