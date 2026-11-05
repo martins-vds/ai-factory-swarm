@@ -257,6 +257,15 @@ validation: "pass with limitations: optional service is unavailable"
         self.assertIsNotNone(doc)
         self.assertIsNone(ticket_guard._role_outcome_problem(doc))
 
+    def test_migrator_outcomes_use_its_gate_results_instead_of_verifier_fields(self):
+        gates = {"build": 0, "behavior": 0, "idiom": 0, "crap": 4,
+                 "mutation_changed": 0.9, "regression": 0}
+        passing = {"role": "afs-migrator", "gates": gates, "handoff": None}
+        failing = {"role": "afs-migrator", "gates": {**gates, "behavior": 1}, "handoff": None}
+        self.assertIsNone(ticket_guard._role_outcome_problem(passing))
+        self.assertIsNone(ticket_guard._role_outcome_problem(failing, failed=True))
+        self.assertIn("no passing result", ticket_guard._role_outcome_problem(failing))
+
     def test_superseded_bootstrapper_failure_can_preserve_its_own_blocked_return(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
         base = self.commit("base")

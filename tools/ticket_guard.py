@@ -195,8 +195,43 @@ def _role_outcome_problem(doc, *, failed=False):
         acceptable = {"gaps-remain"} if failed else {"complete"}
         if doc.get("verdict") not in acceptable:
             return f"Auditor verdict is not {'gaps-remain' if failed else 'complete'}"
+    elif role in {"afs-migrator", "afs-specialist-migrator"} and failed:
+        gates = doc.get("gates")
+        failed_gates = {"build", "behavior", "idiom", "regression"}
+        has_failed_gate = isinstance(gates, dict) and any(
+            type(gates.get(gate)) is int and gates[gate] != 0 for gate in failed_gates)
+        if not has_failed_gate and not (isinstance(doc.get("handoff"), str) and doc["handoff"].strip()):
+            return f"{role} return has no explicit failed gate or blocker handoff"
+    elif role in {"afs-migrator", "afs-specialist-migrator"}:
+        gates = doc.get("gates")
+        if not isinstance(gates, dict):
+            return f"{role} return has no gate outcome evidence"
+        for gate in ("build", "behavior", "idiom", "regression"):
+            result = gates.get(gate)
+            if (type(result) is int and result == 0) or \
+                    (isinstance(result, str) and result.startswith("n/a: ") and result[5:].strip()):
+                continue
+            return f"{role} gate `{gate}` has no passing result"
+        crap, mutation = gates.get("crap"), gates.get("mutation_changed")
+        if type(crap) not in {int, float} or crap < 0:
+            return f"{role} gate `crap` has no score"
+        if type(mutation) not in {int, float} or not 0 <= mutation <= 1:
+            return f"{role} gate `mutation_changed` has no score"
+        if isinstance(doc.get("handoff"), str) and doc["handoff"].strip():
+            return f"{role} return still has an outstanding handoff"
+    elif role == "afs-characterizer" and failed:
+        suite = doc.get("suite")
+        if (not isinstance(suite, dict) or type(suite.get("cases")) is not int
+                or type(suite.get("passing")) is not int or suite["passing"] >= suite["cases"]):
+            return "Characterizer return has no explicit failing case evidence"
+    elif role == "afs-characterizer":
+        suite = doc.get("suite")
+        if (not isinstance(suite, dict) or type(suite.get("cases")) is not int
+                or type(suite.get("passing")) is not int or suite["cases"] <= 0
+                or suite["passing"] != suite["cases"]):
+            return "Characterizer return does not show all characterization cases passing"
     else:
-        return f"role {role!r} has no supported explicit {'failure' if failed else 'passing'} outcome"
+        return f"role {role!r} has no supported explicit failure outcome" if failed else None
     return None
 
 
@@ -353,7 +388,7 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                         problems.append(f"#{number}: invalid replacement issue #{replacement}: {exc}")
                 failure = item.get("failure")
                 if not isinstance(failure, dict) or not isinstance(failure.get("pull_request"), int):
-                    problems.append(f"#{number}: superseded disposition needs failed PR and verifier return evidence")
+                    problems.append(f"#{number}: superseded disposition needs a failed role PR and its return evidence")
                     continue
                 try:
                     failed_pull = _pull(repo, failure["pull_request"])

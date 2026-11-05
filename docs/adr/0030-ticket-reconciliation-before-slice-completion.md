@@ -21,12 +21,16 @@ related issue tree is stale.
     checker confirms the merged PR's merge commit or a closed-unmerged PR's exact head is in default-branch
     ancestry. A return must identify this issue directly or through same-path, same-ticket/role committed
     history. Its owning PR must be among the cited landing PRs and contain the exact committed return.
-    This supports a correction carried by a later PR without treating a closed PR as proof. Verifier returns
-    must pass; Bootstrapper validation must explicitly pass (including pass-with-limitations).
+    This supports a correction carried by a later PR without treating a closed PR as proof. Applicable
+    outcomes are checked against their role contracts: Verifier returns must pass, Bootstrapper validation
+    must explicitly pass (including pass-with-limitations), Migrator gates must show passing outcomes with
+    no outstanding handoff, Characterizer cases must all pass, and Auditor verdicts must be complete.
   - `superseded`: the issue is closed as not planned, links a replacement issue, and preserves a closed,
-    unmerged failed role PR plus that role's explicit failure return at the PR head. The return must belong
-    to the superseded issue and identify the same owning PR; for example, a Bootstrapper's blocked validation
-    is preserved as Bootstrapper evidence, not rewritten as a Verifier result.
+    unmerged failed role PR plus that role's explicit failure return at the PR head. Supported outcomes
+    include Verifier changes-required/blocked, Bootstrapper fail/blocked validation, Migrator failed gates
+    or blocker handoff, Characterizer failing cases, and Auditor gaps-remain. The return must belong to the
+    superseded issue and identify the same owning PR; for example, a Bootstrapper's blocked validation is
+    preserved as Bootstrapper evidence, not rewritten as a Verifier result.
   - `retained-open`: the issue remains open and states the outstanding work and actual blocker. It is not
     represented as completed or automatically closed.
 - The AFS map fog workflow checks this report before the existing ADR-0024 return-file check. A missing,
