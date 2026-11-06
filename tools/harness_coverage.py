@@ -35,6 +35,7 @@ import json
 import pathlib
 import re
 import subprocess
+import time
 import sys
 
 import yaml
@@ -47,8 +48,17 @@ def git(*args):
     return r.stdout if r.returncode == 0 else ""
 
 
-def gh(path, raw=False):
-    r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+TRANSIENT = re.compile(r"HTTP 5\d\d|timed out|connection reset", re.I)
+
+
+def gh(path, raw=False, tries=4, wait=2.0):
+    """`gh api`, retried on a transient GitHub error (5xx, timeout): one bad response must not end a report
+    that reads hundreds of runs (pilot: HTTP 502 on one jobs list)."""
+    for attempt in range(tries):
+        r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        if not r.returncode or not TRANSIENT.search(r.stderr) or attempt == tries - 1:
+            break
+        time.sleep(wait * 2 ** attempt)
     if r.returncode:
         if raw:
             return ""                  # logs expire; a missing log is no evidence, not an error

@@ -75,3 +75,28 @@ class CoverageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TransientTest(unittest.TestCase):
+    """One transient GitHub error (pilot: HTTP 502) is retried, not fatal; a real error still is."""
+    def run_gh(self, results):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import harness_coverage as hc
+        calls = iter(results)
+
+        def fake(cmd, capture_output, text):
+            code, err, out = next(calls)
+            return subprocess.CompletedProcess(cmd, code, out, err)
+        orig_run, orig_sleep = hc.subprocess.run, hc.time.sleep
+        hc.subprocess.run, hc.time.sleep = fake, lambda s: None
+        try:
+            return hc.gh("repos/o/r/x")
+        finally:
+            hc.subprocess.run, hc.time.sleep = orig_run, orig_sleep
+
+    def test_retries_a_5xx(self):
+        self.assertEqual(self.run_gh([(1, "gh: Server Error (HTTP 502)", ""), (0, "", '{"ok": 1}')]), {"ok": 1})
+
+    def test_a_404_is_not_retried(self):
+        with self.assertRaises(RuntimeError):
+            self.run_gh([(1, "gh: Not Found (HTTP 404)", ""), (0, "", "{}")])
