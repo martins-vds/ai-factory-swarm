@@ -174,6 +174,10 @@ class BootstrapTest(unittest.TestCase):
         dispatch = doc[True]["workflow_dispatch"]["inputs"]
         self.assertEqual(dispatch["domain_entry_points"]["default"], "")
         self.assertFalse(dispatch["domain_entry_points"]["required"])
+        run = next(step["run"] for step in doc["jobs"]["understand"]["steps"]
+                   if step.get("name") == "Run /understand and /understand-domain")
+        self.assertIn('domain_args+=(--domain-entry-point "$entry")', run)
+        self.assertNotIn("${{ inputs.domain_entry_points }}", run)
         text = workflow.read_text()
         self.assertIn("AFS_DOMAIN_ENTRY_POINTS:", text)
         self.assertIn("--domain-entry-point", text)

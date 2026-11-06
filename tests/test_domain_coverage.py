@@ -14,7 +14,7 @@ from understand import STEPS, prompts_for, run  # noqa: E402
 
 
 ENTRY = "src/admin/map.xhtml"
-SERVICE = "src/admin/CargoMonitoringService.java"
+SERVICE = "src/admin/MapDataService.java"
 PUBLIC = "src/public/TrackingService.java"
 
 
@@ -22,14 +22,14 @@ def knowledge_graph():
     return {
         "nodes": [
             {"id": "page:admin-map", "type": "page", "name": "Admin map", "filePath": ENTRY},
-            {"id": "service:cargo-monitoring", "type": "service", "name": "CargoMonitoringService",
+            {"id": "service:map-data", "type": "service", "name": "MapDataService",
              "filePath": SERVICE},
             {"id": "page:public-tracking", "type": "page", "name": "Public tracking",
              "filePath": "src/public/track.xhtml"},
             {"id": "service:tracking", "type": "service", "name": "TrackingService", "filePath": PUBLIC},
         ],
         "edges": [
-            {"source": "page:admin-map", "target": "service:cargo-monitoring", "type": "calls"},
+            {"source": "page:admin-map", "target": "service:map-data", "type": "calls"},
             {"source": "page:public-tracking", "target": "service:tracking", "type": "calls"},
         ],
     }
@@ -39,14 +39,14 @@ def domain_graph(step_path=SERVICE, entry_point=ENTRY):
     return {
         "nodes": [
             {"id": "domain:monitoring", "type": "domain", "name": "Monitoring"},
-            {"id": "flow:all-cargo-map", "type": "flow", "name": "Display all cargo",
+            {"id": "flow:admin-map", "type": "flow", "name": "Display all items",
              "domainMeta": {"entryPoint": entry_point}},
-            {"id": "step:all-cargo-map:load-cargo", "type": "step", "name": "Load cargo",
+            {"id": "step:admin-map:load-items", "type": "step", "name": "Load items",
              "filePath": step_path},
         ],
         "edges": [
-            {"source": "domain:monitoring", "target": "flow:all-cargo-map", "type": "contains_flow"},
-            {"source": "flow:all-cargo-map", "target": "step:all-cargo-map:load-cargo", "type": "flow_step"},
+            {"source": "domain:monitoring", "target": "flow:admin-map", "type": "contains_flow"},
+            {"source": "flow:admin-map", "target": "step:admin-map:load-items", "type": "flow_step"},
         ],
     }
 
@@ -77,14 +77,38 @@ class DomainCoverageTest(unittest.TestCase):
             {
                 "nodes": [
                     {"id": "domain:monitoring", "type": "domain"},
-                    {"id": "flow:all-cargo-map", "type": "flow",
+                    {"id": "flow:admin-map", "type": "flow",
                      "domainMeta": {"entryPoint": ENTRY}},
                     {"id": "step:load", "type": "step", "filePath": SERVICE},
                 ],
-                "edges": [{"source": "flow:all-cargo-map", "target": "step:load", "type": "flow_step"}],
+                "edges": [{"source": "flow:admin-map", "target": "step:load", "type": "flow_step"}],
             },
         ):
             self.assertTrue(coverage_failures(self.root, self.knowledge, graph, [ENTRY]))
+
+    def test_legacy_global_gate_passes_unrelated_flow_but_requested_gate_fails(self):
+        knowledge = knowledge_graph()
+        knowledge["nodes"].append({"id": "table:items", "type": "table", "name": "Items"})
+        knowledge["edges"].append(
+            {"source": "service:map-data", "target": "table:items", "type": "reads_from"}
+        )
+        domain = domain_graph(step_path=PUBLIC, entry_point="GET /track")
+        knowledge_path = self.root / "knowledge-graph.json"
+        domain_path = self.root / "domain-graph.json"
+        knowledge_path.write_text(json.dumps(knowledge), encoding="utf-8")
+        domain_path.write_text(json.dumps(domain), encoding="utf-8")
+        legacy = subprocess.run(
+            [
+                sys.executable, str(ROOT / "tools/check_graph.py"), str(knowledge_path),
+                "--domain", str(domain_path), "--gate",
+                "--require-node", "domain", "--require-node", "flow", "--require-node", "step",
+                "--require-edge", "contains_flow", "--require-edge", "flow_step",
+                "--data-path", ENTRY,
+            ],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(legacy.returncode, 0, legacy.stdout + legacy.stderr)
+        self.assertTrue(coverage_failures(self.root, knowledge, domain, [ENTRY]))
 
     def test_missing_domain_artifact_fails_in_the_cli(self):
         knowledge_path = self.root / "knowledge-graph.json"

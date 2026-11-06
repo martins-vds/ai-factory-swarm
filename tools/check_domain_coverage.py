@@ -74,8 +74,10 @@ def coverage_failures(root, knowledge_graph, domain_graph, entry_points):
     if not isinstance(domain_graph, dict):
         return ["domain graph is missing or invalid"]
 
-    source_nodes = [n for n in knowledge_graph.get("nodes", []) if isinstance(n, dict)]
-    domain_nodes = [n for n in domain_graph.get("nodes", []) if isinstance(n, dict)]
+    source_nodes = knowledge_graph.get("nodes")
+    domain_nodes = domain_graph.get("nodes")
+    source_nodes = [n for n in source_nodes if isinstance(n, dict)] if isinstance(source_nodes, list) else []
+    domain_nodes = [n for n in domain_nodes if isinstance(n, dict)] if isinstance(domain_nodes, list) else []
     source_by_id = {n.get("id"): n for n in source_nodes if isinstance(n.get("id"), str)}
     domain_by_id = {n.get("id"): n for n in domain_nodes if isinstance(n.get("id"), str)}
     all_source_ids = set(source_by_id)
@@ -85,8 +87,10 @@ def coverage_failures(root, knowledge_graph, domain_graph, entry_points):
         if isinstance(path, str):
             source_by_path[path].append(node)
 
-    edges = [e for e in domain_graph.get("edges", []) if isinstance(e, dict)]
-    source_edges = [e for e in knowledge_graph.get("edges", []) if isinstance(e, dict)]
+    edges = domain_graph.get("edges")
+    source_edges = knowledge_graph.get("edges")
+    edges = [e for e in edges if isinstance(e, dict)] if isinstance(edges, list) else []
+    source_edges = [e for e in source_edges if isinstance(e, dict)] if isinstance(source_edges, list) else []
     source_reachability = {}
     failures = []
 
@@ -95,10 +99,11 @@ def coverage_failures(root, knowledge_graph, domain_graph, entry_points):
         if not starts:
             failures.append(f"{entry_point}: no source-graph node has this exact filePath")
             continue
-        reached = source_reachability.setdefault(
-            entry_point,
-            _reachable_from([node["id"] for node in starts], source_edges, all_source_ids),
-        )
+        if entry_point not in source_reachability:
+            source_reachability[entry_point] = _reachable_from(
+                [node["id"] for node in starts], source_edges, all_source_ids,
+            )
+        reached = source_reachability[entry_point]
         entry_flows = set()
         for edge in edges:
             domain_id, flow_id = edge.get("source"), edge.get("target")
@@ -147,6 +152,9 @@ def main():
     parser.add_argument("--domain-entry-point", action="append", default=[], metavar="PATH",
                         help="requested source-relative entry-point file path")
     args = parser.parse_args()
+    if not args.domain_entry_point:
+        print("domain coverage: SKIP (no requested entry points)")
+        return 0
     try:
         with open(args.knowledge, encoding="utf-8") as source:
             knowledge = json.load(source)
