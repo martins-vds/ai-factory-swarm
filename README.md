@@ -131,6 +131,8 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-cost-hook`: Copilot hook: one cost record per agent session
 - `afs-costs`: billed credits and Actions minutes per session
 - `harness_coverage.py`: which harness paths a target has exercised
+- `afs-drill`: break one thing on a throwaway branch and confirm the right check catches it
+- `drills.json`: the drills `afs-drill` runs (data: operations, trigger, expected check)
 
 ## Status
 

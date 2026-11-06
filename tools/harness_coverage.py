@@ -21,7 +21,9 @@ The evidence is what the repo kept:
   * issues per label (GitHub).
 
 A tool or workflow is exercised on both paths when it has been seen passing **and** failing; a gate that
-has only ever passed has never been shown to catch anything. Step-level evidence never makes a tool ✅.
+has only ever passed has never been shown to catch anything. One that reports and never blocks declares
+it (`afs_trace.run(main, verdict=False)`, or `# afs-coverage: no-verdict` in a workflow): seeing it run is
+enough. `afs-drill` makes the failing runs on purpose. Step-level evidence never makes a tool ✅.
 
   harness_coverage.py --repo owner/repo [--runs 60] [--out .migration/coverage.md]
   harness_coverage.py --offline                      git evidence only (no GitHub calls)
@@ -93,6 +95,14 @@ def _is_tool(text):
     return bool(sep) and "afs_trace.run(" in entry
 
 
+def _no_verdict(text):
+    """A tool that reports and never blocks declares it: `afs_trace.run(main, verdict=False)`."""
+    return "verdict=False" in text.rpartition("__main__")[2]
+
+
+NO_VERDICT_WF = "# afs-coverage: no-verdict"
+
+
 def universe():
     ret = json.loads((HARNESS / "schemas/return.schema.json").read_text(encoding="utf-8"))
     led = json.loads((HARNESS / "schemas/ledger-entry.schema.json").read_text(encoding="utf-8"))
@@ -102,12 +112,17 @@ def universe():
     # A tool is a file whose entry point is afs_trace.run (tests/test_trace.py enforces it); libraries are not.
     tools = sorted(p.name for p in (HARNESS / "tools").iterdir() if p.is_file() and not p.name.startswith(".")
                    and _is_tool(p.read_text(encoding="utf-8", errors="ignore")))
+    no_verdict = {p.name for p in (HARNESS / "tools").iterdir() if p.name in tools
+                  and _no_verdict(p.read_text(encoding="utf-8", errors="ignore"))}
     wf = {}
     for p in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
         text = p.read_text(encoding="utf-8")
         if "AI Factory Swarm bootstrap" in text.split("\n", 1)[0]:
             wf[p.name] = yaml.safe_load(text) or {}
-    return {"roles": roles, "role_fields": role_fields(ret), "ledger": ledger, "tools": tools, "workflows": wf}
+            if NO_VERDICT_WF in text:
+                no_verdict.add(p.name)
+    return {"roles": roles, "role_fields": role_fields(ret), "ledger": ledger, "tools": tools, "workflows": wf,
+            "no_verdict": no_verdict}
 
 
 def step_tools(workflows, tools):
@@ -241,13 +256,20 @@ def main(argv=None):
     out.append("\n## Harness tools (seen passing and failing)\n")
     for t in u["tools"]:
         p, f = passed[t], failed[t]
-        ok = True if p and f else (None if p or f or unconfirmed[t] else False)
+        if t in u["no_verdict"]:      # reports, never blocks: seen running is the whole path
+            ok = True if p or f else (None if unconfirmed[t] else False)
+        else:
+            ok = True if p and f else (None if p or f or unconfirmed[t] else False)
         extra = f", step-level only {unconfirmed[t]}" if unconfirmed[t] else ""
+        extra += " · no verdict: seen running is enough" if t in u["no_verdict"] else ""
         line(ok, f"`{t}`: passed {p}, failed {f}{extra}" + (f" ({'; '.join(sorted(where[t]))})" if where[t] else ""))
     if wf_conclusions:
         out.append("\n## Generated workflows (recent runs)\n")
         for name, c in sorted(wf_conclusions.items()):
-            ok = True if c.get("success") and c.get("failure") else (None if c.get("success") else False)
+            if name in u["no_verdict"]:
+                ok = bool(c.get("success") or c.get("failure"))
+            else:
+                ok = True if c.get("success") and c.get("failure") else (None if c.get("success") else False)
             line(ok, f"`{name}`: " + (", ".join(f"{k}={v}" for k, v in sorted(c.items(), key=str)) or "never ran"))
         labels = [lb["name"] for lb in gh(f"repos/{a.repo}/labels?per_page=100") or []
                   if lb["name"].startswith(("afs:", "wayfinder:"))]
@@ -267,4 +289,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     import afs_trace
-    afs_trace.run(main)
+    afs_trace.run(main, verdict=False)

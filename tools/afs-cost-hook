@@ -211,7 +211,7 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         import afs_trace
-        afs_trace.run(main)
+        afs_trace.run(main, verdict=False)
     except SystemExit:
         raise
     except Exception as exc:      # last resort: a hook must not break the session

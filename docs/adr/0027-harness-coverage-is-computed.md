@@ -46,3 +46,15 @@ about any one of them. Neither does a step that calls a tool on only one branch:
 - A new role, status, tool or workflow shows as ❌ the moment it ships, with no list to update.
 - Evidence from before this ADR is mostly step-level, so the first report under-counts. Every run from
   now on adds exact evidence.
+
+## Amendment (2026-11-06): drills, and tools without a verdict
+- **Failure drills.** A check seen only passing gets its failing run on purpose: `tools/afs-drill` breaks one
+  thing on a throwaway branch (a draft PR, a stacked PR, or a dispatched workflow) and confirms that the named
+  check fails, from its `AFS-TOOL` line or the run's conclusion. The drills are data (`tools/drills.json`):
+  operations whose paths come from the target's own profile and install record, so they run on any target.
+  The PR is closed and the branch deleted, caught or not; the runs stay as evidence.
+- **No verdict, no failing path.** A tool that reports and never blocks (cost records, the coverage report
+  itself, opening the fog re-walk task) has no failing verdict to show. It declares that with
+  `afs_trace.run(main, verdict=False)`, and a workflow with `# afs-coverage: no-verdict`. Coverage then
+  needs to see it run, not fail. Errors in such tools still exit non-zero; they just aren't a path to drill.
+
