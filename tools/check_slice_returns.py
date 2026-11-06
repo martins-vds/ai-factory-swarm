@@ -12,7 +12,9 @@ slice's tickets meet, so this check runs when the epic closes:
 Tickets closed before this tool was first committed to the repo are exempt (the rule didn't exist yet);
 the date comes from git history, so no list can be edited by hand.
 If a later valid same-ticket/same-role return supersedes an issue, a schema-valid predecessor reachable
-from HEAD may establish attribution only, never a passing verdict. Required history must be complete.
+from HEAD may establish attribution only, never a passing verdict. A parent-ticket return can also cover a
+child only when GitHub confirms the direct parent, the owning PR closes that child and contains the exact
+return, and the current role outcome passes. Required history must be complete.
 
   check_slice_returns.py --repo owner/repo --epic 9 [--reopen]   (the AFS map fog workflow runs this)
 
@@ -70,7 +72,7 @@ def returned_issues(returns_dir=".migration/returns"):
     return {doc["issue"] for doc in current_returns(returns_dir).values()}
 
 
-def superseded_attribution(required, current):
+def superseded_attribution(required, current, repo=None):
     """Attribute missing issues using only complete HEAD ancestry and valid, still-present returns."""
     if not required:
         return set(), []
@@ -84,6 +86,20 @@ def superseded_attribution(required, current):
     root = pathlib.Path(git("rev-parse", "--show-toplevel").strip())
     git("rev-parse", "--verify", "HEAD")
     found, diagnostics = set(), []
+    parent_numbers = {}
+    if repo:
+        from ticket_guard import _parent_issue_number
+
+        for issue in sorted(required):
+            child_repo, child_number = issue.rsplit("#", 1)
+            if child_repo.lower() != repo.lower():
+                continue
+            try:
+                parent_numbers[issue] = _parent_issue_number(repo, int(child_number))
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+                parent_numbers[issue] = "unavailable"
+                diagnostics.append(f"parent-ticket continuation for {issue} blocked: "
+                                   "GitHub parent relationship could not be verified")
     for path, latest in current.items():
         path = path.resolve().relative_to(root).as_posix()
         if not git("ls-tree", "HEAD", "--", path).strip():
@@ -92,10 +108,50 @@ def superseded_attribution(required, current):
         committed = git("show", f"HEAD:{path}")
         if valid_return(committed, path) != latest:
             continue
-        candidates = {issue for issue in required - found
-                      if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]}
+        latest_match = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([1-9][0-9]*)", latest["issue"])
+        latest_issue_number = int(latest_match[1]) if latest_match else None
+        latest_parent_number = None
+        if repo and latest_issue_number is not None:
+            try:
+                from ticket_guard import _issue_is_slice_epic, _parent_issue_number
+                latest_parent_number = _parent_issue_number(repo, latest_issue_number)
+                if latest_parent_number is not None and _issue_is_slice_epic(repo, latest_parent_number):
+                    latest_parent_number = None
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+                diagnostics.append(f"parent-ticket continuation for {latest['issue']} blocked: "
+                                   "GitHub parent relationship could not be verified")
+                continue
+        if repo and latest_parent_number is not None and any(
+                parent_numbers.get(issue) == latest_parent_number for issue in required - found):
+            from ticket_guard import _return_pr_number
+            try:
+                latest_owner = _return_pr_number(latest, repo, return_path=path)
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+                diagnostics.append(f"historical attribution for {path} blocked: {exc}")
+                continue
+            if latest_owner is None:
+                latest_parent_number = None
+        candidates = {
+            issue for issue in required - found
+            if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]
+            and parent_numbers.get(issue) != "unavailable"
+            and (not repo or parent_numbers.get(issue) != latest_issue_number)
+            and (not repo or latest_parent_number is None
+                 or parent_numbers.get(issue) != latest_parent_number)
+        }
         if not candidates:
             continue
+        if repo and any(parent_numbers.get(issue) is not None for issue in candidates):
+            from ticket_guard import _landed_pull, _return_in_commit, _return_pr_number
+            try:
+                owner = _return_pr_number(latest, repo, return_path=path)
+                if owner is not None:
+                    landing = _landed_pull(repo, owner)
+                    if not _return_in_commit(path, latest, landing):
+                        raise ValueError(f"current owning PR #{owner} does not contain the exact current return")
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+                diagnostics.append(f"historical attribution for {path} blocked: {exc}")
+                continue
         # Full history includes merged worker branches, but never arbitrary refs or dangling objects.
         commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path).splitlines()
         for commit in commits:
@@ -110,6 +166,23 @@ def superseded_attribution(required, current):
                                "Historical attribution is not a passing verdict; current acceptance gates still apply.")
             if not candidates:
                 break
+    if repo:
+        from ticket_guard import _parent_ticket_attribution
+        for path, latest in current.items():
+            path = path.resolve().relative_to(root).as_posix()
+            for issue in sorted(required - found):
+                child_repo, child_number = issue.rsplit("#", 1)
+                if child_repo.lower() != repo.lower():
+                    continue
+                attributed, relevant, proof = _parent_ticket_attribution(
+                    repo, int(child_number), path, latest)
+                if attributed:
+                    found.add(issue)
+                    diagnostics.append(f"parent-ticket continuation: {issue} is attributed to {path}: "
+                                       + "; ".join(proof))
+                elif relevant:
+                    diagnostics.append(f"parent-ticket continuation for {issue} blocked: "
+                                       + "; ".join(proof))
     return found, diagnostics
 
 
@@ -166,7 +239,7 @@ def main(argv=None):
     required = {f"{a.repo}#{s['number']}" for s in subs if requires_return(s, since)} - returned
     history_errors = []
     try:
-        historical, diagnostics = superseded_attribution(required, current)
+        historical, diagnostics = superseded_attribution(required, current, a.repo)
         returned.update(historical)
         for diagnostic in diagnostics:
             print(diagnostic)

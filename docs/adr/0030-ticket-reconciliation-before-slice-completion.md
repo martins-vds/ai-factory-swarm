@@ -20,11 +20,28 @@ related issue tree is stale.
   - `completed`: the issue is closed as completed, lists landing PRs and committed role returns, and the
     checker confirms the merged PR's merge commit or a closed-unmerged PR's exact head is in default-branch
     ancestry. A return must identify this issue directly or through same-path, same-ticket/role committed
-    history. Its owning PR must be among the cited landing PRs and contain the exact committed return.
-    This supports a correction carried by a later PR without treating a closed PR as proof. Applicable
-    outcomes are checked against their role contracts: Verifier returns must pass, Bootstrapper validation
-    must explicitly pass (including pass-with-limitations), Migrator gates must show passing outcomes with
-    no outstanding handoff, Characterizer cases must all pass, and Auditor verdicts must be complete.
+    history. A parent-ticket return may cover its direct child only when GitHub confirms the parent
+    relationship, the relevant child-closing PR is cited and contains the exact return (or same-path,
+    same-ticket/role history), and the current applicable role outcome passes. A superseding return that
+    names a sibling must have the same verified direct parent. The current return must match its committed
+    HEAD snapshot, and its own cited owning PR must contain that exact snapshot in default-branch history;
+    historical attribution alone never proves the current result. Parent-ticket continuation separately
+    requires a cited or GitHub-referenced PR whose body closes the direct child, whose landed snapshot
+    contains the same-path, same-ticket/role return, and whose changed-file list confirms it changed that
+    return file. The child-work PR may differ from the current owner PR. The current owner must prove the
+    exact current passing snapshot; it need not close the parent when the child-work PR independently proves
+    the child. A current return naming a sibling must still have a verified parent and an owner that closes
+    that sibling. This supports a correction carried by a later PR without treating a closed PR as proof.
+    Ordinary same-path supersession remains distinct: a
+    historical return that directly identifies the reconciled issue may establish its attribution even if
+    that issue is itself below the slice epic and the latest return names its own child issue. A required
+    current owning PR must still have a verified landing containing the exact current return; historical
+    identity alone does not establish that landing. Applicable
+    outcomes are checked against their role
+    contracts: Verifier returns must pass, Bootstrapper validation must explicitly pass (including
+    pass-with-limitations), Migrator gates must show passing outcomes with no outstanding handoff (`none`
+    means no handoff, and contract-permitted reasoned `n/a` is valid for non-applicable measured gates),
+    Characterizer cases must all pass, and Auditor verdicts must be complete.
     The validator's existing unchanged pre-rule null-PR exemption remains valid only with its original
     Git-history proof and an exact return snapshot in a cited landed PR. Missing history or a later return
     edit requires the owning PR normally; this exemption never establishes a passing role outcome.
