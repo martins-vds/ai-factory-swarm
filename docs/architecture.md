@@ -71,13 +71,28 @@ humans, and approved for cutover.
 | 6 | Automated differential checks first; human side-by-side check per slice; final UAT; single cutover | [0006](adr/0006-side-by-side-then-cutover.md) |
 | 7 | Quirks escalate immediately as blocking question tickets assigned to a human | [0007](adr/0007-quirks-escalate-immediately.md) |
 | 8 | Layered orchestration; local subagents or the Copilot coding agent; agents live only in the target repo | [0008](adr/0008-layered-orchestration.md) |
-| 9 | Understand Anything is the single graph tool, used directly; source snapshot committed once | [0009](adr/0009-understand-anything-as-graph-tool.md) |
+| 9 | Understand Anything builds the graph, used directly; source snapshot committed once (amended by ADR-0025) | [0009](adr/0009-understand-anything-as-graph-tool.md) |
 | 10 | Data migration is its own workstream with its own slices and tests | [0010](adr/0010-data-migration-workstream.md) |
 | 11 | CRAP and mutation testing are mandatory quality gates on the target | [0011](adr/0011-crap-and-mutation-gates.md) |
 | 12 | Built-in skill menu + required-capability checklist; gaps are resolved by the operator before migration starts | [0012](adr/0012-skill-menu-and-capability-gaps.md) |
 | 13 | A best-effort CRAP risk map of the source guides characterization, planning and refactoring; it never blocks | [0013](adr/0013-source-risk-map.md) |
 | 14 | UI: functional fidelity is mandatory; visual direction (keep or modernize) is decided on the map | [0014](adr/0014-ui-functional-fidelity-visual-direction-by-decision.md) |
 | 15 | Context budget per agent, checkpoint-and-restart, and tool output kept on disk behind wrappers and hooks | [0015](adr/0015-context-budget-and-output-hygiene.md) |
+| 16 | Test services (databases, brokers) start from one Docker Compose file named in the profile | [0016](adr/0016-test-services-from-one-compose-file.md) |
+| 17 | Gate results come from the tools' own output lines, never from what an agent reports | [0017](adr/0017-gate-results-from-tools-not-agents.md) |
+| 18 | Ledger evidence and runtimes are checked by tools, not trusted | [0018](adr/0018-evidence-and-runtime-are-checked-not-trusted.md) |
+| 19 | Code graphs carry their identity (source SHA, tree hashes) and are checked for freshness | [0019](adr/0019-code-graphs-carry-their-identity.md) |
+| 20 | Code graphs are enriched deterministically and gated (required types, anchors reach data) before planning | [0020](adr/0020-graphs-enriched-and-gated-before-planning.md) |
+| 21 | Session cost is recorded by a Copilot hook, one record per agent session | [0021](adr/0021-session-cost-from-hooks.md) |
+| 22 | Re-walking the decision map's fog after each slice is a ticket | [0022](adr/0022-fog-rewalk-after-each-slice.md) |
+| 23 | Graphs follow scheduled, pushed and scripted flows, and cover every template | [0023](adr/0023-graphs-follow-scheduled-pushed-and-scripted-flows.md) |
+| 24 | A slice epic closes only when every ticket under it left its return file | [0024](adr/0024-slice-epic-closes-only-with-every-return-file.md) |
+| 25 | Graphify is the deterministic language layer under the framework enrichers | [0025](adr/0025-graphify-is-the-language-layer.md) |
+| 26 | Every target entry point is owned by a slice | [0026](adr/0026-every-target-entry-point-is-owned-by-a-slice.md) |
+| 27 | Harness coverage is computed, and every tool announces that it ran | [0027](adr/0027-harness-coverage-is-computed.md) |
+| 28 | Graph flow is method-level | [0028](adr/0028-graph-flow-is-method-level.md) |
+| 29 | A ticket is done when its work reaches the default branch | [0029](adr/0029-a-ticket-is-done-when-its-work-reaches-main.md) |
+| 30 | Slice tickets are reconciled before the coordinator completes the slice | [0030](adr/0030-ticket-reconciliation-before-slice-completion.md) |
 
 ---
 
@@ -134,7 +149,7 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 │   ├── capabilities.yaml         # required-capability checklist and how each is met (§6)
 │   ├── ledger/                   # fidelity ledger, one file per capability (§9)
 │   ├── slices/<name>.yaml        # slice specs (seeds, depth, extras) for per-slice graph runs
-│   ├── graphs/source/<scope>/    # Understand Anything snapshot at the pinned SHA (`full` or a slice;
+│   ├── graphs/source/<scope>/    # enriched graph snapshot at the pinned SHA (`full` or a slice;
 │   │                             #   built by the generated afs-understand.yml workflow)
 │   ├── graphs/target/            # target graph, updated incrementally per slice
 │   ├── risk-map/                 # CRAP risk map of the source (§10.4)
@@ -224,7 +239,9 @@ front end** — tracker, data stores, and who takes production snapshots (usuall
    (run by the generated `afs-understand.yml` workflow through the Copilot SDK). The whole source is
    graphed once before slices are planned at scale; it costs premium requests in proportion to its size
    (spike M1-1: ~61 for a 31-file slice), so a pilot may graph one slice first
-   ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)).
+   ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)). The same workflow merges Graphify's
+   language layer, adds the framework enrichers' links and runs the graph gate before the snapshot is
+   committed (§8).
 2. Inventory every capability into the ledger: structural (from the graph), behavioral (side effects,
    error handling, config-driven branches, edge cases), **UI** (screens, flows, forms, states,
    bindings), **integrations**, and **data** (tables, schemas, stored procedures, reports).
@@ -345,6 +362,7 @@ under `skills/` by `tools/vendor_skills.py` with provenance, and patches to pinn
 | | `self-learning` (research a technology and bundle it as a skill) *(hackathon)* | code-migration-hackathon (local) |
 | Research | `research` | mattpocock/skills |
 | Code graph | `understand`, `understand-domain`, `understand-chat`, `understand-explain`, `understand-diff` | Understand Anything |
+| | Graphify (`graphify extract`, run by the graph workflow; hash-pinned in `tools/locks/graphify.lock`) | Graphify |
 | Harness | migration contract, ledger and evidence writers, quirk ticket | this repo |
 
 The harness **migration contract** is generalized from PR #6's `migrating-java-to-django` references
@@ -442,15 +460,29 @@ translation_rules: .migration/translation-rules.md
 
 ## 8. The code graph
 
-**Understand Anything is the single graph tool, used directly — no adapter**
-([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)).
+**Three layers, built by one workflow** ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md),
+[ADR-0020](adr/0020-graphs-enriched-and-gated-before-planning.md),
+[ADR-0025](adr/0025-graphify-is-the-language-layer.md)):
 
-Why it fits a migration: its graph has the node and edge types the ledger and slices are built from:
-endpoints, tables, services, schemas, screens, and domain → flow → step nodes with entry points
-(http, cli, event, cron) and business rules; edges include `calls`, `reads_from`, `writes_to`,
-`publishes`, `routes`, `triggers` and `tested_by`.
+| Layer | Tool | Adds | Deterministic |
+|-------|------|------|---------------|
+| Understanding | Understand Anything (an LLM, through the Copilot SDK) | files, types and functions with summaries and tags; the **domain graph**: domain → flow → step, with entry points | No; so the frozen source is graphed once and committed |
+| Language | Graphify (tree-sitter, offline) | `calls` (calls, instantiation, typed parameters), `implements`, `inherits`, and `Type.method` nodes | Yes; hash-pinned |
+| Framework | `enrich_graph.py` stack rules (`java-ee`, `django`) | endpoints, pages, tables, queues, timers, commands; `routes`, `reads_from`, `writes_to`, `publishes`, `triggers` | Yes; every added edge is tagged `afs-enriched:<rule>` |
 
-How it is used:
+Flow is followed at method level ([ADR-0028](adr/0028-graph-flow-is-method-level.md)): forward along
+`routes`, `calls`, `contains`, `inherits`, `reads_from`, `writes_to`, `publishes` and `triggers`, and
+backwards along `implements`, so an interface leads to its implementations. `graph_gate.py` then checks
+that the profile's required node and edge types are present, that every slice's anchors reach data,
+and that every target entry point is owned by a slice ([ADR-0026](adr/0026-every-target-entry-point-is-owned-by-a-slice.md)).
+`docs/operator-setup.md` lists what each layer contributes for each kind of graph content.
+
+Why Understand Anything stays on top: its graph has the node and edge types the ledger and slices are
+built from: endpoints, tables, services, schemas, screens, and domain → flow → step nodes with entry
+points (http, cli, event, cron) and business rules, plus `tested_by`. The other two layers make the
+links between them reliable.
+
+How Understand Anything is used:
 
 | When | Command | Output |
 |------|---------|--------|
@@ -472,11 +504,11 @@ still fails if the domain artifact is absent, reports the check as deferred, and
 `check_domain_coverage.py` after enrichment as a fatal gate. A deferred runner result alone is not a
 coverage pass.
 
-**Enrichment (spike M1-1).** For some stacks (e.g. Java EE) screens, entities and services arrive as
-tags and summaries on `file`/`class` nodes, with few `calls` edges. The Analyst maps tags and framework
-config to ledger kinds and builds screen → bean → service → entity chains from imports plus config;
-the domain graph's flows are the primary slice anchors. The harness pins Understand Anything with a
-one-line patch so its `understand` skill loads under Copilot. Agents run it through the Copilot SDK.
+**Why the enrichers exist (spike M1-1).** For some stacks (e.g. Java EE) Understand Anything gives
+screens, entities and services only as tags and summaries on `file`/`class` nodes, with few `calls`
+edges. The domain graph's flows are the primary slice anchors; the enriched graph is what proves they
+reach data. The harness pins Understand Anything with a one-line patch so its `understand` skill loads
+under Copilot.
 
 Because the source is frozen, the source graph is built **once** and committed; its cost is paid
 once and its LLM-generated content does not drift. Understand Anything writes its data next to the
@@ -734,7 +766,7 @@ that pins the chosen behavior.
 | Risk | Mitigation |
 |------|------------|
 | No running legacy environment, and the source does not build outside the organization (seen in the pilot) | Characterization tiers B/C (ADR-0005); weaker evidence recorded and reviewed by humans |
-| Understand Anything cannot parse a legacy language (e.g. COBOL, VB6) | Spike per new source language; Graphify is the fallback as a **swap**, not an addition (ADR-0009) |
+| Understand Anything cannot parse a legacy language (e.g. COBOL, VB6) | Spike per new source language. Graphify's tree-sitter parsers cover about 40 languages, and the language layer comes from it either way (ADR-0025); a language neither parses needs a capability gap ticket |
 | Full source graph is slow/expensive on very large codebases | One-time cost (frozen source); budget it in Phase 2 |
 | Second legacy instance not available for write comparisons | Fall back to read-only replay + characterization + human check (§10.2) |
 | No CRAP or mutation tool for a stack | Capability gap → operator ticket; compute CRAP from complexity + coverage where possible |

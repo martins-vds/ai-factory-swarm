@@ -21,7 +21,7 @@ class CoverageTest(unittest.TestCase):
         entry = 'def main():\n    return 0\n\n\nif __name__ == "__main__":\n    import afs_trace\n    afs_trace.run(main)\n'
         for t in ("validate.py", "crap.py", "never.py", "check_inputs.py"):
             (h / "tools" / t).write_text(entry)
-        (h / "tools" / "afs_trace.py").write_text("def run(main):\n    pass\n")      # a library, not a tool
+        (h / "tools" / "afs_trace.py").write_text('"""A tool\'s entry point is `afs_trace.run(main)`."""\ndef run(main):\n    pass\n')  # a library that names the call, not a tool
 
     def tearDown(self):
         shutil.rmtree(self.d)
