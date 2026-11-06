@@ -459,6 +459,14 @@ How it is used:
 | Per slice | `/understand` on the target (incremental: only changed files re-analyzed) | `.migration/graphs/target/` |
 | Per PR | `/understand-diff` | Blast radius of the change |
 
+The `afs-understand` workflow also accepts optional `domain_entry_points`: source-relative file paths,
+one per line. Each requested path must exist inside the analyzed source, and the graph is accepted only
+when the domain graph connects a domain to a flow whose exact entry-point marker matches the request
+and to a source-backed step structurally reachable from that path in the knowledge graph. With no
+requests, the existing generation and gates are unchanged. This structural check proves neither that
+the flow is semantically correct nor that its behavior is complete; independent review against source
+code is still required.
+
 **Enrichment (spike M1-1).** For some stacks (e.g. Java EE) screens, entities and services arrive as
 tags and summaries on `file`/`class` nodes, with few `calls` edges. The Analyst maps tags and framework
 config to ledger kinds and builds screen → bean → service → entity chains from imports plus config;

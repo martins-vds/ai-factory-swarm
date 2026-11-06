@@ -120,6 +120,7 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(r["agents"], 10)
         for f in [".migration/source.lock", ".migration/profile.yaml", ".migration/capabilities.yaml",
                   ".migration/harness/tools/afs-run", ".migration/harness/tools/check_stack_base.py",
+                  ".migration/harness/tools/check_domain_coverage.py",
                   ".migration/harness/tools/afs-acceptance",
                   ".migration/harness/installed.json",
                   ".github/hooks/rtk-rewrite.json", ".github/workflows/copilot-setup-steps.yml",
@@ -165,6 +166,20 @@ class BootstrapTest(unittest.TestCase):
         lock_text = (self.target / ".migration/source.lock").read_text()
         self.assertIn("sha: c2df7607e3b6a997dd27eb2917bc33e4ec0f6692", lock_text)
         self.assertEqual((self.target / ".gitignore").read_text(), ".source/\n.migration/runs/\n")
+
+    def test_domain_coverage_dispatch_is_optional_and_wired_to_the_graph_gate(self):
+        self.run_bootstrap()
+        workflow = self.target / ".github/workflows/afs-understand.yml"
+        doc = yaml.safe_load(workflow.read_text())
+        dispatch = doc[True]["workflow_dispatch"]["inputs"]
+        self.assertEqual(dispatch["domain_entry_points"]["default"], "")
+        self.assertFalse(dispatch["domain_entry_points"]["required"])
+        text = workflow.read_text()
+        self.assertIn("AFS_DOMAIN_ENTRY_POINTS:", text)
+        self.assertIn("--domain-entry-point", text)
+        self.assertIn("check_domain_coverage.py", text)
+        self.assertIn("if [ \"${#domain_args[@]}\" -gt 0 ]; then", text)
+        self.assertIn('AFS_GRAPH_MODEL: ${{ inputs.model }}', text)
 
     def test_acceptance_workflow_is_manual_durable_and_preserves_failed_evidence(self):
         self.run_bootstrap()
