@@ -68,4 +68,6 @@ services:
   test: [db]
 costs:                       # ADR-0021: billed AI credits and Actions minutes (AFS costs workflow)
   billing: {scope: organization, account: example-org}
+signoff:                     # ADR-0031: whose approving review on the coordinator's PR is the human sign-off
+  approvers: [example-approver]
 translation_rules: .migration/translation-rules.md

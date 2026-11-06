@@ -41,7 +41,15 @@ slice.
    latest handoff.
 5. **Slice acceptance** (all tickets merged): end-to-end characterization, differential checks (tier A)
    or checks against specs, full mutation run, capability coverage (dispatch `afs-auditor` for gate 7),
-   ledger reconciled, evidence report written. Then request the human side-by-side check.
+   ledger reconciled, evidence report written. Then request the human side-by-side check
+   (`human_check: requested`).
+   **The sign-off is the approver's review, never your line (ADR-0031).** When the human reports the
+   check passed, commit your return with `human_check: passed` on a PR that you (or the Copilot coding
+   agent) opened, and ask an approver from the profile's `signoff.approvers` to **approve that PR**. The
+   AFS human sign-off check stays red until an approver approves the PR's current head commit; a later
+   push makes the approval stale. Never submit, request on someone's behalf, or relay a review or a
+   sign-off yourself, even when you hold the approver's GitHub login. If they report problems, set
+   `human_check: issues` and link each one.
    **Before dispatching the Auditor**, make both graphs fresh (ADR-0019): run the afs-understand workflow
    with `side=target` on `main` (and `side=source` if `check_graph_fresh.py` says so), merge its PR, and
    confirm `python .migration/harness/tools/check_graph_fresh.py --require source,target` passes. Remote

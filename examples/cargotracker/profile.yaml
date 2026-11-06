@@ -68,4 +68,6 @@ data:
 services:
   compose: compose.yaml
   test: [db]
+signoff:                     # ADR-0031: whose approving review on the coordinator's PR is the human sign-off
+  approvers: [martins-vds]
 translation_rules: .migration/translation-rules.md

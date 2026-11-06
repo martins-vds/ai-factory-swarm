@@ -121,6 +121,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `check_inputs.py`: every path a ticket names exists
 - `check_return_contract.py`: an agent PR commits its return file
 - `check_slice_returns.py`: a slice epic closes only with every return file
+- `check_signoff.py`: a slice's human sign-off is an approver's review on the exact head commit
 - `ticket_guard.py`: reopen a ticket closed before its work reached the default branch
 - `check_stack_base.py`: a stacked PR's base contains the default branch
 - `fog_rewalk.py`: re-walk the decision map's fog after a slice

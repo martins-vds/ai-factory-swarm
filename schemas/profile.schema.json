@@ -172,6 +172,13 @@
         "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional variables exported to later steps so tests reach the services." }
       }
     },
+    "signoff": {
+      "type": "object", "additionalProperties": false,
+      "description": "ADR-0031: who may sign off a slice's human side-by-side check. The sign-off is an approving review by one of these logins on the PR that sets human_check: passed (tools/check_signoff.py).",
+      "properties": {
+        "approvers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" } }
+      }
+    },
     "costs": {
       "type": "object", "additionalProperties": false,
       "description": "ADR-0021: where billed Copilot AI credits and Actions minutes are read from (tools/afs-costs, AFS costs workflow).",
