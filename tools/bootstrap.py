@@ -54,7 +54,7 @@ HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "ext
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -92,6 +92,7 @@ OPERATOR_CHECKLIST = [
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",
     "Copilot firewall lets setup steps pull the compose images (add the registry to the allowlist if a session reports services DOWN)",
+    "Sign-off: profile signoff.approvers names who approves slice sign-off PRs (ADR-0031); open those PRs from a login that isn't an approver",
     "Costs (optional): profile costs.billing names the account that pays for Copilot (user, organization or enterprise); BILLING_READ_TOKEN secret that can read that account's billing (docs/operator-setup.md, ADR-0021)",
     "Graph first: after this PR merges, run the afs-understand workflow (side=source) on main and merge its PR; graph_gate.py --side source --require-graph must pass before Phase 2 (ADR-0020)",
 ]
@@ -513,7 +514,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
     for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-acceptance.yml", "afs-costs.yml",
-                 "afs-map-fog.yml", "afs-ticket-guard.yml"):
+                 "afs-map-fog.yml", "afs-ticket-guard.yml", "afs-signoff.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")

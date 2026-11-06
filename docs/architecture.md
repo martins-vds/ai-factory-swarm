@@ -93,6 +93,7 @@ humans, and approved for cutover.
 | 28 | Graph flow is method-level | [0028](adr/0028-graph-flow-is-method-level.md) |
 | 29 | A ticket is done when its work reaches the default branch | [0029](adr/0029-a-ticket-is-done-when-its-work-reaches-main.md) |
 | 30 | Slice tickets are reconciled before the coordinator completes the slice | [0030](adr/0030-ticket-reconciliation-before-slice-completion.md) |
+| 31 | A slice's human sign-off is an approving PR review by a named approver, on the exact head commit | [0031](adr/0031-human-signoff-is-an-approving-review.md) |
 
 ---
 
