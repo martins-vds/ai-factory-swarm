@@ -23,6 +23,7 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
 - `clean-architecture`, `domain-driven-design` — misplaced-responsibility checks.
 - `afs-evidence` — run what you need to prove through `afs-run`; write the report.
 - `afs-ledger` — reconcile entries (read; corrections go through tickets).
+- `afs-data-pipeline` — data slices: reconciliation reports and invariant tests as evidence.
 - `afs-quirk-ticket` — source behavior that looks wrong.
 - `documentation-writer` — the final report's readability.
 

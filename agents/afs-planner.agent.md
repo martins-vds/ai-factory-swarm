@@ -23,6 +23,7 @@ strategy, UI direction), `profile.context.working_budget`.
 - `architecture-patterns` — target structure per the architecture ADRs.
 - `afs-to-tickets` — draft tracer-bullet tickets with blocking edges (publishing happens after approval).
 - `afs-ledger` — map every capability to a slice or a proposed deferral.
+- `afs-data-pipeline` — plan data-migration slices: snapshot, mapping, loader, reconciliation (ADR-0032).
 
 ## Procedure
 1. **Anchor slices on domain flows** (and other entry points: endpoints, jobs). A slice is a vertical

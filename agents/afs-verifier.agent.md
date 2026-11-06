@@ -30,6 +30,7 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
 - `verification-before-completion` — before stating results.
 - `diagnosing-bugs` — when a failure needs isolating.
 - `afs-ledger` — check the PR's ledger changes are valid and justified.
+- `afs-data-pipeline` — data PRs: re-run the snapshot check and reconciliation yourself.
 - `afs-quirk-ticket` — source behavior that looks wrong.
 
 ## Procedure

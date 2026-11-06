@@ -23,6 +23,7 @@ characterization evidence, the decision-map answers (data strategy, UI direction
 - `patterns-of-enterprise-application-architecture` — legacy data-access patterns and their equivalents.
 - `ui-ux-pro-max` — UI tickets: build screens in the chosen direction; UX and accessibility rules.
 - `db-seed` — seed data for data-migration tests.
+- `afs-data-pipeline` — data tickets: snapshot check, mapping, loader, export, reconciliation (ADR-0032).
 - `afs-evidence`, `afs-ledger`, `afs-quirk-ticket` — as for the Migrator.
 - `verification-before-completion`, `pr`, `receiving-code-review`, `diagnosing-bugs`, `lessons-learned`.
 - Plus the stack-specific skills listed in `profile.skills.specialists` for your specialty.
@@ -31,10 +32,11 @@ characterization evidence, the decision-map answers (data strategy, UI direction
 Follow the `afs-migrator` procedure (understand → tests first → implement → gates via `afs-run` →
 ledger → PR), plus what your specialty requires:
 
-- **Data (ADR-0010).** Build the repeatable legacy → target pipeline for your slice's tables.
-  Tests: reconciliation (row counts, checksums, referential integrity), business invariants, and the
-  characterized behavior of legacy procedures or reports the target replaces. Masking only if the
-  profile enables it. Never touch production data; work on snapshots or seeded data.
+- **Data (ADR-0010, ADR-0032).** Build the repeatable legacy → target pipeline for your slice's tables,
+  following `afs-data-pipeline`: snapshot check, mapping, idempotent loader, export, then
+  `data_reconcile.py` through `afs-run` (row counts, checksums, referential integrity). Add business
+  invariant tests, and the characterized behavior of legacy procedures or reports the target replaces.
+  Masking only if the profile enables it. Never commit snapshot or exported rows.
 - **UI (ADR-0014).** Functional fidelity is mandatory — every field, flow, validation, state and
   permission of the screen, per the ledger. The look follows the UI direction on the decision map.
   End-to-end tests drive the screen; accessibility rules from `ui-ux-pro-max` apply.

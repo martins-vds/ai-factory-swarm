@@ -54,7 +54,7 @@ HARNESS_TOOLS = ["afs-run", "validate.py", "crap.py", "check_installed.py", "ext
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -529,7 +529,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
 def merge_gitignore(target):
     gi = target / ".gitignore"
     lines = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
-    for entry in (".source/", ".migration/runs/"):
+    for entry in (".source/", ".migration/runs/", ".migration/data/snapshot/", ".migration/data/target-export/"):   # ADR-0032: data never committed
         if entry not in lines:
             lines.append(entry)
     write(gi, "\n".join(lines) + "\n")
