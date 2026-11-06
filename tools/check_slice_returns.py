@@ -121,6 +121,16 @@ def superseded_attribution(required, current, repo=None):
                 diagnostics.append(f"parent-ticket continuation for {latest['issue']} blocked: "
                                    "GitHub parent relationship could not be verified")
                 continue
+        if repo and latest_parent_number is not None and any(
+                parent_numbers.get(issue) == latest_parent_number for issue in required - found):
+            from ticket_guard import _return_pr_number
+            try:
+                latest_owner = _return_pr_number(latest, repo, return_path=path)
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+                diagnostics.append(f"historical attribution for {path} blocked: {exc}")
+                continue
+            if latest_owner is None:
+                latest_parent_number = None
         candidates = {
             issue for issue in required - found
             if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]

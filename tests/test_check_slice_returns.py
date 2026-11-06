@@ -624,7 +624,7 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.assertEqual(found, set())
         self.assertTrue(any("still open" in item for item in diagnostics), diagnostics)
 
-    def test_ordinary_null_pr_history_retains_verified_pre_rule_exemption(self):
+    def ordinary_null_pr_history(self, *, canonical_parent_is_slice_epic):
         import validate
 
         installed = self.root / ".migration/harness/tools"
@@ -643,13 +643,20 @@ class HistoricalAttributionTest(unittest.TestCase):
         def gh(endpoint, *args, **kwargs):
             number = int(endpoint.rsplit("/", 1)[1])
             if number == 99:
-                return {"number": 99, "labels": [{"name": "afs:slice"}]}
+                labels = [{"name": "afs:slice"}] if canonical_parent_is_slice_epic else []
+                return {"number": 99, "labels": labels}
             return {"number": number, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
 
         with mock.patch.object(validate, "HERE", installed), \
                 mock.patch.object(ticket_guard, "gh", side_effect=gh):
             found, _ = csr.superseded_attribution({"o/r#1"}, csr.current_returns(), REPO)
         self.assertEqual(found, {"o/r#1"})
+
+    def test_ordinary_null_pr_history_retains_verified_pre_rule_exemption_under_epic_parent(self):
+        self.ordinary_null_pr_history(canonical_parent_is_slice_epic=True)
+
+    def test_ordinary_null_pr_history_retains_verified_pre_rule_exemption_under_work_parent(self):
+        self.ordinary_null_pr_history(canonical_parent_is_slice_epic=False)
 
     def test_parent_ticket_lineage_survives_current_sibling_issue_return(self):
         parent_failure = RETURN.replace("pr: o/r#10", "pr: o/r#12")
