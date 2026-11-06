@@ -26,6 +26,10 @@ on:
         description: "Model override (empty = Copilot default)"
         required: false
         default: ""
+      domain_entry_points:
+        description: "Optional source-relative entry-point file paths, one per line; each must have a verified domain flow"
+        required: false
+        default: ""
 
 jobs:
   understand:
@@ -39,6 +43,7 @@ jobs:
       SIDE: ${{{{ inputs.side || 'source' }}}}
       SCOPE: ${{{{ (inputs.side == 'target' || !inputs.slice) && 'full' || inputs.slice }}}}
       AFS_GRAPH_MODEL: ${{{{ inputs.model }}}}
+      AFS_DOMAIN_ENTRY_POINTS: ${{{{ inputs.domain_entry_points }}}}
       GITHUB_TOKEN: ${{{{ github.token }}}}   # the SDK authenticates with it (copilot-requests: write)
     steps:
       - uses: actions/checkout@v5
@@ -98,9 +103,20 @@ jobs:
         id: run
         run: |
           out=".migration/graphs/$SIDE/$SCOPE"
+          domain_args=()
+          coverage_args=()
+          while IFS= read -r entry || [ -n "$entry" ]; do
+            [ -n "$entry" ] || continue
+            domain_args+=(--domain-entry-point "$entry")
+          done <<< "$AFS_DOMAIN_ENTRY_POINTS"
+          if [ "${{#domain_args[@]}}" -gt 0 ]; then
+            coverage_args+=(--defer-domain-coverage)
+          fi
           set -o pipefail
           python .migration/harness/tools/understand.py --dir "$RUNNER_TEMP/analyze" \
-            --plugin "$RUNNER_TEMP/understand-anything" --out "$out" 2>&1 | tee "$RUNNER_TEMP/understand.log"
+            --plugin "$RUNNER_TEMP/understand-anything" --out "$out" \
+            "${{domain_args[@]}}" "${{coverage_args[@]}}" \
+            2>&1 | tee "$RUNNER_TEMP/understand.log"
           mkdir -p "$RUNNER_TEMP/events" && mv "$out"/events-*.jsonl "$out"/error-*.txt "$RUNNER_TEMP/events/" 2>/dev/null || true
           [ -f "$RUNNER_TEMP/analyze/MANIFEST.txt" ] && cp "$RUNNER_TEMP/analyze/MANIFEST.txt" "$out/"
           [ "$SIDE" = target ] && anchors="" || anchors=$(python -c "import yaml,sys;s=yaml.safe_load(open(sys.argv[1])) if sys.argv[1]!='full' else {{}};print(' '.join('--anchor '+x for x in s.get('anchors',[])))" \
@@ -131,6 +147,11 @@ jobs:
                   proj["gitCommitHash"] = ident
                   p.write_text(json.dumps(g, indent=2) + "\n", encoding="utf-8")
           PY
+          if [ "${{#domain_args[@]}}" -gt 0 ]; then
+            python .migration/harness/tools/check_domain_coverage.py \
+              --root "$RUNNER_TEMP/analyze" --knowledge "$out/knowledge-graph.json" \
+              --domain "$out/domain-graph.json" "${{domain_args[@]}}"
+          fi
           {{ echo "side: $SIDE"; echo "scope: $SCOPE"
             if [ "$SIDE" = source ]; then
               echo "source: ${{{{ steps.lock.outputs.repo }}}}@${{{{ steps.lock.outputs.sha }}}}"; echo "source_sha: ${{{{ steps.lock.outputs.sha }}}}"
