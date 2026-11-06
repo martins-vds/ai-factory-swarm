@@ -163,6 +163,22 @@ def _parent_issue_number(repo, issue_number):
     return int(match[2])
 
 
+def _issue_is_slice_epic(repo, issue_number):
+    import yaml
+    issue = gh(f"repos/{repo}/issues/{issue_number}")
+    if not isinstance(issue, dict) or issue.get("number") != issue_number:
+        raise ValueError(f"GitHub issue #{issue_number} identity is unavailable")
+    raw_labels = issue.get("labels", [])
+    if not isinstance(raw_labels, list):
+        raise ValueError(f"GitHub issue #{issue_number} labels are unavailable")
+    labels = [label.get("name") for label in raw_labels if isinstance(label, dict)]
+    from fog_rewalk import is_slice_epic
+    try:
+        return is_slice_epic(issue_number, labels)
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+        raise ValueError(f"slice-epic metadata for issue #{issue_number} is unavailable: {exc}") from exc
+
+
 def _pull_closes_issue(pull, repo, issue_number):
     pattern = re.compile(
         rf"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+"
@@ -170,6 +186,41 @@ def _pull_closes_issue(pull, repo, issue_number):
     )
     return any(match.group("repo") is None or match.group("repo").lower() == repo.lower()
                for match in pattern.finditer(pull.get("body") or ""))
+
+
+def _issue_pull_references(repo, issue_number):
+    """Return PRs GitHub's issue timeline actually cross-references for this issue."""
+    references, page = set(), 1
+    while True:
+        events = gh(f"repos/{repo}/issues/{issue_number}/timeline?per_page=100&page={page}")
+        if not isinstance(events, list):
+            raise ValueError(f"issue #{issue_number} pull-request references are unavailable")
+        for event in events:
+            if not isinstance(event, dict) or event.get("event") != "cross-referenced":
+                continue
+            source = event.get("source")
+            source_issue = source.get("issue") if isinstance(source, dict) else None
+            if not isinstance(source_issue, dict) or not source_issue.get("pull_request"):
+                continue
+            number = source_issue.get("number")
+            if type(number) is int and number > 0:
+                references.add(number)
+        if len(events) < 100:
+            return sorted(references)
+        page += 1
+
+
+def _pull_changes_return_file(repo, pull_number, path):
+    page = 1
+    while True:
+        files = gh(f"repos/{repo}/pulls/{pull_number}/files?per_page=100&page={page}")
+        if not isinstance(files, list):
+            raise ValueError(f"PR #{pull_number} changed-file evidence is unavailable")
+        if any(isinstance(item, dict) and item.get("filename") == path for item in files):
+            return True
+        if len(files) < 100:
+            return False
+        page += 1
 
 
 def _parent_ticket_return(repo, issue_number, path, doc, *, pull=None, require_landed=True,
@@ -214,9 +265,7 @@ def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None
     if not current_issue or f"{current_issue[1]}/{current_issue[2]}".lower() != repo.lower():
         return False, relevant, ["current return does not name a same-repository issue"]
     current_number = int(current_issue[3])
-    if current_number == parent_number:
-        current_work_issues = {issue_number, parent_number}
-    else:
+    if current_number != parent_number:
         try:
             current_parent = _parent_issue_number(repo, current_number)
         except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
@@ -225,7 +274,6 @@ def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None
             return False, False, []
         if current_parent != parent_number:
             return False, relevant, ["current return issue is not the parent or a sibling of the child"]
-        current_work_issues = {current_number}
 
     path = _return_path(path)
     try:
@@ -238,76 +286,76 @@ def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None
     if outcome_problem:
         return False, True, [f"current role outcome does not pass: {outcome_problem}"]
     try:
+        if _issue_is_slice_epic(repo, parent_number):
+            return False, False, []
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+        return False, True, [f"parent issue #{parent_number} identity is unavailable: {exc}"]
+    try:
         current_pr = _return_pr_number(current, repo, return_path=path)
     except ValueError as exc:
         return False, True, [str(exc)]
     if current_pr is None:
         # Ordinary history may still use the existing no-owning-PR contract or verified exemption.
         return False, False, []
-    if cited_prs is not None and current_pr not in cited_prs:
+    if cited_prs is not None and not any(type(number) is int and number == current_pr for number in cited_prs):
         return False, True, [f"current owning PR #{current_pr} is not among the cited landing PRs"]
     try:
         current_pull = _pull(repo, current_pr)
-        if not any(_pull_closes_issue(current_pull, repo, work_issue)
-                   for work_issue in current_work_issues):
-            return False, True, [f"current owning PR #{current_pr} does not close its parent ticket or "
-                                 "current child issue"]
         current_commit = _landed_pull(repo, current_pr)
     except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
         return False, True, [f"current owning PR #{current_pr} has no verified landing: {exc}"]
     if not _return_in_commit(path, current, current_commit):
         return False, True, [f"current owning PR #{current_pr} does not contain the exact current return"]
+    if current_number != parent_number and not _pull_closes_issue(current_pull, repo, current_number):
+        return False, True, [f"current owning PR #{current_pr} does not close current issue #{current_number}"]
 
     try:
-        commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path)
-    except ValueError as exc:
-        return False, True, [f"return history is unavailable: {exc}"]
-    candidates = [current]
-    for commit in commits.splitlines():
-        try:
-            previous = _valid_return(git("show", f"{commit}:{path}"), path)
-        except ValueError:
-            continue
-        if not previous or any(previous.get(key) != current.get(key) for key in ("ticket", "role")):
-            continue
-        candidates.append(previous)
+        work_pr_numbers = (sorted(number for number in cited_prs
+                                  if type(number) is int and number > 0) if cited_prs is not None
+                           else _issue_pull_references(repo, issue_number))
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+        return False, True, [f"child-work PR references for issue #{issue_number} are unavailable: {exc}"]
+    if not work_pr_numbers:
+        return False, relevant, ["no cited or GitHub-referenced child-work PR proves the child work"]
 
-    parent_ref = _issue_ref(repo, parent_number)
-    for previous in candidates:
-        previous_issue = previous.get("issue")
-        if previous_issue not in {parent_ref, _issue_ref(repo, issue_number)}:
-            continue
+    current_issue_ref = current.get("issue")
+    for work_pr_number in work_pr_numbers:
         try:
-            owner_pr = _return_pr_number(previous, repo, return_path=path)
-        except ValueError as exc:
-            problems.append(str(exc))
-            continue
-        if owner_pr is None:
-            problems.append("historical parent-ticket return has no owning PR")
-            continue
-        if cited_prs is not None and owner_pr not in cited_prs:
-            problems.append(f"historical child PR #{owner_pr} is not among the cited landing PRs")
-            continue
-        try:
-            if previous_issue == parent_ref:
-                _parent_ticket_return(repo, issue_number, path, previous, verified_parent=parent_number)
-            else:
-                pull = _pull(repo, owner_pr)
-                if not _pull_closes_issue(pull, repo, issue_number):
-                    raise ValueError(f"historical PR #{owner_pr} does not close child issue #{issue_number}")
-                commit = _landed_pull(repo, owner_pr)
-                if not _return_in_commit(path, previous, commit):
-                    raise ValueError(f"historical PR #{owner_pr} does not contain its exact child return")
-        except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
-            problems.append(str(exc))
-            continue
-        return True, relevant, [f"parent-ticket continuation verified by current PR #{current_pr} and "
-                                f"child PR #{owner_pr}"]
-    return False, relevant, problems or ["no landed parent-ticket return proves the child work"]
+            work_pull = _pull(repo, work_pr_number)
+            if not _pull_closes_issue(work_pull, repo, issue_number):
+                problems.append(f"child-work PR #{work_pr_number} does not close child issue #{issue_number}")
+                continue
+            work_commit = _landed_pull(repo, work_pr_number)
+            if not _pull_changes_return_file(repo, work_pr_number, path):
+                problems.append(f"child-work PR #{work_pr_number} did not change the exact role return file")
+                continue
+            snapshot = _valid_return(git("show", f"{work_commit}:{path}"), path)
+            if not snapshot or any(snapshot.get(key) != current.get(key) for key in ("ticket", "role")):
+                problems.append(f"child-work PR #{work_pr_number} has no matching role return at its landing")
+                continue
+            snapshot_issue = snapshot.get("issue")
+            if snapshot_issue == current_issue_ref or snapshot_issue == _issue_ref(repo, parent_number):
+                return True, relevant, [f"parent-ticket continuation verified by current PR #{current_pr} "
+                                        f"and child PR #{work_pr_number}"]
+            snapshot_match = re.fullmatch(
+                r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)", snapshot_issue or "")
+            if not snapshot_match or \
+                    f"{snapshot_match[1]}/{snapshot_match[2]}".lower() != repo.lower():
+                problems.append(f"child-work PR #{work_pr_number} return has no same-repository issue")
+                continue
+            snapshot_number = int(snapshot_match[3])
+            if snapshot_number in {issue_number, current_number} and \
+                    _parent_issue_number(repo, snapshot_number) == parent_number:
+                return True, relevant, [f"parent-ticket continuation verified by current PR #{current_pr} "
+                                        f"and child PR #{work_pr_number}"]
+            problems.append(f"child-work PR #{work_pr_number} return is outside the verified parent lineage")
+        except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+            problems.append(f"child-work PR #{work_pr_number} is not verified: {exc}")
+    return False, relevant, problems or ["no landed child-work PR changed and contains the matching role return"]
 
 
 def _pull(repo, number):
-    if not isinstance(number, int) or number <= 0:
+    if type(number) is not int or number <= 0:
         raise ValueError(f"invalid pull request number: {number!r}")
     pull = gh(f"repos/{repo}/pulls/{number}")
     if not isinstance(pull, dict) or pull.get("number") != number:

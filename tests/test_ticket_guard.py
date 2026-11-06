@@ -164,7 +164,10 @@ quirk_tickets: []
                     return {"number": number, "state": "closed", "state_reason": "completed", "title": f"T{number}"}
                 return {"number": number, "state": "open", "title": f"T{number}"}
             if endpoint.startswith("repos/o/r/pulls/"):
-                return pulls[int(endpoint.rsplit("/", 1)[1])]
+                pull_number = int(endpoint.split("/")[4].split("?", 1)[0])
+                if "/files?" in endpoint:
+                    return pulls[pull_number].get("files", [])
+                return pulls[pull_number]
             if endpoint.startswith("repos/o/r/contents/"):
                 return contents[endpoint]
             return {}
@@ -402,8 +405,10 @@ handoff: none
         (self.root / path).write_text(passed, encoding="utf-8")
         landed = self.commit("child work and parent-owned return")
         issue = {"number": 2, "disposition": "completed", "pull_requests": [102], "returns": [path]}
+        child_pull = self.pull(102, head=landed, merged=True, body="Fixes #2")
+        child_pull["files"] = [{"filename": path, "status": "modified"}]
         result, output, _ = self.run_reconciliation(
-            [issue], {102: self.pull(102, head=landed, merged=True, body="Fixes #2")},
+            [issue], {102: child_pull},
             labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
                      "labels": []}],
             issue_details={2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}},
@@ -427,7 +432,7 @@ handoff: none
                                "https://api.github.com/repos/o/r/issues/1"}},
         )
         self.assertEqual(result, 1, output)
-        self.assertIn("does not close its parent ticket or current child issue", output)
+        self.assertIn("child-work PR #102 does not close child issue #2", output)
         result, output, _ = self.run_reconciliation(
             [issue], {102: self.pull(102, head=landed, merged=True, body="Fixes #2")},
             report_exists=False,
@@ -438,6 +443,105 @@ handoff: none
         )
         self.assertEqual(result, 1, output)
         self.assertIn("not the parent or a sibling of the child", output)
+
+    def test_parent_ticket_returns_accept_separate_changed_child_work_and_current_owner_prs(self):
+        cases = (
+            (147, 129, 148, 154, "afs-migrator", 129, 0.795, "none", None),
+            (149, 130, 150, 163, "afs-specialist-migrator", 130, 0.8, "none", 162),
+            (155, 129, 156, 154, "afs-migrator", 129, 0.855, "none", None),
+            (168, 131, 169, 177, "afs-verifier", 176, None, None, 176),
+        )
+        for child, parent, work_pr, owner_pr, role, artifact_issue, mutation, handoff, closes_current in cases:
+            with self.subTest(child=child):
+                (self.root / "base.txt").write_text(f"base {child}\n", encoding="utf-8")
+                returns = self.root / ".migration/returns"
+                returns.mkdir(parents=True, exist_ok=True)
+                ticket = f"T{child}"
+                path = f".migration/returns/{ticket}.{role}.yaml"
+                if role.endswith("migrator"):
+                    gates = {"build": 0, "behavior": 0, "idiom": 0, "crap": 4,
+                             "mutation_changed": mutation, "regression": 0}
+                    current_doc = {
+                        "role": role, "ticket": ticket, "issue": f"o/r#{artifact_issue}",
+                        "pr": f"o/r#{owner_pr}", "gates": gates, "evidence_logs": [],
+                        "ledger_updated": [], "quirk_tickets": [], "new_tickets": [],
+                        "handoff": handoff,
+                    }
+                    if role == "afs-specialist-migrator":
+                        current_doc.update(specialty="data", specialty_evidence=[])
+                    historical_doc = dict(current_doc)
+                    if child == 147:
+                        historical_doc["gates"] = {**gates, "mutation_changed": 0.795}
+                else:
+                    current_doc = yaml.safe_load(
+                        self.RETURN.replace("ticket: T1", f"ticket: {ticket}")
+                        .replace("issue: o/r#1", f"issue: o/r#{artifact_issue}")
+                        .replace("pr: o/r#101", f"pr: o/r#{owner_pr}"))
+                    historical_doc = dict(current_doc)
+                if child == 147:
+                    historical_doc["issue"] = f"o/r#{parent}"
+                    historical_doc["pr"] = f"o/r#{work_pr}"
+                    historical_doc["handoff"] = "blocked: prior mutation gate"
+                returns_path = self.root / path
+                returns_path.write_text(yaml.safe_dump(historical_doc), encoding="utf-8")
+                work_head = self.commit(f"child {child} work return")
+                current_text = yaml.safe_dump(current_doc)
+                if yaml.safe_dump(historical_doc) == current_text:
+                    current_head = work_head
+                else:
+                    returns_path.write_text(current_text, encoding="utf-8")
+                    current_head = self.commit(f"current owner for child {child}")
+                pulls = {
+                    work_pr: self.pull(work_pr, head=work_head, body=f"Fixes #{child}"),
+                    owner_pr: self.pull(
+                        owner_pr, head=current_head, merged=True,
+                        body=f"Fixes #{closes_current}" if closes_current else "Carries the current return"),
+                }
+                pulls[work_pr]["files"] = [{"filename": path, "status": "modified"}]
+                issue_details = {
+                    child: {"number": child,
+                            "parent_issue_url": f"https://api.github.com/repos/o/r/issues/{parent}"},
+                }
+                if artifact_issue not in {child, parent}:
+                    issue_details[artifact_issue] = {
+                        "number": artifact_issue,
+                        "parent_issue_url": f"https://api.github.com/repos/o/r/issues/{parent}",
+                    }
+                issue = {"number": child, "disposition": "completed",
+                         "pull_requests": sorted({work_pr, owner_pr}), "returns": [path]}
+                labels = [{"number": child, "title": f"child {child}", "state": "closed",
+                           "state_reason": "completed", "labels": []}]
+                result, output, _ = self.run_reconciliation(
+                    [issue], pulls, labels=labels, issue_details=issue_details)
+                self.assertEqual(result, 0, output)
+                self.assertIn(f"verified by current PR #{owner_pr} and child PR #{work_pr}", output)
+
+    def test_parent_ticket_child_work_pr_must_change_the_role_return_file(self):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        current = self.RETURN.replace("issue: o/r#1", "issue: o/r#3").replace(
+            "pr: o/r#101", "pr: o/r#103")
+        (returns / pathlib.Path(path).name).write_text(current, encoding="utf-8")
+        current_head = self.commit("current sibling return")
+        child_pr, owner_pr = 102, 103
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [child_pr, owner_pr],
+                 "returns": [path]}
+        result, output, _ = self.run_reconciliation(
+            [issue], {
+                child_pr: self.pull(child_pr, head=current_head, body="Fixes #2"),
+                owner_pr: self.pull(owner_pr, head=current_head, merged=True, body="Fixes #3"),
+            },
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={
+                2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"},
+                3: {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"},
+            },
+        )
+        self.assertEqual(result, 1, output)
+        self.assertIn("did not change the exact role return file", output)
 
     def test_parent_ticket_return_accepts_same_path_supersession_with_cited_child_pr(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
@@ -452,9 +556,11 @@ handoff: none
         (self.root / path).write_text(passed, encoding="utf-8")
         current_head = self.commit("current passing parent-owned return")
         issue = {"number": 2, "disposition": "completed", "pull_requests": [102, 103], "returns": [path]}
+        child_pull = self.pull(102, head=failed_head, body="Fixes #2")
+        child_pull["files"] = [{"filename": path, "status": "modified"}]
         result, output, _ = self.run_reconciliation(
             [issue], {
-                102: self.pull(102, head=failed_head, body="Fixes #2"),
+                102: child_pull,
                 103: self.pull(103, head=current_head, merged=True, body="Fixes #3"),
             },
             labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",

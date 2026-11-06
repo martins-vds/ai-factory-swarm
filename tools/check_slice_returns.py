@@ -110,11 +110,24 @@ def superseded_attribution(required, current, repo=None):
             continue
         latest_match = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([1-9][0-9]*)", latest["issue"])
         latest_issue_number = int(latest_match[1]) if latest_match else None
+        latest_parent_number = None
+        if repo and latest_issue_number is not None:
+            try:
+                from ticket_guard import _issue_is_slice_epic, _parent_issue_number
+                latest_parent_number = _parent_issue_number(repo, latest_issue_number)
+                if latest_parent_number is not None and _issue_is_slice_epic(repo, latest_parent_number):
+                    latest_parent_number = None
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+                diagnostics.append(f"parent-ticket continuation for {latest['issue']} blocked: "
+                                   "GitHub parent relationship could not be verified")
+                continue
         candidates = {
             issue for issue in required - found
             if issue.rsplit("#", 1)[0] == latest["issue"].rsplit("#", 1)[0]
             and parent_numbers.get(issue) != "unavailable"
             and (not repo or parent_numbers.get(issue) != latest_issue_number)
+            and (not repo or latest_parent_number is None
+                 or parent_numbers.get(issue) != latest_parent_number)
         }
         if not candidates:
             continue

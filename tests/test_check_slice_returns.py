@@ -293,11 +293,18 @@ class HistoricalAttributionTest(unittest.TestCase):
             return endpoints.get(endpoint, {})
 
         def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1}
             if endpoint == "repos/o/r/issues/2":
                 return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/2/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 12, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}}]
             if endpoint == "repos/o/r/pulls/12":
                 return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
                         "merge_commit_sha": landed, "head": {"sha": landed}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/12/files?per_page=100&page=1":
+                return [{"filename": ".migration/returns/T1.afs-verifier.yaml", "status": "modified"}]
             return {}
 
         output = io.StringIO()
@@ -323,8 +330,13 @@ class HistoricalAttributionTest(unittest.TestCase):
             return {}
 
         def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1}
             if endpoint == "repos/o/r/issues/2":
                 return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/2/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 12, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}}]
             if endpoint == "repos/o/r/pulls/12":
                 return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
                         "merge_commit_sha": landed, "head": {"sha": landed}, "body": "Updates #2"}
@@ -338,7 +350,7 @@ class HistoricalAttributionTest(unittest.TestCase):
             result = csr.main(["--repo", REPO, "--epic", "99"])
         self.assertEqual(result, 1, output.getvalue())
         self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
-        self.assertIn("does not close its parent ticket or current child issue", output.getvalue())
+        self.assertIn("child-work PR #12 does not close child issue #2", output.getvalue())
 
     def test_parent_ticket_continuation_can_use_same_path_history_after_current_pass(self):
         failed = RETURN.replace("pr: o/r#10", "pr: o/r#12")
@@ -356,11 +368,18 @@ class HistoricalAttributionTest(unittest.TestCase):
             return {}
 
         def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1}
             if endpoint == "repos/o/r/issues/2":
                 return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/2/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 12, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}}]
             if endpoint == "repos/o/r/pulls/12":
                 return {"number": 12, "state": "closed", "merged_at": None,
                         "merge_commit_sha": None, "head": {"sha": failed_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/12/files?per_page=100&page=1":
+                return [{"filename": ".migration/returns/T1.afs-verifier.yaml", "status": "modified"}]
             if endpoint == "repos/o/r/pulls/13":
                 return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
                         "merge_commit_sha": current_head, "head": {"sha": current_head}, "body": "Fixes #1"}
@@ -391,11 +410,17 @@ class HistoricalAttributionTest(unittest.TestCase):
             return {}
 
         def parent_gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1}
             if endpoint == "repos/o/r/issues/2":
                 return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
             if endpoint == "repos/o/r/pulls/13":
                 return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
                         "merge_commit_sha": current_head, "head": {"sha": current_head}, "body": "Fixes #1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": None,
+                        "merge_commit_sha": None, "head": {"sha": self.git("rev-parse", "HEAD~1")},
+                        "body": "Fixes #2"}
             return {}
 
         output = io.StringIO()
@@ -406,7 +431,7 @@ class HistoricalAttributionTest(unittest.TestCase):
             result = csr.main(["--repo", REPO, "--epic", "99"])
         self.assertEqual(result, 1, output.getvalue())
         self.assertIn("no `.migration/returns/*.yaml`", output.getvalue())
-        self.assertIn("does not close child issue #2", output.getvalue())
+        self.assertIn("child-work PR references for issue #2 are unavailable", output.getvalue())
 
     def test_unavailable_parent_relationship_blocks_generic_history(self):
         child_return = RETURN.replace("o/r#1\n", "o/r#2\n").replace("pr: o/r#10", "pr: o/r#12")
@@ -426,6 +451,106 @@ class HistoricalAttributionTest(unittest.TestCase):
             attributed, diagnostics = csr.superseded_attribution({"o/r#2"}, current, REPO)
         self.assertEqual(attributed, set())
         self.assertTrue(any("current role outcome does not pass" in item for item in diagnostics))
+
+    def test_closure_discovers_child_work_pr_and_current_sibling_owner_read_only(self):
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        returned = RETURN.replace("issue: o/r#1", "issue: o/r#176").replace(
+            "pr: o/r#10", "pr: o/r#177").replace("changes-required", "pass")
+        (self.root / path).write_text(returned, encoding="utf-8")
+        commit = self.commit(returned, "sibling verifier return")
+        events = [{
+            "event": "cross-referenced",
+            "source": {"issue": {"number": 169, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/169"}}},
+        }]
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/131":
+                return {"number": 131, "labels": []}
+            if endpoint == "repos/o/r/issues/168":
+                return {"number": 168, "parent_issue_url": "https://api.github.com/repos/o/r/issues/131"}
+            if endpoint == "repos/o/r/issues/176":
+                return {"number": 176, "parent_issue_url": "https://api.github.com/repos/o/r/issues/131"}
+            if endpoint == "repos/o/r/issues/168/timeline?per_page=100&page=1":
+                return events
+            if endpoint == "repos/o/r/pulls/169":
+                return {"number": 169, "state": "closed", "merged_at": None,
+                        "head": {"sha": commit}, "body": "Fixes #168"}
+            if endpoint == "repos/o/r/pulls/177":
+                return {"number": 177, "state": "closed", "merged_at": "2026-11-06T00:00:00Z",
+                        "merge_commit_sha": commit, "head": {"sha": commit}, "body": "Fixes #176"}
+            if endpoint == "repos/o/r/pulls/169/files?per_page=100&page=1":
+                return [{"filename": path, "status": "modified"}]
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            found, diagnostics = csr.superseded_attribution(
+                {"o/r#168"}, {self.root / path: csr.valid_return(returned, path)}, REPO)
+        self.assertEqual(found, {"o/r#168"}, diagnostics)
+        self.assertTrue(any("child PR #169" in item and "current PR #177" in item for item in diagnostics))
+
+    def test_closure_rejects_child_pr_that_only_carries_role_artifact(self):
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        returned = RETURN.replace("issue: o/r#1", "issue: o/r#176").replace(
+            "pr: o/r#10", "pr: o/r#177").replace("changes-required", "pass")
+        (self.root / path).write_text(returned, encoding="utf-8")
+        commit = self.commit(returned, "inherited sibling verifier return")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/131":
+                return {"number": 131, "labels": []}
+            if endpoint in {"repos/o/r/issues/168", "repos/o/r/issues/176"}:
+                number = int(endpoint.rsplit("/", 1)[1])
+                return {"number": number, "parent_issue_url": "https://api.github.com/repos/o/r/issues/131"}
+            if endpoint == "repos/o/r/issues/168/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 169, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/169"}}}}]
+            if endpoint == "repos/o/r/pulls/169":
+                return {"number": 169, "state": "closed", "merged_at": None,
+                        "head": {"sha": commit}, "body": "Fixes #168"}
+            if endpoint == "repos/o/r/pulls/177":
+                return {"number": 177, "state": "closed", "merged_at": "2026-11-06T00:00:00Z",
+                        "merge_commit_sha": commit, "head": {"sha": commit}, "body": "Fixes #176"}
+            if endpoint == "repos/o/r/pulls/169/files?per_page=100&page=1":
+                return [{"filename": "README.md", "status": "modified"}]
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            found, diagnostics = csr.superseded_attribution(
+                {"o/r#168"}, {self.root / path: csr.valid_return(returned, path)}, REPO)
+        self.assertEqual(found, set())
+        self.assertTrue(any("did not change the exact role return file" in item for item in diagnostics), diagnostics)
+
+    def test_closure_rejects_open_child_work_pr_even_when_current_owner_is_landed(self):
+        path = ".migration/returns/T1.afs-verifier.yaml"
+        returned = RETURN.replace("issue: o/r#1", "issue: o/r#176").replace(
+            "pr: o/r#10", "pr: o/r#177").replace("changes-required", "pass")
+        (self.root / path).write_text(returned, encoding="utf-8")
+        commit = self.commit(returned, "sibling verifier return")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/131":
+                return {"number": 131, "labels": []}
+            if endpoint in {"repos/o/r/issues/168", "repos/o/r/issues/176"}:
+                number = int(endpoint.rsplit("/", 1)[1])
+                return {"number": number, "parent_issue_url": "https://api.github.com/repos/o/r/issues/131"}
+            if endpoint == "repos/o/r/issues/168/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 169, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/169"}}}}]
+            if endpoint == "repos/o/r/pulls/169":
+                return {"number": 169, "state": "open", "merged_at": None,
+                        "head": {"sha": "f" * 40}, "body": "Fixes #168"}
+            if endpoint == "repos/o/r/pulls/177":
+                return {"number": 177, "state": "closed", "merged_at": "2026-11-06T00:00:00Z",
+                        "merge_commit_sha": commit, "head": {"sha": commit}, "body": "Fixes #176"}
+            if endpoint == "repos/o/r/pulls/169/files?per_page=100&page=1":
+                return [{"filename": path, "status": "modified"}]
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            found, diagnostics = csr.superseded_attribution(
+                {"o/r#168"}, {self.root / path: csr.valid_return(returned, path)}, REPO)
+        self.assertEqual(found, set())
+        self.assertTrue(any("PR #169 is still open" in item for item in diagnostics), diagnostics)
 
     def test_parent_ticket_continuation_rejects_a_dirty_current_return(self):
         original_pass = RETURN.replace("changes-required", "pass").replace("pr: o/r#10", "pr: o/r#12")
@@ -481,6 +606,8 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.commit(latest, "copied unlanded current sibling pass")
 
         def gh(endpoint, *args, **kwargs):
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1, "labels": []}
             if endpoint in {"repos/o/r/issues/2", "repos/o/r/issues/3"}:
                 return {"number": int(endpoint.rsplit("/", 1)[1]),
                         "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
@@ -514,8 +641,10 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.git("commit", "-qm", "introduce PR attribution rule")
 
         def gh(endpoint, *args, **kwargs):
-            return {"number": int(endpoint.rsplit("/", 1)[1]),
-                    "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
+            number = int(endpoint.rsplit("/", 1)[1])
+            if number == 99:
+                return {"number": 99, "labels": [{"name": "afs:slice"}]}
+            return {"number": number, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
 
         with mock.patch.object(validate, "HERE", installed), \
                 mock.patch.object(ticket_guard, "gh", side_effect=gh):
@@ -535,9 +664,16 @@ class HistoricalAttributionTest(unittest.TestCase):
                 return {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
             if endpoint == "repos/o/r/issues/3":
                 return {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/1":
+                return {"number": 1, "labels": []}
+            if endpoint == "repos/o/r/issues/2/timeline?per_page=100&page=1":
+                return [{"event": "cross-referenced",
+                         "source": {"issue": {"number": 12, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}}]
             if endpoint == "repos/o/r/pulls/12":
                 return {"number": 12, "state": "closed", "merged_at": None,
                         "merge_commit_sha": None, "head": {"sha": child_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/12/files?per_page=100&page=1":
+                return [{"filename": ".migration/returns/T1.afs-verifier.yaml", "status": "modified"}]
             if endpoint == "repos/o/r/pulls/13":
                 return {"number": 13, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
                         "merge_commit_sha": sibling_head, "head": {"sha": sibling_head}, "body": "Fixes #3"}
@@ -564,6 +700,8 @@ class HistoricalAttributionTest(unittest.TestCase):
                 return []
             if endpoint == "repos/o/r/issues/1":
                 return {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
+            if endpoint == "repos/o/r/issues/99":
+                return {"number": 99, "labels": [{"name": "afs:slice"}]}
             if endpoint == "repos/o/r/issues/3":
                 return {"number": 3, "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
             if endpoint == "repos/o/r/pulls/12":
