@@ -158,6 +158,18 @@
       ]
     },
     {
+      "name": "afs-data-pipeline",
+      "category": "data",
+      "path": "skills/afs-data-pipeline",
+      "install": "harness",
+      "roles": [
+        "planner",
+        "specialist-migrator",
+        "verifier",
+        "auditor"
+      ]
+    },
+    {
       "name": "afs-evidence",
       "category": "state",
       "path": "skills/afs-evidence",

@@ -1,6 +1,6 @@
 # ADR-0010: Data migration as its own workstream
 
-- Status: Accepted
+- Status: Accepted; refined by ADR-0032 (snapshot format, mapping, computed reconciliation)
 - Date: 2026-10-30
 
 ## Context

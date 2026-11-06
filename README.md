@@ -53,7 +53,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 | [`examples/`](examples/) | Bootstrap inputs for real pilots (`cargotracker/`: the public M5 pilot) |
 | [`stacks/`](stacks/) | Stack packs: pinned stack-specific skills (`java-to-django.json`) |
 | [`skills.lock.json`](skills.lock.json) | The pinned built-in skill menu: source, commit, path, license, roles |
-| [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`) and vendored `afs-` copies (`afs-implement`, `afs-to-tickets`, `afs-wayfinder`) |
+| [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`, `afs-data-pipeline`) and vendored `afs-` copies (`afs-implement`, `afs-to-tickets`, `afs-wayfinder`) |
 | [`patches/`](patches/) | Patches applied to pinned third-party skills and plugins |
 | [`agents/`](agents/) | The ten role agents (`afs-*.agent.md`) |
 | [`tools/`](tools/) | Bootstrap, gate wrappers and checks: see [Tools](#tools) |
@@ -131,6 +131,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-cost-hook`: Copilot hook: one cost record per agent session
 - `afs-costs`: billed credits and Actions minutes per session
 - `harness_coverage.py`: which harness paths a target has exercised
+- `data_reconcile.py`: check a data snapshot, and reconcile it with the target's loaded data (ADR-0032)
 - `afs-drill`: break one thing on a throwaway branch and confirm the right check catches it
 - `drills.json`: the drills `afs-drill` runs (data: operations, trigger, expected check)
 

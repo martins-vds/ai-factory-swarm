@@ -158,7 +158,11 @@
       "additionalProperties": false,
       "properties": {
         "masking": { "type": "boolean", "default": false },
-        "snapshot_owner": { "type": "string" }
+        "snapshot_owner": { "type": "string" },
+        "snapshot_dir": { "type": "string", "default": ".migration/data/snapshot", "description": "ADR-0032: where the operator puts the legacy snapshot (one CSV per table + manifest.json). Gitignored: production data is never committed." },
+        "mapping": { "type": "string", "default": ".migration/data/mapping.yaml", "description": "ADR-0032: source → target tables, columns, transforms and references; the loader and data_reconcile.py both read it." },
+        "load": { "type": "array", "items": { "type": "string" }, "description": "ADR-0032: commands that load {snapshot} into the target through the pipeline (idempotent)." },
+        "export": { "type": "array", "items": { "type": "string" }, "description": "ADR-0032: commands that write the target's mapped tables as <table>.csv (header row, NULL as \\N) into {out}, for data_reconcile.py." }
       }
     },
     "services": {

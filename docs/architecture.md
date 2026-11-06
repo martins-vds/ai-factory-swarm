@@ -94,6 +94,7 @@ humans, and approved for cutover.
 | 29 | A ticket is done when its work reaches the default branch | [0029](adr/0029-a-ticket-is-done-when-its-work-reaches-main.md) |
 | 30 | Slice tickets are reconciled before the coordinator completes the slice | [0030](adr/0030-ticket-reconciliation-before-slice-completion.md) |
 | 31 | A slice's human sign-off is an approving PR review by a named approver, on the exact head commit | [0031](adr/0031-human-signoff-is-an-approving-review.md) |
+| 32 | Data moves from a snapshot through one committed mapping; reconciliation is computed by a tool | [0032](adr/0032-data-pipeline-snapshot-mapping-reconciliation.md) |
 
 ---
 
@@ -628,6 +629,10 @@ workstream ([ADR-0010](adr/0010-data-migration-workstream.md)):
   `db-seed` generates realistic, foreign-key-ordered seed data.
 - **Masking:** nice to have. If a masking step is available it runs on the snapshot before the
   pipeline (`profile.data.masking`).
+- **How (ADR-0032):** the `afs-data-pipeline` skill fixes the snapshot format (CSV per table, NULL
+  marker, manifest) and one committed mapping that both the loader and `data_reconcile.py` read. The tool
+  checks the snapshot and reconciles it with the target's export: row counts, checksums, references.
+  Snapshots and exports are gitignored.
 
 ---
 
