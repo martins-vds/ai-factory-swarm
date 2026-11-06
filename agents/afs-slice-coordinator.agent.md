@@ -86,7 +86,7 @@ Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 slice: <name>
-tickets: {total: <n>, merged: <n>, open: <n>, blocked: [<link: blocker>]}
+tickets: {total: <n>, merged: <n>, open: <n>, blocked: ["<link: blocker>"]}
 acceptance: {report: <path>, gates: <all-green or failing gate names>, mutation_score: <0-1>, coverage_gaps: <n>}
 human_check: <requested | passed | issues>
 human_check_issues: [<link>]

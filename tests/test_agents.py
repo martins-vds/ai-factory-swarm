@@ -74,6 +74,22 @@ class AgentsTest(unittest.TestCase):
                 self.assertIsNotNone(contract, "return contract needs a yaml block")
                 self.assertIsInstance(yaml.safe_load(contract.group(1)), dict)
 
+    def test_coordinator_return_examples_parse_as_string_lists(self):
+        examples = [
+            ("afs-slice-coordinator", "tickets", "blocked", "<link: blocker>"),
+            ("afs-program-orchestrator", "", "decisions", "<ticket link: one-line answer>"),
+            ("afs-program-orchestrator", "", "awaiting_human", "<ticket link: what is needed>"),
+        ]
+        for role, parent, key, expected in examples:
+            with self.subTest(role=role, key=key):
+                text = (ROOT / "agents" / f"{role}.agent.md").read_text(encoding="utf-8")
+                contract = re.search(r"## Return contract.*?```yaml\n(.*?)```", text, re.S)
+                self.assertIsNotNone(contract)
+                parsed = yaml.safe_load(contract.group(1))
+                items = parsed[parent][key] if parent else parsed[key]
+                self.assertEqual(items, [expected])
+                self.assertTrue(all(isinstance(item, str) for item in items))
+
     def test_harness_skills_are_well_formed(self):
         harness = [e for e in LOCK["skills"] if e.get("install") == "harness"]
         self.assertTrue(harness)
