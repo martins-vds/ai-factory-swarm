@@ -1,0 +1,68 @@
+{
+  "_comment": "Failure drills (afs-drill). Each breaks one thing on a throwaway branch and names the check that must catch it. Paths come from the target's own profile and install record, never from one project.",
+  "drills": [
+    {
+      "id": "installed-file-edited",
+      "why": "A hand edit to an installed harness file is caught.",
+      "ops": [{"op": "edit_installed", "kind": "agent"}],
+      "trigger": "pr",
+      "expect": {"tool": "check_installed.py"}
+    },
+    {
+      "id": "runtime-mismatch",
+      "why": "A runtime that drifts from the profile's target stacks is caught before any gate runs.",
+      "ops": [{"op": "replace", "file": "@profile", "pattern": "\\bpython-\\d+(\\.\\d+)?\\b", "with": "python-2.7"}],
+      "trigger": "pr",
+      "expect": {"tool": "check_runtime.py"}
+    },
+    {
+      "id": "service-without-healthcheck",
+      "why": "A test service the agents can't wait for is caught (ADR-0016).",
+      "ops": [{"op": "drop_healthcheck"}],
+      "trigger": "pr",
+      "expect": {"tool": "afs-services"}
+    },
+    {
+      "id": "stale-source-graph",
+      "why": "A source graph that no longer describes the pinned source is caught (ADR-0019).",
+      "ops": [{"op": "snapshot_set", "glob": ".migration/graphs/source/*/SNAPSHOT.txt", "key": "source_sha", "value": "0000000000000000000000000000000000000000"}],
+      "trigger": "pr",
+      "expect": {"tool": "check_graph_fresh.py"}
+    },
+    {
+      "id": "stale-stacked-base",
+      "why": "A stacked PR whose base is behind the default branch is caught before its CI is trusted.",
+      "ops": [{"op": "write", "path": ".migration/drills/stacked.md", "text": "afs-drill: stacked change\n"}],
+      "trigger": "stacked_pr",
+      "expect": {"tool": "check_stack_base.py"}
+    },
+    {
+      "id": "signoff-without-review",
+      "why": "A human sign-off written by anyone but an approver's review is caught (ADR-0031).",
+      "ops": [{"op": "write", "path": ".migration/returns/AFS-DRILL.afs-slice-coordinator.yaml",
+               "text": "role: afs-slice-coordinator\nticket: AFS-DRILL\nissue: null\nslice: afs-drill\ntickets: {total: 0, merged: 0, open: 0, blocked: []}\nacceptance: {report: null, gates: null, mutation_score: null, coverage_gaps: null}\nhuman_check: passed\nhuman_check_issues: []\nquirk_tickets: []\n"}],
+      "trigger": "pr",
+      "expect": {"tool": "check_signoff.py"}
+    },
+    {
+      "id": "graph-bad-entry-point",
+      "why": "A graph run asked for an entry point that doesn't exist stops before any LLM call.",
+      "ops": [],
+      "trigger": "dispatch",
+      "workflow": "afs-understand.yml",
+      "inputs": {"side": "source", "domain_entry_points": "afs-drill/no-such-page.xhtml"},
+      "expect": {"tool": "understand.py"}
+    },
+    {
+      "id": "acceptance-gate-fails",
+      "why": "The acceptance workflow fails when a profile gate fails.",
+      "ops": [{"op": "replace", "file": "@profile", "pattern": "(crap_max_per_method:\\s*)\\d+", "with": "\\g<1>0"},
+              {"op": "replace", "file": "@profile", "pattern": "(crap\\.py\\b[^\"\\]]*?--max[ =]+)[0-9.]+", "with": "\\g<1>0"}],
+      "trigger": "dispatch",
+      "workflow": "afs-acceptance.yml",
+      "inputs": {"ticket": "AFS-DRILL"},
+      "timeout": 5400,
+      "expect": {"workflow": "failure"}
+    }
+  ]
+}

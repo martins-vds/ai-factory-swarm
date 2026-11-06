@@ -273,6 +273,17 @@ def check_evidence(root, path, doc, errors):
                 errors.append(f"{path}: evidence '{item}': no '{name}' defined in {file} (stale symbol)")
 
 
+def check_thresholds(path, profile, errors):
+    """One source of truth per threshold: a gate command that carries its own limit must match the profile's.
+    (Pilot drill: thresholds.crap_max_per_method was 0, but the CRAP gate kept its own `--max 30` and passed.)"""
+    limit = (profile.get("thresholds") or {}).get("crap_max_per_method")
+    for cmd in (profile.get("gates") or {}).get("crap") or []:
+        for value in re.findall(r"crap\.py\b.*?--max[ =]+([0-9.]+)", str(cmd)):
+            if limit is None or float(value) != float(limit):
+                errors.append(f"{path}: gates.crap runs crap.py --max {value}, but thresholds.crap_max_per_method "
+                              f"is {limit}; make them equal (the threshold is the source of truth)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder")
@@ -286,6 +297,8 @@ def main():
     for name, schema in (("profile.yaml", "profile.schema.json"), ("capabilities.yaml", "capabilities.schema.json")):
         if (folder / name).exists():
             check(load_schema(schemas, schema), folder / name, errors)
+            if name == "profile.yaml":
+                check_thresholds(folder / name, load_yaml(folder / name) or {}, errors)
             checked += 1
 
     slices = folder / "slices"

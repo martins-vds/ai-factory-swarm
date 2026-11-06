@@ -136,4 +136,4 @@ def main():
 
 if __name__ == "__main__":
     import afs_trace
-    afs_trace.run(main)
+    afs_trace.run(main, verdict=False)

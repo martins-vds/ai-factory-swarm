@@ -13,7 +13,7 @@ class TraceTest(unittest.TestCase):
     def test_every_installed_tool_runs_through_afs_trace(self):
         for t in bootstrap.HARNESS_TOOLS:
             path = ROOT / "tools" / t
-            if t.startswith("locks/") or t == "afs_trace.py":
+            if t.startswith("locks/") or t == "afs_trace.py" or path.suffix in (".json", ".yaml", ".lock"):   # data, not tools
                 continue
             with self.subTest(tool=t):
                 entry = path.read_text(encoding="utf-8").rsplit('if __name__ == "__main__":', 1)[-1]

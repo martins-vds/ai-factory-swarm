@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""afs-drill — break one thing on purpose and confirm the harness catches it (harness coverage, ADR-0027).
+
+A check that has only ever passed might not work. Each drill in `drills.json` breaks one thing on a
+throwaway branch of the target, then confirms that the named check fails on it:
+  * `pr`          open a draft PR into the default branch and read the CI runs on its head commit;
+  * `stacked_pr`  the same, but into a base branch that is one commit behind the default branch;
+  * `dispatch`    run a workflow (on the drill branch when the drill changes files, else on the default
+                  branch) and read that run.
+A drill is **caught** when a job log shows `AFS-TOOL <tool> exit=<non-zero>` for its expected tool, or
+when the run ends with the expected conclusion. Every PR is closed and every branch deleted afterwards,
+caught or not. The runs stay in the repo's Actions history, where `harness_coverage.py` reads them.
+
+Run it from the target clone, as the dispatcher (a `gh` login with write access):
+  afs-drill --list
+  afs-drill --repo owner/target [--only id[,id…]] [--timeout 2400] [--out report.md]
+
+A drill may set its own `timeout` (seconds) when its workflow is slow, e.g. a full acceptance run.
+
+Operations take their paths from the target itself: `@profile` is `.migration/profile.yaml`; the
+compose file and test services come from the profile's `services`; installed files from
+`.migration/harness/installed.json`. Exit 1 if any drill was missed or couldn't run.
+"""
+import argparse
+import datetime
+import json
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+import yaml
+
+HERE = pathlib.Path(__file__).resolve().parent
+PROFILE = ".migration/profile.yaml"
+TOOL_LINE = r"AFS-TOOL {tool} exit=(\d+)"
+
+
+# ---------------------------------------------------------------- GitHub and git
+
+def gh(*args, data=None, raw=False):
+    cmd = ["gh", "api", *args] + (["--input", "-"] if data is not None else [])
+    r = subprocess.run(cmd, input=json.dumps(data) if data is not None else None, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"gh api {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
+    if raw:
+        return r.stdout
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+def git(*args, cwd=None):
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
+    return r.stdout.strip()
+
+
+# ---------------------------------------------------------------- operations (paths from the target)
+
+def resolve(root, path):
+    return root / (PROFILE if path == "@profile" else path)
+
+
+def op_edit_installed(root, kind="agent"):
+    record = json.loads((root / ".migration/harness/installed.json").read_text(encoding="utf-8"))
+    entry = next(e for e in record["entries"] if e.get("kind") == kind)
+    f = root / sorted(entry["files"])[0]
+    f.write_text(f.read_text(encoding="utf-8") + "\n<!-- afs-drill: hand edit -->\n", encoding="utf-8")
+    return f.relative_to(root)
+
+
+def op_replace(root, file, pattern, **kw):
+    f = resolve(root, file)
+    text = f.read_text(encoding="utf-8")
+    new, n = re.subn(pattern, kw["with"], text)
+    if not n:
+        raise RuntimeError(f"replace: no match for {pattern!r} in {file}")
+    f.write_text(new, encoding="utf-8")
+    return f.relative_to(root)
+
+
+def op_drop_healthcheck(root):
+    services = (yaml.safe_load((root / PROFILE).read_text(encoding="utf-8")) or {}).get("services") or {}
+    if not services.get("compose") or not services.get("test"):
+        raise RuntimeError("drop_healthcheck: the profile names no compose file or test services")
+    f = root / services["compose"]
+    doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+    svc = doc["services"][services["test"][0]]
+    if "healthcheck" not in svc:
+        raise RuntimeError(f"drop_healthcheck: {services['test'][0]} has no healthcheck to drop")
+    del svc["healthcheck"]
+    f.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return f.relative_to(root)
+
+
+def op_snapshot_set(root, glob, key, value):
+    files = sorted(root.glob(glob))
+    if not files:
+        raise RuntimeError(f"snapshot_set: nothing matches {glob}")
+    f = files[0]
+    text, n = re.subn(rf"(?m)^({re.escape(key)}:\s*).*$", lambda m: m.group(1) + value, f.read_text(encoding="utf-8"))
+    if not n:
+        raise RuntimeError(f"snapshot_set: no {key} line in {f.relative_to(root)}")
+    f.write_text(text, encoding="utf-8")
+    return f.relative_to(root)
+
+
+def op_write(root, path, text):
+    f = root / path
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text, encoding="utf-8")
+    return f.relative_to(root)
+
+
+OPS = {"edit_installed": op_edit_installed, "replace": op_replace, "drop_healthcheck": op_drop_healthcheck,
+       "snapshot_set": op_snapshot_set, "write": op_write}
+
+
+def apply_ops(root, ops):
+    changed = []
+    for o in ops:
+        args = {k: v for k, v in o.items() if k != "op"}
+        changed.append(str(OPS[o["op"]](root, **args)))
+    return changed
+
+
+# ---------------------------------------------------------------- verdicts
+
+def tool_exits(log, tool):
+    return [int(x) for x in re.findall(TOOL_LINE.format(tool=re.escape(tool)), log)]
+
+
+def judge(expect, runs, logs):
+    """(caught, evidence) from the finished runs and their job logs."""
+    if "tool" in expect:
+        exits = [(name, code) for name, log in logs for code in tool_exits(log, expect["tool"])]
+        failed = [f"{n}: {expect['tool']} exit={c}" for n, c in exits if c != 0]
+        if failed:
+            return True, failed[0]
+        return False, (f"{expect['tool']} only exited 0" if exits else f"{expect['tool']} never ran")
+    want = expect["workflow"]
+    seen = [f"{r['name']}: {r.get('conclusion')}" for r in runs]
+    return any(r.get("conclusion") == want for r in runs), "; ".join(seen) or "no run"
+
+
+# ---------------------------------------------------------------- one drill
+
+class Drill:
+    def __init__(self, repo, spec, clone, timeout, poll=20):
+        self.repo, self.spec, self.clone, self.timeout, self.poll = repo, spec, clone, timeout, poll
+        self.default = gh(f"repos/{repo}")["default_branch"]
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+        self.branch = f"afs-drill/{spec['id']}-{stamp}"
+        self.base = None
+        self.pr = None
+
+    def make_branch(self, start):
+        tmp = tempfile.mkdtemp(prefix="afs-drill-")
+        try:
+            git("worktree", "add", "-q", "-b", self.branch, tmp, start, cwd=self.clone)
+            root = pathlib.Path(tmp)
+            changed = apply_ops(root, self.spec["ops"])
+            git("add", "-A", cwd=root)
+            git("commit", "-q", "-m", f"afs-drill: {self.spec['id']}\n\n{self.spec['why']}", cwd=root)
+            git("push", "-q", "origin", f"{self.branch}:{self.branch}", cwd=root)
+            return git("rev-parse", "HEAD", cwd=root), changed
+        finally:
+            subprocess.run(["git", "worktree", "remove", "--force", tmp], cwd=self.clone, capture_output=True)
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def open_pr(self, into):
+        body = (f"**Failure drill** `{self.spec['id']}` (afs-drill): {self.spec['why']}\n\n"
+                f"Expected to be caught by `{self.spec['expect']}`. Closed automatically; never merge.")
+        self.pr = gh(f"repos/{self.repo}/pulls", data={"title": f"[afs-drill] {self.spec['id']}", "head": self.branch,
+                                                      "base": into, "body": body, "draft": True})["number"]
+
+    def wait_runs(self, query, settle):
+        """Finished runs matching `query`; waits until at least one exists and none is still going."""
+        deadline = time.time() + self.timeout
+        quiet_since = None
+        while time.time() < deadline:
+            runs = gh(f"repos/{self.repo}/actions/runs?{query}&per_page=50")["workflow_runs"]
+            runs = [r for r in runs if settle(r)]
+            if runs and all(r["status"] == "completed" for r in runs):
+                quiet_since = quiet_since or time.time()
+                if time.time() - quiet_since >= 2 * self.poll:    # late workflows (a review, a second event)
+                    return runs
+            else:
+                quiet_since = None
+            time.sleep(self.poll)
+        raise RuntimeError(f"runs didn't finish within {self.timeout}s")
+
+    def logs(self, runs):
+        out = []
+        for r in runs:
+            for job in gh(f"repos/{self.repo}/actions/runs/{r['id']}/jobs?per_page=100")["jobs"]:
+                try:
+                    out.append((f"{r['name']} / {job['name']}", gh(f"repos/{self.repo}/actions/jobs/{job['id']}/logs", raw=True)))
+                except RuntimeError:
+                    pass
+        return out
+
+    def run(self):
+        trig = self.spec["trigger"]
+        default_sha = gh(f"repos/{self.repo}/commits/{self.default}")["sha"]
+        git("fetch", "-q", "origin", self.default, cwd=self.clone)
+        if trig in ("pr", "stacked_pr"):
+            start = default_sha
+            if trig == "stacked_pr":
+                start = git("rev-parse", f"{default_sha}~1", cwd=self.clone)
+                self.base = f"{self.branch}-base"
+                git("push", "-q", "origin", f"{start}:refs/heads/{self.base}", cwd=self.clone)
+            sha, changed = self.make_branch(start)
+            self.open_pr(self.base or self.default)
+            runs = self.wait_runs(f"head_sha={sha}", lambda r: True)
+        else:
+            ref = self.default
+            changed = []
+            if self.spec["ops"]:
+                _, changed = self.make_branch(default_sha)
+                ref = self.branch
+            started = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=5)
+            gh(f"repos/{self.repo}/actions/workflows/{self.spec['workflow']}/dispatches",
+               data={"ref": ref, "inputs": self.spec.get("inputs", {})})
+            stamp = started.strftime("%Y-%m-%dT%H:%M:%SZ")
+            runs = self.wait_runs(f"event=workflow_dispatch&branch={ref}&created=>={stamp}",
+                                  lambda r: r["path"].endswith(self.spec["workflow"]))
+        caught, evidence = judge(self.spec["expect"], runs, self.logs(runs))
+        return {"id": self.spec["id"], "caught": caught, "evidence": evidence, "changed": changed,
+                "runs": [r["html_url"] for r in runs], "pr": self.pr}
+
+    def cleanup(self):
+        if self.pr:
+            try:
+                gh(f"repos/{self.repo}/pulls/{self.pr}", "-X", "PATCH", data={"state": "closed"})
+            except RuntimeError:
+                pass
+        for b in filter(None, (self.branch, self.base)):
+            r = subprocess.run(["git", "push", "-q", "origin", "--delete", b], cwd=self.clone, capture_output=True, text=True)
+            if r.returncode and "remote ref does not exist" not in r.stderr:
+                print(f"warning: couldn't delete branch {b}: {r.stderr.strip()}", file=sys.stderr)
+        subprocess.run(["git", "branch", "-D", self.branch], cwd=self.clone, capture_output=True)
+
+
+# ---------------------------------------------------------------- CLI
+
+def load(path=HERE / "drills.json"):
+    return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))["drills"]
+
+
+def report(results):
+    lines = ["# Failure drills", "", "| Drill | Caught | Evidence | Runs |", "|---|---|---|---|"]
+    for r in results:
+        mark = "✅" if r.get("caught") else "❌"
+        runs = " ".join(f"[run]({u})" for u in r.get("runs", []))
+        lines.append(f"| `{r['id']}` | {mark} | {r.get('evidence', '').replace('|', '/')} | {runs} |")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--repo")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--only", default="")
+    ap.add_argument("--drills", default=str(HERE / "drills.json"))
+    ap.add_argument("--timeout", type=int, default=2400)
+    ap.add_argument("--out")
+    a = ap.parse_args(argv)
+    drills = load(a.drills)
+    if a.only:
+        wanted = set(a.only.split(","))
+        unknown = wanted - {d["id"] for d in drills}
+        if unknown:
+            ap.error(f"unknown drill(s): {', '.join(sorted(unknown))}")
+        drills = [d for d in drills if d["id"] in wanted]
+    if a.list:
+        for d in drills:
+            print(f"{d['id']:30} {d['trigger']:10} expects {d['expect']}: {d['why']}")
+        return 0
+    if not a.repo:
+        ap.error("--repo is required to run drills")
+    results = []
+    for spec in drills:
+        d = Drill(a.repo, spec, pathlib.Path.cwd(), max(a.timeout, spec.get("timeout", 0)))
+        try:
+            res = d.run()
+        except Exception as e:                       # report and keep going; cleanup always runs
+            res = {"id": spec["id"], "caught": False, "evidence": f"drill error: {e}"}
+        finally:
+            d.cleanup()
+        results.append(res)
+        print(f"AFS-RESULT drill={spec['id']} caught={str(res['caught']).lower()} :: {res['evidence']}", flush=True)
+    text = report(results)
+    if a.out:
+        pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(a.out).write_text(text, encoding="utf-8")
+    print(text)
+    return 0 if all(r["caught"] for r in results) else 1
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(HERE))
+    import afs_trace
+    afs_trace.run(main)
