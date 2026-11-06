@@ -39,6 +39,7 @@ Prints one summary line per enricher and an `AFS-RESULT gate=graph-enrich …` l
 import argparse
 import ast
 import collections
+import html.parser
 import json
 import pathlib
 import re
@@ -154,6 +155,44 @@ JAVA_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 TYPE_DECL = re.compile(r"\b(?:class|interface|enum)\s+(\w+)(?:\s*<[^>{]*>)?(?:\s+extends\s+([\w.<>, ]+?))?"
                        r"(?:\s+implements\s+([\w.<>, ]+?))?\s*\{")
 ANNOT_ARG = r'(?:\(\s*(?:name\s*=\s*|value\s*=\s*)?"([^"]*)"[^)]*\)|\([^)]*\))?'
+
+
+class IframeLinks(html.parser.HTMLParser):
+    """Literal iframe src attributes, excluding comments and srcdoc overrides."""
+
+    def __init__(self, text):
+        super().__init__()
+        self.refs, self.has_base = [], False
+        self.feed(text)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "base" and any(k == "href" for k, _ in attrs):
+            self.has_base = True
+        if tag == "iframe" and not any(k == "srcdoc" for k, _ in attrs):
+            refs = [v for k, v in attrs if k == "src"]
+            if len(refs) == 1 and refs[0]:
+                self.refs.append(refs[0])
+
+
+def jsf_iframe_target(page, ref, root, pages):
+    """Resolve an exact local XHTML URL inside this page's webapp, never by suffix."""
+    ref = ref.strip()
+    prefix = "#{request.contextPath}"
+    if ref.startswith(prefix + "/"):
+        ref = ref[len(prefix):]
+    if re.search(r"[#$]\{|[\\%\x00-\x20]", ref) or ref.startswith("//") \
+            or re.match(r"[a-z][a-z0-9+.-]*:", ref, re.I):
+        return None
+    ref = re.split(r"[?#]", ref, maxsplit=1)[0]
+    if not ref or ref.endswith("/"):
+        return None
+    webapp = next((p for p in page.parents if p.name == "webapp" and p.is_relative_to(root)), None)
+    if webapp is None:
+        return None
+    target = ((webapp if ref.startswith("/") else page.parent) / ref.lstrip("/")).resolve()
+    if target.is_relative_to(webapp.resolve()) and target.is_relative_to(root.resolve()):
+        return pages.get(target)
+    return None
 
 
 class JavaType:
@@ -372,6 +411,7 @@ def enrich_java_ee(g, root):
     # JSF pages → page nodes; EL bean references → routes to the @Named bean
     eps = endpoint_index(g)
     xhtml = sorted(root.rglob("*.xhtml"))
+    pages = {f.resolve(): f for f in xhtml if f.is_file()}
     for f in xhtml:
         text = f.read_text(encoding="utf-8", errors="ignore")
         # Bean names may contain dots (@Named("public.track")): match each known name inside an EL expression.
@@ -385,6 +425,13 @@ def enrich_java_ee(g, root):
         for b in sorted(refs):
             g.edge(pid, class_id(g, beans[b], "jsf-el"), "routes", "jsf-el", description=f"#{{{b}…}}")
         link_page(g, pid, text, eps, "page-script")
+        frames = IframeLinks(text)
+        for ref in frames.refs if not frames.has_base else []:
+            hit = jsf_iframe_target(f, ref, root, pages)
+            if hit:
+                sub = rel(hit, root)
+                g.edge(pid, g.node("page", sub, sub, "jsf-page", f"JSF page {sub}"),
+                       "contains", "jsf-iframe", description=f"iframe src={ref}")
         # Facelets composition: ui:include src / ui:composition|ui:decorate template → the page contains it
         for ref in re.findall(r"<ui:(?:include|composition|decorate)\b[^>]*\b(?:src|template)\s*=\s*\"([^\"#$]+)\"", text):
             hit = next((x for x in xhtml if x.as_posix().endswith("/" + ref.lstrip("/"))), None)

@@ -121,6 +121,84 @@ class JavaEETest(unittest.TestCase):
         self.assertEqual(len(g.doc["edges"]), before, "re-running adds nothing")
 
 
+class JavaEEIframeTest(unittest.TestCase):
+    wrapper = "src/main/webapp/admin/tracking/map.xhtml"
+    frame = "src/main/webapp/admin/tracking/mapFrame.xhtml"
+
+    def graph(self, markup):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            shutil.copytree(FIX / "javaee", root, dirs_exist_ok=True)
+            page = root / self.wrapper
+            page.parent.mkdir(parents=True)
+            page.write_text(markup)
+            (root / self.frame).write_text(
+                '<html><script>fetch("/orders/report", {method: "POST"});</script></html>')
+            # Same suffix in another module must never stand in for a missing local target.
+            decoy = root / "other/src/main/webapp/missing/mapFrame.xhtml"
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text('<html><h:outputText value="#{public.orders.count}"/></html>')
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.merge_graphify(g, json.loads((FIX / "javaee.graphify.json").read_text()))
+            enrich_graph.enrich_java_ee(g, root)
+            before = json.dumps(g.doc, sort_keys=True)
+            enrich_graph.enrich_java_ee(g, root)
+            self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "enrichment stays idempotent")
+            return g
+
+    def test_context_path_iframe_reaches_data_through_child(self):
+        g = self.graph('<html><iframe width="100%" '
+                       'src="#{request.contextPath}/admin/tracking/mapFrame.xhtml"/></html>')
+        self.assertIn((self.wrapper, self.frame), edges(g, "contains"))
+        flow = path(g, self.wrapper)
+        self.assertIn(f"→contains `{self.frame}`", flow)
+        self.assertIn("→routes `POST /orders/report`", flow)
+        self.assertRegex(flow, r"→reads_from `(orders|Customer)`")
+        pages = {n["filePath"]: n["id"] for n in g.doc["nodes"] if n["type"] == "page"}
+        edge = next(e for e in g.doc["edges"]
+                    if e["source"] == pages[self.wrapper] and e["target"] == pages[self.frame])
+        self.assertIn("afs-enriched:jsf-iframe", edge["description"])
+        self.assertIn("#{request.contextPath}/admin/tracking/mapFrame.xhtml", edge["description"])
+
+    def test_local_path_semantics(self):
+        for src in ("mapFrame.xhtml", "./mapFrame.xhtml", "../tracking/mapFrame.xhtml",
+                    "/admin/tracking/mapFrame.xhtml", "mapFrame.xhtml?mode=live&amp;zoom=2#map"):
+            with self.subTest(src=src):
+                g = self.graph(f"<html><iframe\n src='{src}'></iframe></html>")
+                self.assertIn((self.wrapper, self.frame), edges(g, "contains"))
+                self.assertRegex(path(g, self.wrapper), r"→reads_from `(orders|Customer)`")
+
+    def test_unresolved_references_do_not_invent_data_paths(self):
+        for src in ("#{mapView.frame}", "${mapView.frame}",
+                    "#{request.contextPath}/admin/#{mapView.frame}.xhtml",
+                    "#{request.contextPath.concat('/admin/tracking/mapFrame.xhtml')}",
+                    "#{request.contextPath}//admin/tracking/mapFrame.xhtml",
+                    "https://example.test/admin/tracking/mapFrame.xhtml",
+                    "//example.test/admin/tracking/mapFrame.xhtml",
+                    "file:///admin/tracking/mapFrame.xhtml", "javascript:mapFrame.xhtml",
+                    "\\\\example.test\\mapFrame.xhtml", "%2e%2e/tracking/mapFrame.xhtml",
+                    "/missing/mapFrame.xhtml", "missing/mapFrame.xhtml", "absent.xhtml",
+                    "mapFrame.xhtml/",
+                    "../../../../other/src/main/webapp/missing/mapFrame.xhtml",
+                    "", "#map", "?mode=live"):
+            with self.subTest(src=src):
+                g = self.graph(f'<html><iframe src="{src}"/></html>')
+                self.assertFalse(any(s == self.wrapper for s, _ in edges(g, "contains")))
+                self.assertTrue(path(g, self.wrapper).startswith("**NO PATH**"))
+                self.assertRegex(path(g, self.frame), r"→reads_from `(orders|Customer)`",
+                                 "child control reaches data")
+
+    def test_inactive_or_non_src_attributes_do_not_link(self):
+        for markup in ('<!-- <iframe src="mapFrame.xhtml"/> -->',
+                       '<iframe data-src="mapFrame.xhtml"/>',
+                       '<iframe src="mapFrame.xhtml" srcdoc="inline content"/>',
+                       '<iframe src="absent.xhtml" src="mapFrame.xhtml"/>',
+                       '<base href="https://example.test/"/><iframe src="mapFrame.xhtml"/>'):
+            with self.subTest(markup=markup):
+                g = self.graph(markup)
+                self.assertTrue(path(g, self.wrapper).startswith("**NO PATH**"))
+
+
 class DjangoTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
