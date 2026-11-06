@@ -10,8 +10,11 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 1. **Bootstrap** — detect the source and target stacks, check that every required capability
    (tests, coverage, CRAP, mutation testing, …) has a skill or tool, and have the operator fill any
    gaps. Install pinned agents and skills into the target repo.
-2. **Understand** — build a graph of the source with Understand Anything, inventory every capability
-   in a *fidelity ledger*, and rank risky code with a best-effort CRAP *risk map*.
+2. **Understand** — build a graph of the source in three layers: Understand Anything (an LLM: domains,
+   flows, summaries), Graphify (deterministic parsing: calls, inheritance, interfaces) and the harness's
+   framework enrichers (routes, tables, queues, schedules). A gate checks that every slice's entry points
+   reach data. Then inventory every capability in a *fidelity ledger*, and rank risky code with a
+   best-effort CRAP *risk map*.
 3. **Characterize** — record what the source actually does as characterization tests, before any
    migration.
 4. **Plan** — chart open decisions on a Wayfinder map; break the work, including data migration, into
@@ -35,6 +38,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 
 - [Architecture](docs/architecture.md) — the full design
 - [Roadmap](docs/roadmap.md) — milestones M0–M7
+- [Operator setup](docs/operator-setup.md) — repo settings, what the code graph contains, costs
 - [Architecture decision records](docs/adr/)
 - [Glossary](GLOSSARY.md)
 
@@ -42,17 +46,17 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 
 | Path | What |
 |------|------|
-| [`docs/`](docs/) | Architecture, ADRs, roadmap, spike findings |
-| [`schemas/`](schemas/) | JSON Schemas for a target's `.migration/` state: `profile`, `capabilities`, ledger entries |
+| [`docs/`](docs/) | Architecture, ADRs, roadmap, operator setup, spike findings |
+| [`schemas/`](schemas/) | JSON Schemas for a target's `.migration/` state: `profile`, `capabilities`, ledger entries, slice specs, return files |
 | [`templates/migration/`](templates/migration/) | Sample state from the pilot (validated in CI); also the pilot's bootstrap input |
 | [`templates/target/`](templates/target/), [`templates/rtk/`](templates/rtk/) | What bootstrap writes into a target: instruction block, generated workflows, RTK 1.1.0 block and hook |
 | [`examples/`](examples/) | Bootstrap inputs for real pilots (`cargotracker/`: the public M5 pilot) |
 | [`stacks/`](stacks/) | Stack packs: pinned stack-specific skills (`java-to-django.json`) |
 | [`skills.lock.json`](skills.lock.json) | The pinned built-in skill menu: source, commit, path, license, roles |
-| [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`) and vendored `afs-` copies |
+| [`skills/`](skills/) | Harness skills (`afs-migration-contract`, `afs-ledger`, `afs-evidence`, `afs-quirk-ticket`, `afs-handoff`, `afs-setup-check`) and vendored `afs-` copies (`afs-implement`, `afs-to-tickets`, `afs-wayfinder`) |
 | [`patches/`](patches/) | Patches applied to pinned third-party skills and plugins |
 | [`agents/`](agents/) | The ten role agents (`afs-*.agent.md`) |
-| [`tools/`](tools/) | `bootstrap.py`, `afs-run` (gate wrapper), `validate.py`, `crap.py`, `check_installed.py`, `check_lock.py`, `vendor_skills.py`, spike tools |
+| [`tools/`](tools/) | Bootstrap, gate wrappers and checks: see [Tools](#tools) |
 | [`tests/`](tests/) | Tests for the schemas and tools |
 
 ```bash
@@ -79,11 +83,64 @@ links; their referents are not traversed. Staging requires the target filesystem
 to support creating symlinks. If that is unavailable, bootstrap fails before publishing and leaves live
 managed paths intact.
 
+## Tools
+
+Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it).
+
+**Install and drift**
+
+- `bootstrap.py`: install the harness into a target; writes the generated workflows
+- `check_installed.py`: installed harness files are unchanged
+- `check_lock.py`: the pinned skill menu
+- `vendor_skills.py`: refresh or drift-check the `afs-` skill copies
+- `gen_return_schema.py`: build `return.schema.json` from the agents' return contracts
+
+**Gates (results come from the tools, ADR-0017)**
+
+- `afs-run`: run a gate once, keep the full log, show a summary
+- `afs-mutation`: mutation testing on changed code
+- `crap.py`: CRAP from complexity and coverage
+- `afs-services`: start and check the test services from the compose file
+- `check_runtime.py`: runtimes match the profile
+- `afs-acceptance`: run the acceptance gates outside an agent session
+- `afs_trace.py`: every tool prints `AFS-TOOL <tool> exit=<code>` when it ends
+
+**Code graph**
+
+- `understand.py`: Understand Anything through the Copilot SDK
+- `enrich_graph.py`: merge Graphify's language layer, then add framework meaning
+- `graph_gate.py`: required node/edge types; every slice anchor reaches data; every entry point owned
+- `check_graph.py`: what a graph contains, for review
+- `check_graph_fresh.py`: graphs describe the code they claim to
+- `check_domain_coverage.py`: requested entry points have a connected domain flow
+- `extract_slice.py`: cut a slice of the source for a targeted graph run
+
+**Contracts and tracking**
+
+- `validate.py`: validate a target's `.migration/` state
+- `check_inputs.py`: every path a ticket names exists
+- `check_return_contract.py`: an agent PR commits its return file
+- `check_slice_returns.py`: a slice epic closes only with every return file
+- `ticket_guard.py`: reopen a ticket closed before its work reached the default branch
+- `check_stack_base.py`: a stacked PR's base contains the default branch
+- `fog_rewalk.py`: re-walk the decision map's fog after a slice
+
+**Costs and coverage**
+
+- `afs-cost-hook`: Copilot hook: one cost record per agent session
+- `afs-costs`: billed credits and Actions minutes per session
+- `harness_coverage.py`: which harness paths a target has exercised
+
 ## Status
 
-M0–M4 are done (design, spikes, harness skeleton, role agents, bootstrap); M5 (pilot slice) is next — see the
-[roadmap](docs/roadmap.md) and [spike findings](docs/spikes/m1/findings.md). The baseline is the
-Java → Django migration skill and role agents in
+M0–M5 are done: design, spikes, harness skeleton, role agents, bootstrap, and the first pilot slices of
+[Cargo Tracker](https://github.com/martins-vds/ai-factory-pilot-target) (track cargo, handling-event
+registration) through acceptance. The pilot is now used to **validate the harness itself**: what it has
+exercised is computed by `harness_coverage.py` (ADR-0027), and the open paths are listed on the
+[roadmap](docs/roadmap.md#harness-validation). M6 (scale test) is next.
+
+Planning and execution build on [Matt Pocock's skills](https://github.com/mattpocock/skills). The code
+graph comes from [Understand Anything](https://github.com/Egonex-AI/Understand-Anything) and
+[Graphify](https://github.com/Graphify-Labs/graphify), with the harness's own framework enrichers on top.
+The baseline was the Java → Django migration skill and role agents in
 [code-migration-hackathon PR #6](https://github.com/martins-vds/code-migration-hackathon/pull/6).
-Planning and execution build on [Matt Pocock's skills](https://github.com/mattpocock/skills); the code
-graph comes from [Understand Anything](https://github.com/Egonex-AI/Understand-Anything).

@@ -1,6 +1,6 @@
 # ADR-0009: Understand Anything as the single graph tool, used directly
 
-- Status: Accepted
+- Status: Accepted; amended by ADR-0025 (Graphify is the language layer under the enrichers)
 - Date: 2026-10-30
 - Supersedes: the earlier draft "third-party graph tool behind an adapter"
 

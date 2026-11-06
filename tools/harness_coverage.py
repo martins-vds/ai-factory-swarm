@@ -87,6 +87,12 @@ def role_fields(schema):
     return out
 
 
+def _is_tool(text):
+    """A tool calls afs_trace.run after its `__main__` guard; a library that only mentions the call is not one."""
+    _, sep, entry = text.rpartition("__main__")
+    return bool(sep) and "afs_trace.run(" in entry
+
+
 def universe():
     ret = json.loads((HARNESS / "schemas/return.schema.json").read_text(encoding="utf-8"))
     led = json.loads((HARNESS / "schemas/ledger-entry.schema.json").read_text(encoding="utf-8"))
@@ -95,7 +101,7 @@ def universe():
               if isinstance(v, dict) and "enum" in v}
     # A tool is a file whose entry point is afs_trace.run (tests/test_trace.py enforces it); libraries are not.
     tools = sorted(p.name for p in (HARNESS / "tools").iterdir() if p.is_file() and not p.name.startswith(".")
-                   and "afs_trace.run(" in p.read_text(encoding="utf-8", errors="ignore").rsplit("__main__", 1)[-1])
+                   and _is_tool(p.read_text(encoding="utf-8", errors="ignore")))
     wf = {}
     for p in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
         text = p.read_text(encoding="utf-8")
