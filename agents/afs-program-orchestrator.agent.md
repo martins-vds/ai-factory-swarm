@@ -81,8 +81,8 @@ Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 phase: <0-8>
-decisions: [<ticket link: one-line answer>]
+decisions: ["<ticket link: one-line answer>"]
 dispatched: [{agent: <name>, ticket: <link>, status: <running|returned|blocked>}]
-awaiting_human: [<ticket link: what is needed>]
+awaiting_human: ["<ticket link: what is needed>"]
 next_step: <one line>
 ```
