@@ -17,7 +17,7 @@ repo and the profile.
 
 | Piece | Where | Who |
 |---|---|---|
-| **Snapshot**: `<TABLE>.csv` per table + `manifest.json` | `profile.data.snapshot_dir` (default `.migration/data/snapshot/`, **gitignored**) | The operator (`profile.data.snapshot_owner`) exports it |
+| **Snapshot**: `<TABLE>.csv` per table + `manifest.json` | Made by the **AFS data snapshot** workflow from `profile.data.snapshot` commands, kept as its artifact; fetched into `profile.data.snapshot_dir` (default `.migration/data/snapshot/`, **gitignored**) by Copilot setup steps | The snapshot owner (`profile.data.snapshot_owner`) **dispatches** the workflow; agents never make a snapshot |
 | **Mapping**: source → target tables, columns, transforms, references | `profile.data.mapping` (default `.migration/data/mapping.yaml`), committed | Data Specialist |
 | **Loader**: snapshot → target, through the mapping | Target code (e.g. a management command), committed; run by `profile.data.load` | Data Specialist |
 | **Export**: target tables → CSV, same conventions | `profile.data.export`, writes into `{out}` (gitignored `.migration/data/target-export/`) | Data Specialist |
@@ -40,6 +40,18 @@ evidence report, plus the reconciliation report.
   ```
 - Check it before anything reads it: `data_reconcile.py snapshot <dir>` (each file present, row
   count and sha256 as stated). Export recipes per engine: `references/export-recipes.md`.
+- **Any JDBC-reachable engine:** `data_snapshot.py export --jdbc-url … --driver group:artifact:version@sha256
+  --out {out}` exports every table in this format, writes the manifest and checks it. A typical
+  `profile.data.snapshot` starts the legacy runtime (or a copy of its database), stops it so the files
+  are consistent, then runs that export:
+  ```yaml
+  data:
+    snapshot_owner: ops-team
+    snapshot_java: "8"
+    snapshot:
+      - "bash scripts/run-legacy.sh"          # start, optionally drive it, stop
+      - "python .migration/harness/tools/data_snapshot.py export --jdbc-url 'jdbc:derby:/tmp/app-db' --driver org.apache.derby:derby:10.14.2.0@<sha256> --engine derby --out {out}"
+  ```
 
 ## Mapping
 ```yaml

@@ -131,6 +131,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-cost-hook`: Copilot hook: one cost record per agent session
 - `afs-costs`: billed credits and Actions minutes per session
 - `harness_coverage.py`: which harness paths a target has exercised
+- `data_snapshot.py`: make a snapshot over JDBC (`java/JdbcSnapshot.java`), describe one, or fetch the newest (ADR-0032)
 - `data_reconcile.py`: check a data snapshot, and reconcile it with the target's loaded data (ADR-0032)
 - `afs-drill`: break one thing on a throwaway branch and confirm the right check catches it
 - `drills.json`: the drills `afs-drill` runs (data: operations, trigger, expected check)

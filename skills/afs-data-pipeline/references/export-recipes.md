@@ -17,8 +17,8 @@ The same form serves as a target's `profile.data.export` command for each mapped
 
 ## Engines whose bulk export can't write a header or a NULL marker
 Some built-in exporters write no header row, or write NULL as an empty field. Check your engine's
-documentation for its export procedure. If either is true, don't use it directly. Write a small
-exporter instead, over the engine's own client library or JDBC:
+documentation for its export procedure. If either is true, don't use it directly. Use the harness's
+JDBC exporter, `data_snapshot.py export` (`java/JdbcSnapshot.java`), which does the following:
 
 1. For each table: `SELECT * FROM <table> ORDER BY <primary key>`.
 2. Write the header from the result set's column names.
@@ -26,7 +26,8 @@ exporter instead, over the engine's own client library or JDBC:
 4. Write timestamps in ISO 8601, with an offset when the column has one. A naive value is in the zone
    named by the mapping's `defaults.timestamp_tz`.
 
-This works for any JDBC-reachable engine (Derby, Oracle, SQL Server, DB2, MySQL). For an embedded
+This works for any JDBC-reachable engine (Derby, Oracle, SQL Server, DB2, MySQL); give the driver as a
+pinned Maven coordinate. For an embedded
 database (e.g. embedded Derby inside an application server), stop the application first, or run the
 exporter against a copy of the database files, so the snapshot is consistent.
 

@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read        # fetch the newest data snapshot artifact (ADR-0032)
     steps:
       - name: Check out target repo with full history (afs-mutation diffs against origin/main)
         uses: actions/checkout@v5
@@ -71,6 +72,18 @@ jobs:
       # against the real database instead of skipping them. afs-setup-check confirms they are healthy.
       - name: Start test services from the target's compose file
         run: python .migration/harness/tools/afs-services up
+
+      # ADR-0032: data tickets start with the newest snapshot from the AFS data snapshot workflow, in the
+      # gitignored data.snapshot_dir. Only when the profile defines data.snapshot; agents never make one.
+      - name: Fetch the newest data snapshot
+        env:
+          GH_TOKEN: ${{{{ github.token }}}}
+        run: |
+          if python -c "import yaml,sys; d=(yaml.safe_load(open('.migration/profile.yaml')) or {{}}).get('data') or {{}}; sys.exit(0 if d.get('snapshot') else 1)"; then
+            python .migration/harness/tools/data_snapshot.py fetch --repo "${{{{ github.repository }}}}" || echo "::warning::no data snapshot yet"
+          else
+            echo "profile defines no data.snapshot; skipped"
+          fi
 
       # Understand Anything at its pinned commit, with the harness patches (ADR-0009). Role agents load it
       # from $HOME/.afs/understand-anything.
