@@ -179,7 +179,7 @@ quirk_tickets: []
         return {"number": number, "state": "closed", "merged_at": "2026-11-05T00:00:00Z" if merged else None,
                 "merge_commit_sha": head if merged else None, "head": {"sha": head}, "body": body}
 
-    def historical_null_pr_return(self, *, changed=False, rule=True):
+    def historical_null_pr_return(self, *, changed=False, rule=True, superseded=False):
         path = self.root / ".migration/returns/T1.afs-verifier.yaml"
         path.parent.mkdir(parents=True)
         doc = yaml.safe_load(self.RETURN)
@@ -192,6 +192,10 @@ quirk_tickets: []
         validator = installed_tools / "validate.py"
         validator.write_text("# Historical installed validator.\n", encoding="utf-8")
         owner = self.commit("historical completed return")
+        if superseded:
+            doc["issue"] = "o/r#2"
+            path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+            owner = self.commit("historical sibling re-verification")
         if rule:
             validator.write_text('PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"\n', encoding="utf-8")
             self.commit("introduce existing PR attribution rule")
@@ -204,8 +208,22 @@ quirk_tickets: []
             self.assertEqual(validate.pre_rule_null_pr(path, self.root / ".migration"), rule and not changed)
             return self.run_reconciliation(
                 [issue], {101: self.pull(101, head=owner, merged=True)},
-                issue_details={1: {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}},
+                issue_details={
+                    1: {"number": 1, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"},
+                    2: {"number": 2, "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"},
+                },
             )
+
+    def test_superseded_unchanged_null_pr_return_retains_historical_exemption(self):
+        result, output, _ = self.historical_null_pr_return(superseded=True)
+        self.assertEqual(result, 0, output)
+        self.assertIn("superseded attribution", output)
+        self.assertIn("unchanged pre-rule null-PR return", output)
+
+    def test_superseded_null_pr_return_edited_after_rule_requires_owning_pr(self):
+        result, output, _ = self.historical_null_pr_return(superseded=True, changed=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("no owning PR reference", output)
 
     def test_completed_unchanged_null_pr_return_retains_existing_historical_exemption(self):
         result, output, _ = self.historical_null_pr_return()

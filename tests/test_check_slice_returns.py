@@ -473,6 +473,55 @@ class HistoricalAttributionTest(unittest.TestCase):
         self.assertEqual(attributed, set())
         self.assertTrue(any("current owning PR" in item for item in diagnostics))
 
+    def test_direct_child_history_cannot_accept_unlanded_current_sibling(self):
+        old = RETURN.replace("issue: o/r#1", "issue: o/r#2").replace("pr: o/r#10", "pr: o/r#12")
+        old_head = self.commit(old, "landed original child")
+        latest = RETURN.replace("issue: o/r#1", "issue: o/r#3").replace("pr: o/r#10", "pr: o/r#13") \
+            .replace("changes-required", "pass")
+        self.commit(latest, "copied unlanded current sibling pass")
+
+        def gh(endpoint, *args, **kwargs):
+            if endpoint in {"repos/o/r/issues/2", "repos/o/r/issues/3"}:
+                return {"number": int(endpoint.rsplit("/", 1)[1]),
+                        "parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": old_head, "head": {"sha": old_head}, "body": "Fixes #2"}
+            if endpoint == "repos/o/r/pulls/13":
+                return {"number": 13, "state": "open", "merged_at": None,
+                        "head": {"sha": "f" * 40}, "body": "Fixes #3"}
+            return {}
+
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            found, diagnostics = csr.superseded_attribution({"o/r#2"}, csr.current_returns(), REPO)
+        self.assertEqual(found, set())
+        self.assertTrue(any("still open" in item for item in diagnostics), diagnostics)
+
+    def test_ordinary_null_pr_history_retains_verified_pre_rule_exemption(self):
+        import validate
+
+        installed = self.root / ".migration/harness/tools"
+        installed.mkdir(parents=True)
+        validator = installed / "validate.py"
+        validator.write_text("# before the PR attribution rule\n")
+        doc = yaml.safe_load(RETURN)
+        doc.update(pr=None, verdict="pass")
+        self.commit(yaml.safe_dump(doc), "original historical return")
+        doc["issue"] = "o/r#2"
+        self.commit(yaml.safe_dump(doc), "historical sibling return")
+        validator.write_text('PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"\n')
+        self.git("add", "-A")
+        self.git("commit", "-qm", "introduce PR attribution rule")
+
+        def gh(endpoint, *args, **kwargs):
+            return {"number": int(endpoint.rsplit("/", 1)[1]),
+                    "parent_issue_url": "https://api.github.com/repos/o/r/issues/99"}
+
+        with mock.patch.object(validate, "HERE", installed), \
+                mock.patch.object(ticket_guard, "gh", side_effect=gh):
+            found, _ = csr.superseded_attribution({"o/r#1"}, csr.current_returns(), REPO)
+        self.assertEqual(found, {"o/r#1"})
+
     def test_parent_ticket_lineage_survives_current_sibling_issue_return(self):
         parent_failure = RETURN.replace("pr: o/r#10", "pr: o/r#12")
         child_head = self.commit(parent_failure, "landed child-owned parent failure")

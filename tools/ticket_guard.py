@@ -242,7 +242,8 @@ def _parent_ticket_attribution(repo, issue_number, path, current, cited_prs=None
     except ValueError as exc:
         return False, True, [str(exc)]
     if current_pr is None:
-        return False, True, ["current parent-ticket return has no owning PR"]
+        # Ordinary history may still use the existing no-owning-PR contract or verified exemption.
+        return False, False, []
     if cited_prs is not None and current_pr not in cited_prs:
         return False, True, [f"current owning PR #{current_pr} is not among the cited landing PRs"]
     try:

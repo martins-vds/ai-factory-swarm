@@ -118,6 +118,17 @@ def superseded_attribution(required, current, repo=None):
         }
         if not candidates:
             continue
+        if repo and any(parent_numbers.get(issue) is not None for issue in candidates):
+            from ticket_guard import _landed_pull, _return_in_commit, _return_pr_number
+            try:
+                owner = _return_pr_number(latest, repo, return_path=path)
+                if owner is not None:
+                    landing = _landed_pull(repo, owner)
+                    if not _return_in_commit(path, latest, landing):
+                        raise ValueError(f"current owning PR #{owner} does not contain the exact current return")
+            except (OSError, ValueError, subprocess.SubprocessError, SystemExit) as exc:
+                diagnostics.append(f"historical attribution for {path} blocked: {exc}")
+                continue
         # Full history includes merged worker branches, but never arbitrary refs or dangling objects.
         commits = git("log", "-m", "--full-history", "--format=%H", "--diff-filter=AM", "HEAD", "--", path).splitlines()
         for commit in commits:

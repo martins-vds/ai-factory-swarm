@@ -28,7 +28,9 @@ related issue tree is stale.
     historical attribution alone never proves the current result. This supports a correction carried by a
     later PR without treating a closed PR as proof. Ordinary same-path supersession remains distinct: a
     historical return that directly identifies the reconciled issue may establish its attribution even if
-    that issue is itself below the slice epic and the latest return names its own child issue. Applicable
+    that issue is itself below the slice epic and the latest return names its own child issue. A required
+    current owning PR must still have a verified landing containing the exact current return; historical
+    identity alone does not establish that landing. Applicable
     outcomes are checked against their role
     contracts: Verifier returns must pass, Bootstrapper validation must explicitly pass (including
     pass-with-limitations), Migrator gates must show passing outcomes with no outstanding handoff (`none`
