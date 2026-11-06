@@ -24,7 +24,7 @@ import sys
 import time
 import traceback
 
-from check_domain_coverage import validate_entry_points
+from check_domain_coverage import coverage_failures, validate_entry_points
 
 STEPS = [
     ("understand", "Use the `understand` skill to analyze the current directory and build its knowledge "
@@ -107,6 +107,9 @@ async def run_step(client, name, prompt, a, out, lines):
 
 async def run(a):
     a.domain_entry_points = validate_entry_points(a.dir, a.domain_entry_points)
+    defer_domain_coverage = getattr(a, "defer_domain_coverage", False)
+    if defer_domain_coverage and not a.domain_entry_points:
+        raise ValueError("--defer-domain-coverage requires at least one --domain-entry-point")
     from copilot import CopilotClient
 
     out = pathlib.Path(a.out)
@@ -124,10 +127,28 @@ async def run(a):
                 shutil.copyfile(a.dir / d / g, out / g)
                 found.append(g)
                 break
+    coverage_failures_list = []
+    if a.domain_entry_points:
+        if "domain-graph.json" not in found:
+            coverage_failures_list.append("domain graph is missing for the requested entry points")
+            lines.extend(["Domain coverage: FAIL", *[f"- {failure}" for failure in coverage_failures_list]])
+        elif defer_domain_coverage:
+            lines.append("Domain coverage: DEFERRED; caller must run check_domain_coverage.py after enrichment")
+        else:
+            try:
+                knowledge = json.loads((out / "knowledge-graph.json").read_text(encoding="utf-8"))
+                domain = json.loads((out / "domain-graph.json").read_text(encoding="utf-8"))
+                coverage_failures_list = coverage_failures(a.dir, knowledge, domain, a.domain_entry_points)
+            except (OSError, ValueError) as exc:
+                coverage_failures_list.append(f"cannot verify generated graphs: {exc}")
+            if coverage_failures_list:
+                lines.extend(["Domain coverage: FAIL", *[f"- {failure}" for failure in coverage_failures_list]])
+            else:
+                lines.append("Domain coverage: PASS")
     lines.append("Graphs: " + (", ".join(found) or "none produced"))
     (out / "run.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("\n".join(lines))
-    return 0 if "knowledge-graph.json" in found else 1
+    print("\n".join(lines), file=sys.stderr if coverage_failures_list else sys.stdout)
+    return 0 if "knowledge-graph.json" in found and not coverage_failures_list else 1
 
 
 def main():
@@ -140,6 +161,9 @@ def main():
     ap.add_argument("--token-env", default="GITHUB_TOKEN")
     ap.add_argument("--domain-entry-point", action="append", default=[], metavar="PATH",
                     help="require domain-flow coverage for this source-relative file path (repeatable)")
+    ap.add_argument("--defer-domain-coverage", action="store_true",
+                    help="defer connected-flow validation until after enrichment; caller must run "
+                         "check_domain_coverage.py and treat its failure as fatal")
     a = ap.parse_args()
     try:
         a.domain_entry_points = validate_entry_points(a.dir, a.domain_entry_point)

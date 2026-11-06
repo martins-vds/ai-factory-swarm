@@ -184,4 +184,5 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import afs_trace
+    afs_trace.run(main)

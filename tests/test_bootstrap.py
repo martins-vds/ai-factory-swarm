@@ -183,6 +183,8 @@ class BootstrapTest(unittest.TestCase):
         self.assertIn("--domain-entry-point", text)
         self.assertIn("check_domain_coverage.py", text)
         self.assertIn("if [ \"${#domain_args[@]}\" -gt 0 ]; then", text)
+        self.assertIn("coverage_args+=(--defer-domain-coverage)", run)
+        self.assertLess(run.index("enrich_graph.py"), run.index("check_domain_coverage.py"))
         self.assertIn('AFS_GRAPH_MODEL: ${{ inputs.model }}', text)
 
     def test_acceptance_workflow_is_manual_durable_and_preserves_failed_evidence(self):

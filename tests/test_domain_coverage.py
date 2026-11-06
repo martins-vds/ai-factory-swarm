@@ -1,4 +1,6 @@
+import contextlib
 import asyncio
+import io
 import json
 import pathlib
 import subprocess
@@ -6,6 +8,9 @@ import sys
 import tempfile
 import unittest
 from argparse import Namespace
+from types import SimpleNamespace
+from unittest import mock
+from unittest.mock import AsyncMock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -157,13 +162,77 @@ class DomainCoverageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             asyncio.run(run(args))
 
+    def run_mocked(self, entry_points, domain=None, defer=False):
+        source_graphs = self.root / ".ua"
+        source_graphs.mkdir(exist_ok=True)
+        (source_graphs / "knowledge-graph.json").write_text(json.dumps(self.knowledge), encoding="utf-8")
+        if domain is not None:
+            (source_graphs / "domain-graph.json").write_text(json.dumps(domain), encoding="utf-8")
+        else:
+            (source_graphs / "domain-graph.json").unlink(missing_ok=True)
+        args = Namespace(
+            dir=self.root, domain_entry_points=entry_points, defer_domain_coverage=defer,
+            out=self.root / "output", plugin=self.root / "plugin", model=None,
+            token_env="TEST_TOKEN", timeout=1,
+        )
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return None
+
+        stdout = io.StringIO()
+        with (
+            mock.patch.dict(sys.modules, {"copilot": SimpleNamespace(CopilotClient=lambda **_: FakeClient())}),
+            mock.patch("understand.run_step", new=AsyncMock()),
+            mock.patch.dict("os.environ", {"TEST_TOKEN": "test-token"}),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stdout),
+        ):
+            result = asyncio.run(run(args))
+        return result, stdout.getvalue(), args.out / "run.md"
+
+    def test_runner_fails_when_requested_domain_artifact_is_missing(self):
+        result, output, _ = self.run_mocked([ENTRY])
+        self.assertEqual(result, 1)
+        self.assertIn("Domain coverage: FAIL", output)
+        self.assertIn("domain graph is missing", output)
+
+    def test_runner_requires_connected_coverage_for_direct_requests(self):
+        result, output, _ = self.run_mocked([ENTRY], domain=domain_graph(step_path=PUBLIC))
+        self.assertEqual(result, 1)
+        self.assertIn("Domain coverage: FAIL", output)
+
+        result, output, _ = self.run_mocked([ENTRY], domain=domain_graph())
+        self.assertEqual(result, 0, output)
+        self.assertIn("Domain coverage: PASS", output)
+
+    def test_runner_deferral_is_explicit_and_still_requires_domain_artifact(self):
+        result, output, summary = self.run_mocked([ENTRY], domain=domain_graph(step_path=PUBLIC), defer=True)
+        self.assertEqual(result, 0, output)
+        self.assertIn("Domain coverage: DEFERRED", output)
+        self.assertIn("must run check_domain_coverage.py after enrichment", summary.read_text())
+
+        result, output, _ = self.run_mocked([ENTRY], defer=True)
+        self.assertEqual(result, 1)
+        self.assertIn("Domain coverage: FAIL", output)
+        self.assertIn("domain graph is missing", output)
+
+    def test_runner_preserves_no_request_success_without_domain_graph(self):
+        result, output, _ = self.run_mocked([])
+        self.assertEqual(result, 0, output)
+        self.assertNotIn("domain coverage:", output)
+
     def test_symlink_to_outside_source_is_rejected(self):
-        outside = self.root.parent / "outside.java"
-        outside.write_text("outside\n", encoding="utf-8")
-        link = self.root / "src/admin/outside.java"
-        link.symlink_to(outside)
-        with self.assertRaises(ValueError):
-            validate_entry_points(self.root, ["src/admin/outside.java"])
+        with tempfile.TemporaryDirectory() as external_dir:
+            outside = pathlib.Path(external_dir) / "outside.java"
+            outside.write_text("outside\n", encoding="utf-8")
+            link = self.root / "src/admin/outside.java"
+            link.symlink_to(outside)
+            with self.assertRaises(ValueError):
+                validate_entry_points(self.root, ["src/admin/outside.java"])
 
     def test_no_request_preserves_default_prompts(self):
         self.assertEqual(prompts_for([]), STEPS)

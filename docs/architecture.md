@@ -466,6 +466,11 @@ and to a source-backed step structurally reachable from that path in the knowled
 requests, the existing generation and gates are unchanged. This structural check proves neither that
 the flow is semantically correct nor that its behavior is complete; independent review against source
 code is still required.
+Direct `understand.py` requests run the structural check before returning success. The generated workflow
+uses the explicit `--defer-domain-coverage` option because enrichment adds source links later; this mode
+still fails if the domain artifact is absent, reports the check as deferred, and the workflow must run
+`check_domain_coverage.py` after enrichment as a fatal gate. A deferred runner result alone is not a
+coverage pass.
 
 **Enrichment (spike M1-1).** For some stacks (e.g. Java EE) screens, entities and services arrive as
 tags and summaries on `file`/`class` nodes, with few `calls` edges. The Analyst maps tags and framework

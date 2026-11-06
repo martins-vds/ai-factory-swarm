@@ -104,13 +104,18 @@ jobs:
         run: |
           out=".migration/graphs/$SIDE/$SCOPE"
           domain_args=()
+          coverage_args=()
           while IFS= read -r entry || [ -n "$entry" ]; do
             [ -n "$entry" ] || continue
             domain_args+=(--domain-entry-point "$entry")
           done <<< "$AFS_DOMAIN_ENTRY_POINTS"
+          if [ "${{#domain_args[@]}}" -gt 0 ]; then
+            coverage_args+=(--defer-domain-coverage)
+          fi
           set -o pipefail
           python .migration/harness/tools/understand.py --dir "$RUNNER_TEMP/analyze" \
-            --plugin "$RUNNER_TEMP/understand-anything" --out "$out" "${{domain_args[@]}}" \
+            --plugin "$RUNNER_TEMP/understand-anything" --out "$out" \
+            "${{domain_args[@]}}" "${{coverage_args[@]}}" \
             2>&1 | tee "$RUNNER_TEMP/understand.log"
           mkdir -p "$RUNNER_TEMP/events" && mv "$out"/events-*.jsonl "$out"/error-*.txt "$RUNNER_TEMP/events/" 2>/dev/null || true
           [ -f "$RUNNER_TEMP/analyze/MANIFEST.txt" ] && cp "$RUNNER_TEMP/analyze/MANIFEST.txt" "$out/"
