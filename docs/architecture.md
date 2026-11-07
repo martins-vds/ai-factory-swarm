@@ -97,6 +97,7 @@ humans, and approved for cutover.
 | 32 | Data moves from a snapshot through one committed mapping; reconciliation is computed by a tool | [0032](adr/0032-data-pipeline-snapshot-mapping-reconciliation.md) |
 | 33 | The source graph only grows: a regeneration keeps earlier domain flows, and CI fails a PR that loses a flow, table, endpoint, page or command | [0033](adr/0033-the-source-graph-only-grows.md) |
 | 34 | Agents pass the PR checks before they stop: a stop hook blocks on mechanical misses within a budget; scope and stuck gates escalate | [0034](adr/0034-agents-pass-the-pr-checks-before-they-stop.md) |
+| 35 | The acceptance target graph is built by the acceptance run for the exact commit it checks; the committed target graph is a reference | [0035](adr/0035-the-acceptance-target-graph-is-built-for-the-revision-it-checks.md) |
 
 ---
 
