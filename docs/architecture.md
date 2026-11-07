@@ -96,6 +96,7 @@ humans, and approved for cutover.
 | 31 | A slice's human sign-off is an approving PR review by a named approver, on the exact head commit | [0031](adr/0031-human-signoff-is-an-approving-review.md) |
 | 32 | Data moves from a snapshot through one committed mapping; reconciliation is computed by a tool | [0032](adr/0032-data-pipeline-snapshot-mapping-reconciliation.md) |
 | 33 | The source graph only grows: a regeneration keeps earlier domain flows, and CI fails a PR that loses a flow, table, endpoint, page or command | [0033](adr/0033-the-source-graph-only-grows.md) |
+| 34 | Agents pass the PR checks before they stop: a stop hook blocks on mechanical misses within a budget; scope and stuck gates escalate | [0034](adr/0034-agents-pass-the-pr-checks-before-they-stop.md) |
 
 ---
 
