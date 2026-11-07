@@ -61,6 +61,10 @@ jobs:
         run: python .migration/harness/tools/check_graph_fresh.py ${{{{ github.event_name == 'pull_request' && format('--acceptance-since origin/{{0}}', github.base_ref) || '' }}}}
       # ADR-0020: the source graph has the profile's required types and every slice's source anchors reach
       # data; the target graph is held to the same at acceptance.
+      - name: The source graph only grows
+        if: github.event_name == 'pull_request'
+        run: python .migration/harness/tools/preserve_graph.py check --base "origin/${{{{ github.base_ref }}}}" --side source
+
       - name: Code graphs reach the data
         run: |
           python .migration/harness/tools/graph_gate.py --side source > /dev/null

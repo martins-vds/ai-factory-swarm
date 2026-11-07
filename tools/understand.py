@@ -44,7 +44,9 @@ def prompts_for(entry_points):
     requested = json.dumps(entry_points, ensure_ascii=False)
     prompt = (
         "Use the `understand-domain` skill with `--full` on the current source, not only the existing "
-        "knowledge-graph summary. The operator requires truthful domain-flow coverage for these exact "
+        "knowledge-graph summary. Extract the business domains, flows and steps of the whole source, as "
+        "you would without a request; in addition, the operator requires truthful domain-flow coverage "
+        "for these exact "
         f"source-relative entry-point paths: {requested}. For each path, create a domain -> flow -> step "
         "chain using the existing domain graph node and edge format. Set that flow's "
         "`domainMeta.entryPoint` to the exact requested path, and include at least one step whose "
