@@ -119,8 +119,10 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 **Contracts and tracking**
 
 - `validate.py`: validate a target's `.migration/` state
+- `check_plan.py`: plan tickets are dispatch-ready: new ids, complete file lists, no shared file without a blocking edge (run by `validate.py`)
 - `check_inputs.py`: every path a ticket names exists
 - `check_return_contract.py`: an agent PR commits its return file
+- `afs-finish-check`: Copilot stop hook: an agent fixes what CI would reject before it stops, within a budget, then escalates (ADR-0034)
 - `check_slice_returns.py`: a slice epic closes only with every return file
 - `check_signoff.py`: a slice's human sign-off is an approver's review on the exact head commit
 - `ticket_guard.py`: reopen a ticket closed before its work reached the default branch

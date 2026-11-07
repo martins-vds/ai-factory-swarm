@@ -65,6 +65,11 @@ class OperationsTest(TargetTest):
         drill.op_snapshot_set(self.root, ".migration/graphs/source/*/SNAPSHOT.txt", "source_sha", "000")
         self.assertEqual(self.read(".migration/graphs/source/full/SNAPSHOT.txt"), "source_sha: 000\nscope: full\n")
 
+    def test_profile_set_writes_a_dotted_key(self):
+        drill.op_profile_set(self.root, "self_heal.enabled", True)
+        import yaml
+        self.assertTrue(yaml.safe_load(self.read(".migration/profile.yaml"))["self_heal"]["enabled"])
+
     def test_every_shipped_drill_applies_to_a_target(self):
         for spec in drill.load():
             with self.subTest(spec["id"]):
@@ -80,7 +85,10 @@ class DrillDataTest(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)), "drill ids are unique")
         for d in drill.load():
             with self.subTest(d["id"]):
-                self.assertIn(d["trigger"], {"pr", "stacked_pr", "dispatch"})
+                self.assertIn(d["trigger"], {"pr", "stacked_pr", "dispatch", "agent"})
+                if d["trigger"] == "agent":
+                    self.assertTrue((ROOT / "agents" / f"{d['agent']}.agent.md").exists())
+                    self.assertTrue(d["issue"].strip())
                 self.assertTrue(all(o["op"] in drill.OPS for o in d["ops"]))
                 if "tool" in d["expect"]:
                     self.assertIn(d["expect"]["tool"], tools, "a drill expects a real tool")
@@ -103,6 +111,16 @@ class VerdictTest(unittest.TestCase):
         runs = [{"name": "AFS acceptance", "conclusion": "failure"}]
         self.assertTrue(drill.judge({"workflow": "failure"}, runs, [])[0])
         self.assertFalse(drill.judge({"workflow": "failure"}, [{"name": "x", "conclusion": "success"}], [])[0])
+
+    def test_agent_verdicts(self):
+        inc = {"files_include": ["drill/hello.txt", ".migration/returns/D.r.yaml"]}
+        self.assertTrue(drill.judge_agent(inc, ["drill/hello.txt", ".migration/returns/D.r.yaml"], {})[0])
+        self.assertEqual(drill.judge_agent(inc, ["drill/hello.txt"], {}), (False, "missing: .migration/returns/D.r.yaml"))
+        exc = {"files_exclude": ["drill/b.txt"], "or_handoff_names": {".migration/handoffs/D.md": "drill/b.txt"}}
+        self.assertEqual(drill.judge_agent(exc, ["drill/a.txt"], {}), (True, "the out-of-scope file was reverted"))
+        self.assertFalse(drill.judge_agent(exc, ["drill/a.txt", "drill/b.txt"], {})[0])
+        self.assertTrue(drill.judge_agent(exc, ["drill/b.txt", ".migration/handoffs/D.md"],
+                                          {".migration/handoffs/D.md": "needs `drill/b.txt`"})[0])
 
     def test_report_marks_each_drill(self):
         text = drill.report([{"id": "a", "caught": True, "evidence": "x|y", "runs": ["u"]},

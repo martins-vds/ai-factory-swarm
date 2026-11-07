@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python3 .migration/harness/tools/afs-finish-check --hook",
+        "cwd": ".",
+        "timeoutSec": 120
+      }
+    ]
+  }
+}

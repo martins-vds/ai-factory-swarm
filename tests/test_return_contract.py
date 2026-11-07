@@ -187,7 +187,7 @@ class ReturnFileTest(unittest.TestCase):
             harness = migration / "harness"
             (harness / "tools").mkdir()
             shutil.copytree(ROOT / "schemas", harness / "schemas")
-            for name in ("validate.py", "afs_trace.py"):
+            for name in ("validate.py", "afs_trace.py", "check_plan.py"):
                 shutil.copy(ROOT / "tools" / name, harness / "tools" / name)
             git(root, "add", "-A")
             git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "install PR rule")
@@ -729,6 +729,7 @@ quirk_tickets: []
                                  'PR_ATTRIBUTION_RULE_V1 = "OLD_RULE_MARKER"'),
                 encoding="utf-8")
             shutil.copyfile(ROOT / "tools/afs_trace.py", tools / "afs_trace.py")
+            shutil.copyfile(ROOT / "tools/check_plan.py", tools / "check_plan.py")
             return_path = returns / "T-1.afs-verifier.yaml"
             return_path.write_text(return_text, encoding="utf-8")
             git(origin, "add", "-A")

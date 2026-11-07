@@ -70,4 +70,7 @@ costs:                       # ADR-0021: billed AI credits and Actions minutes (
   billing: {scope: organization, account: example-org}
 signoff:                     # ADR-0031: whose approving review on the coordinator's PR is the human sign-off
   approvers: [example-approver]
+self_heal:                   # ADR-0034: the stop hook sends an agent back to fix what CI would reject
+  enabled: false             # turn on after the self-heal drills pass on this target
+  max_blocks: 2              # then a 'self-check failed' handoff, and the agent stops
 translation_rules: .migration/translation-rules.md
