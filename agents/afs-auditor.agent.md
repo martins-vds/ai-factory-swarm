@@ -43,7 +43,9 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
   `.migration/evidence/acceptance-runs/`.
 
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
-exists and passes now, the flow connects end to end. Classify every delta with the five gap classes.
+exists and passes now, the flow connects end to end. A data path line shows the shortest path, then every data node the
+anchor reaches (`reaches N data node(s): …`): check each entry's table against that list, never against the
+shortest path alone. Classify every delta with the five gap classes.
 
 Full mutation may exceed the cloud worker's lifetime. Use the generated **AFS acceptance gates**
 workflow instead of repeatedly restarting `afs-mutation --all` in a bounded agent session. Follow

@@ -323,6 +323,18 @@ class DjangoHttpMethodsTest(unittest.TestCase):
                          and n.get("filePath") == "src/shop/urls.py"}
                 self.assertEqual(names, {f"{method} /" for method in methods})
 
+    def test_data_path_lists_every_table_reached_not_only_the_shortest(self):
+        # pilot DM-AUDIT: the shortest path ended at one table, and the Auditor read the other five as missing
+        g = enrich("django")
+        with tempfile.TemporaryDirectory() as d:
+            mapping = pathlib.Path(d) / "mapping.yaml"
+            mapping.write_text("tables:\n  - target: shop_orders\n  - target: orders_auditmodel\n")
+            profile = pathlib.Path(d) / "profile.yaml"
+            profile.write_text(json.dumps({"data": {"load": [f"python manage.py import_orders --mapping {mapping}"]}}))
+            enrich_graph.enrich_data_mapping(g, profile)
+        line = path(g, "command=import_orders")
+        self.assertIn("reaches 2 data node(s): orders_auditmodel, shop_orders", line)
+
     def test_module_level_views_built_by_a_factory_are_routed(self):
         # pilot admin live map: `live_map, live_map_markers = compose_admin_map_views()`, then path('', live_map)
         for urls in ("from shop.orders.composition import compose_order_view\n"
