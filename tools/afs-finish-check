@@ -23,7 +23,10 @@ agent back with the exact fix, or nothing to let it stop. It allows the stop:
     session; CI still checks everything).
 
 Ticket and role come from `--ticket/--role`, else `AFS_TICKET`/`AFS_ROLE`, else the return files and
-journals this branch changed, else the agent prompt (`COPILOT_AGENT_PROMPT`).
+journals this branch changed, else the agent prompt (`COPILOT_AGENT_PROMPT`, or the session's `user.message`
+events in the hook payload's transcript, where the cloud agent puts the issue); a ticket's role defaults to the
+plan's. Each hook run appends what it saw and decided to `.migration/evidence/finish-check/<session>.json`,
+which the session's final commit picks up, so a run without a block is still visible.
 
   afs-finish-check --hook                      # from the hook file; payload on stdin
   afs-finish-check [--ticket T --role R]       # by hand: prints the findings, exit 1 if any
@@ -37,11 +40,14 @@ import re
 import subprocess
 import sys
 
-import yaml
-
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import check_plan  # noqa: E402
+try:                       # a hook must still leave a trace when the interpreter lacks the harness's packages
+    import yaml
+    import check_plan  # noqa: E402
+    IMPORT_ERROR = None
+except Exception as exc:   # noqa: BLE001
+    IMPORT_ERROR = repr(exc)
 
 MIG = pathlib.Path(".migration")
 ROLES = ("afs-analyst", "afs-auditor", "afs-bootstrapper", "afs-characterizer", "afs-migrator", "afs-planner",
@@ -68,7 +74,7 @@ def branch_changes():
         p = line[3:].split(" -> ")[-1].strip().strip('"')
         if p:
             paths.add(p)
-    return sorted(p for p in paths if not p.startswith(".migration/runs/"))
+    return sorted(p for p in paths if not p.startswith((".migration/runs/", ".migration/evidence/finish-check/")))
 
 
 def identify(args, changed, prompt):
@@ -94,7 +100,18 @@ def identify(args, changed, prompt):
             known |= {t["id"] for t in doc["tickets"]}
         hits = [k for k in sorted(known, key=len, reverse=True) if re.search(rf"`{re.escape(k)}`|\b{re.escape(k)}\b", prompt)]
         ticket = hits[0] if hits else None
+    if ticket and not role:
+        role = planned_role(ticket)
     return ticket, role
+
+
+def planned_role(ticket):
+    """The role the plan gives a ticket, when nothing else names it."""
+    for _, (_, doc) in check_plan.load_plans(MIG, schemas_dir(), []).items():
+        for t in doc["tickets"]:
+            if t["id"] == ticket:
+                return t["role"]
+    return None
 
 
 def schemas_dir():
@@ -110,7 +127,7 @@ def own_records(ticket, role):
 
 
 def always_allowed(path):
-    return path.startswith((".migration/costs/", ".migration/quirks/"))
+    return path.startswith((".migration/costs/", ".migration/quirks/", ".migration/evidence/finish-check/"))
 
 
 def in_scope(path, allowed):
@@ -220,45 +237,106 @@ def write_give_up_handoff(ticket, role, found):
     return path
 
 
+def session_prompt(payload):
+    """The agent's prompt: COPILOT_AGENT_PROMPT, else the `user.message` contents of the session's event log.
+
+    In the cloud agent the env var was empty (pilot drill, 2026-11-07); the issue reaches the session as its
+    first `user.message`, whose `data.content` holds the text."""
+    text = os.environ.get("COPILOT_AGENT_PROMPT", "")
+    if text:
+        return text, "env"
+    path = payload.get("transcriptPath") or payload.get("transcript_path")
+    if not path or not os.path.exists(path):
+        return "", "none"
+    parts = []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") in ("user.message", "user") and isinstance(ev.get("data"), dict):
+                content = ev["data"].get("content")
+                if isinstance(content, str):
+                    parts.append(content)
+            elif ev.get("type") == "user" and isinstance(ev.get("message"), dict):   # Claude Code's transcript
+                content = ev["message"].get("content")
+                if isinstance(content, str):
+                    parts.append(content)
+    return "\n".join(parts), "transcript"
+
+
+def write_trace(session, trace):
+    """Committed evidence that the hook ran and what it decided (picked up by the session's final commit)."""
+    try:
+        safe = re.sub(r"[^A-Za-z0-9._-]", "-", session or "local")
+        path = MIG / "evidence" / "finish-check" / f"{safe}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        runs = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        runs.append(trace)
+        path.write_text(json.dumps(runs, indent=2) + "\n", encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"afs-finish-check: couldn't write the trace: {exc!r}", file=sys.stderr)
+
+
 def hook(args):
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except ValueError:
         payload = {}
+    session = payload.get("sessionId") or payload.get("session_id") or os.environ.get("COPILOT_SESSION_ID")
+    prompt, source = session_prompt(payload)
+    trace = {"at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "python": sys.executable, "payload_keys": sorted(payload), "prompt_chars": len(prompt),
+             "prompt_from": source, "scope_lines": SCOPE_LINE.findall(prompt)}
+    try:
+        decision = decide(args, payload, session, prompt, trace)
+    except Exception as exc:  # noqa: BLE001 — a hook never wedges a session
+        trace.update(decision="allow", why=f"error: {exc!r}")
+        decision = None
+    write_trace(session, trace)
+    print(f"afs-finish-check: {trace.get('decision')} ({trace.get('why', '')})", file=sys.stderr)
+    if decision:
+        print(json.dumps(decision))
+    return 0
+
+
+def decide(args, payload, session, prompt, trace):
+    if IMPORT_ERROR:
+        trace.update(decision="allow", why=f"missing package: {IMPORT_ERROR}")
+        return None
     enabled, max_blocks = profile_self_heal()
-    prompt = os.environ.get("COPILOT_AGENT_PROMPT", "")
     changed = branch_changes()
     ticket, role = identify(args, changed, prompt)
+    trace.update(enabled=enabled, ticket=ticket, role=role, changed=changed[:50])
     if not ticket or not role:
-        print(f"afs-finish-check: no ticket/role for this session (ticket={ticket}, role={role}); allowing the stop",
-              file=sys.stderr)
-        return 0
+        trace.update(decision="allow", why="no ticket/role for this session")
+        return None
     found = findings(ticket, role, changed, prompt)
-    session = payload.get("sessionId") or payload.get("session_id") or os.environ.get("COPILOT_SESSION_ID")
     spath = state_path(session)
     state = load_state(spath)
+    trace.update(findings=[f"[{k}] {m}" for k, _, m in found], blocks_before=state["blocks"])
     print(f"AFS-RESULT gate=finish-check ticket={ticket} role={role} findings={len(found)} "
           f"blocks={state['blocks']} enabled={str(enabled).lower()}", file=sys.stderr)
     if not found:
-        return 0
-    for kind, _, msg in found:
-        print(f"  [{kind}] {msg}", file=sys.stderr)
+        trace.update(decision="allow", why="clean")
+        return None
     if not enabled:
-        print("afs-finish-check: self_heal.enabled is off; would have blocked", file=sys.stderr)
-        return 0
+        trace.update(decision="allow", why="self_heal.enabled is off; would have blocked")
+        return None
     signature = sorted(key for _, key, _ in found)
     if state["blocks"] >= max_blocks or signature == state["last"]:
         why = "retry budget spent" if state["blocks"] >= max_blocks else "same failure twice"
         path = write_give_up_handoff(ticket, role, found)
-        print(f"afs-finish-check: {why}; wrote {path} and allowing the stop", file=sys.stderr)
-        return 0
+        trace.update(decision="allow", why=f"{why}; wrote {path}")
+        return None
     spath.parent.mkdir(parents=True, exist_ok=True)
     spath.write_text(json.dumps({"blocks": state["blocks"] + 1, "last": signature}), encoding="utf-8")
+    trace.update(decision="block", why=f"block {state['blocks'] + 1} of {max_blocks}")
     reason = ("Before you stop, the harness's finish check (the same rules as CI, ADR-0034) found:\n"
               + "\n".join(f"- {msg}" for _, _, msg in found)
               + "\nFix these, commit, and push; then you may stop. Don't change anything else.")
-    print(json.dumps({"decision": "block", "reason": reason}))
-    return 0
+    return {"decision": "block", "reason": reason}
 
 
 def main():
@@ -268,11 +346,10 @@ def main():
     ap.add_argument("--role")
     a = ap.parse_args()
     if a.hook:
-        try:
-            return hook(a)
-        except Exception as exc:  # a hook never wedges a session
-            print(f"afs-finish-check: error, allowing the stop: {exc!r}", file=sys.stderr)
-            return 0
+        return hook(a)
+    if IMPORT_ERROR:
+        print(f"afs-finish-check: missing package: {IMPORT_ERROR}", file=sys.stderr)
+        return 2
     changed = branch_changes()
     ticket, role = identify(a, changed, os.environ.get("COPILOT_AGENT_PROMPT", ""))
     if not ticket or not role:

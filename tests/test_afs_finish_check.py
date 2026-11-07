@@ -76,7 +76,7 @@ class FinishCheckTest(unittest.TestCase):
         self.assertEqual(first["decision"], "block")
         second, err = self.run_hook()
         self.assertIsNone(second, "the same failure twice: let it stop")
-        self.assertIn("allowing the stop", err)
+        self.assertIn("allow (retry budget spent", err)
         handoff = (self.repo / ".migration/handoffs/BK-05D.md").read_text()
         self.assertIn("self-check failed", handoff)
         self.assertIn("### Next step for the next session", handoff)
@@ -117,6 +117,33 @@ class FinishCheckTest(unittest.TestCase):
                    "role: afs-specialist-migrator\nticket: BK-05D\nissue: o/r#291\nhandoff: .migration/handoffs/BK-05D.md\n")
         out, _ = self.run_hook()
         self.assertIn("reports a handoff", out["reason"])
+
+    def test_each_run_leaves_a_committed_trace(self):
+        self.write("src/wizard.py")
+        self.run_hook(session="abc")
+        trace = json.loads((self.repo / ".migration/evidence/finish-check/abc.json").read_text())
+        self.assertEqual(trace[0]["decision"], "block")
+        self.assertEqual(trace[0]["ticket"], "BK-05D")
+
+    def test_role_defaults_to_the_plans(self):
+        self.write("src/wizard.py")
+        self.write(".migration/evidence/runs/BK-05D.md", "| UTC | Gate |\n")
+        out, _ = self.run_hook(prompt="")
+        self.assertIn("BK-05D.afs-specialist-migrator.yaml", out["reason"])
+
+    def test_scope_lines_come_from_the_transcript_when_the_env_is_empty(self):
+        self.write("src/wizard.py")
+        self.write("src/settings.py")
+        log = self.repo.parent / "events.jsonl"
+        log.write_text(json.dumps({"type": "session.start", "data": {}}) + "\n" + json.dumps(
+            {"type": "user.message", "data": {"content": "ticket `BK-05D`\nAFS-SCOPE: src/settings.py\n"}}) + "\n")
+        env = {**os.environ, "COPILOT_AGENT_PROMPT": ""}
+        r = subprocess.run([sys.executable, str(TOOL), "--hook"], cwd=self.repo, env=env, capture_output=True,
+                           text=True, input=json.dumps({"sessionId": "t1", "transcriptPath": str(log)}))
+        out = json.loads(r.stdout)
+        self.assertNotIn("src/settings.py", out["reason"])
+        trace = json.loads((self.repo / ".migration/evidence/finish-check/t1.json").read_text())
+        self.assertEqual((trace[0]["prompt_from"], trace[0]["scope_lines"]), ("transcript", ["src/settings.py"]))
 
     def test_unknown_session_is_allowed(self):
         self.write("notes.txt")
