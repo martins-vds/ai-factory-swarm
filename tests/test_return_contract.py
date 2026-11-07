@@ -700,7 +700,7 @@ quirk_tickets: []
                 "true")
             before_fetch = validate_state()
             self.assertEqual(before_fetch.returncode, 1)
-            self.assertIn("finished return requires a meaningful PR reference", before_fetch.stderr)
+            self.assertIn("the clone's history is shallow", before_fetch.stderr)
 
             setup_skill, preflight = self.ancestry_preflight()
             self.assertIn("write a blocking handoff", setup_skill)
