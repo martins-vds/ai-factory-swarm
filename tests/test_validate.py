@@ -60,3 +60,20 @@ class ThresholdTest(unittest.TestCase):
         errs = []
         validate_mod.check_thresholds("p", {"thresholds": {"crap_max_per_method": 30}, "gates": {"crap": ["crap.py x"]}}, errs)
         self.assertEqual(errs, [])
+
+
+class ShallowHistoryTest(unittest.TestCase):
+    """A shallow clone can't prove a pre-rule return's exemption; the error must say so (pilot BK-04 restart)."""
+    def test_detects_a_shallow_clone(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            run = lambda *a, cwd: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=cwd,
+                                                 check=True, capture_output=True)
+            src, dst = pathlib.Path(d) / "src", pathlib.Path(d) / "dst"
+            src.mkdir()
+            run("init", "-q", "-b", "main", cwd=src)
+            for i in range(3):
+                run("commit", "-q", "--allow-empty", "-m", f"c{i}", cwd=src)
+            run("clone", "-q", "--depth", "1", src.as_uri(), str(dst), cwd=d)
+            self.assertTrue(validate_mod.shallow_history(dst))
+            self.assertFalse(validate_mod.shallow_history(src))
