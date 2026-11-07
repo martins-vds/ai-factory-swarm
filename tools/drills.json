@@ -194,6 +194,26 @@
           ".migration/handoffs/DRILL-02.md": "drill/b.txt"
         }
       }
+    },
+    {
+      "id": "acceptance-graph-not-bound",
+      "why": "An Auditor's verdict: complete whose acceptance run's target graph doesn't describe the cited commit is rejected; the committed target graph no longer stands in for it (ADR-0035).",
+      "ops": [
+        {
+          "op": "write",
+          "path": ".migration/returns/DRILL-AUDIT.afs-auditor.yaml",
+          "text": "role: afs-auditor\nticket: DRILL-AUDIT\nissue: drill#0\nverdict: complete\n"
+        },
+        {
+          "op": "write",
+          "path": ".migration/evidence/acceptance-runs/0-1.json",
+          "text": "{\"status\": \"passed\", \"exit\": 0, \"commit\": \"0000000000000000000000000000000000000000\", \"target_graph\": {\"trees\": {\"src\": \"0000000000000000000000000000000000000000\"}}}\n"
+        }
+      ],
+      "trigger": "pr",
+      "expect": {
+        "tool": "check_graph_fresh.py"
+      }
     }
   ]
 }

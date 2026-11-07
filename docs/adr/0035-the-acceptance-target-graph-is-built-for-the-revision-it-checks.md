@@ -1,6 +1,6 @@
 # ADR-0035: The acceptance target graph is built for the revision it checks
 
-- Status: Proposed
+- Status: Accepted (martins-vds, 2026-11-07: "merge 113")
 - Date: 2026-11-07
 - Amends: ADR-0019 (enforcement, target side)
 

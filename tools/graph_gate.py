@@ -21,8 +21,11 @@ Usage:
   graph_gate.py --side source                  exit 1 on a failure; no graph yet = notice, exit 0
   graph_gate.py --side source --require-graph  also exit 1 when the graph is missing (Planner, setup)
   graph_gate.py --side target --acceptance-since origin/main
-                                               enforce only when the change records an acceptance
-                                               (auditor verdict: complete), like check_graph_fresh
+                                               when the change records an acceptance (auditor verdict:
+                                               complete), check that its acceptance run gated a target
+                                               graph built for its commit (ADR-0035)
+  graph_gate.py --side target --enforce-ownership   the acceptance run's own gate: unowned entry points fail
+AFS_GRAPH_TARGET_DIR (set by afs-acceptance) points the target side at the acceptance run's own build.
 Writes a Markdown report to stdout, then `AFS-RESULT gate=graph side=<side> verdict=<pass|fail> …`.
 """
 import argparse
@@ -43,7 +46,8 @@ import check_plan  # noqa: E402
 
 
 def load_graph(side):
-    folder = pathlib.Path(".migration/graphs") / side / "full"
+    env = os.environ.get("AFS_GRAPH_TARGET_DIR") if side == "target" else None
+    folder = pathlib.Path(env) if env else pathlib.Path(".migration/graphs") / side / "full"   # ADR-0035
     kg = folder / "knowledge-graph.json"
     if not kg.is_file():
         return None
@@ -88,11 +92,21 @@ def main(argv=None):
     ap.add_argument("--side", choices=["source", "target"], required=True)
     ap.add_argument("--require-graph", action="store_true")
     ap.add_argument("--acceptance-since", metavar="REF")
+    ap.add_argument("--enforce-ownership", action="store_true",
+                    help="an entry point no slice owns fails (as at acceptance); the acceptance run uses this")
     a = ap.parse_args(argv)
     ci = "GITHUB_ACTIONS" in os.environ
     if a.acceptance_since and not check_graph_fresh.accepting(a.acceptance_since):
         print(f"graph gate ({a.side}): not an acceptance; skipped")
         return 0
+    if a.acceptance_since and a.side == "target":
+        # ADR-0035: the target gate ran in the acceptance run, on a graph built for that commit; CI checks the
+        # binding, not the committed reference graph.
+        problems = check_graph_fresh.binding_problems(a.acceptance_since)
+        for p in problems:
+            print(f"::error::graph gate (target): {p}" if ci else f"graph gate (target): {p}", file=sys.stderr)
+        print(f"AFS-RESULT gate=graph side=target verdict={'fail' if problems else 'pass'} mode=acceptance-run")
+        return 1 if problems else 0
     loaded = load_graph(a.side)
     if loaded is None:
         msg = f".migration/graphs/{a.side}/full: no graph; build it with afs-understand side={a.side}"
@@ -149,7 +163,7 @@ def main(argv=None):
         problems += stale
         for p in problems:
             out.append(f"  - {p}")
-        (failures if a.acceptance_since else warnings).extend(problems)
+        (failures if a.acceptance_since or a.enforce_ownership else warnings).extend(problems)
     # Every entry point, for review: which pages/endpoints reach data at all
     entries = [n for n in nodes if n.get("type") in ("page", "endpoint", "screen")]
     reach = [n for n in entries if not check_graph.data_path(f"{n['type']}={n['name']}", nodes, edges, by_id)
