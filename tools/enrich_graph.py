@@ -27,6 +27,8 @@ Framework enrichers (the stack pack names which ones a migration uses):
             page; management/commands/<name>.py → `command`
             routes Command; @app.task/@shared_task → `task` triggers it, f.defer()/.delay() → publishes;
             {% include/extends %} → contains
+  data      --profile: the profile's data.load / data.export commands → writes_to / reads_from every
+            target table of the mapping they pass (ADR-0032; a mapping-driven loader picks models at run time)
   both      page/template scripts and htmx: fetch(url), new WebSocket(…"/path"), hx-get/post/…="url" or
             "{% url 'ns:name' %}" → routes to the matching endpoint (path suffix at a segment boundary,
             same verb; `/` only exactly)
@@ -34,7 +36,7 @@ Framework enrichers (the stack pack names which ones a migration uses):
 Usage:
   enrich_graph.py <knowledge-graph.json> --root <analysed folder> --graphify <graph.json> --enricher java-ee
                   [--out <path>]          (default: rewrite the graph in place)
-Prints one summary line per enricher and an `AFS-RESULT gate=graph-enrich …` line. Standard library only.
+Prints one summary line per enricher and an `AFS-RESULT gate=graph-enrich …` line. Standard library only, except PyYAML for --profile.
 """
 import argparse
 import ast
@@ -607,6 +609,18 @@ def django_view_methods(view, m, defs, seen=frozenset(), local=None):
     return methods[0] if methods and methods[0] is not None and all(x == methods[0] for x in methods) else None
 
 
+def module_binding(m, name):
+    """The call a module-level name is bound to (`v = f()` or `a, v = f()`), else None."""
+    for node in m.tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        for t in node.targets:
+            names = [t] if isinstance(t, ast.Name) else list(t.elts) if isinstance(t, (ast.Tuple, ast.List)) else []
+            if any(isinstance(n, ast.Name) and n.id == name for n in names):
+                return node.value
+    return None
+
+
 def enrich_django(g, root):
     mods = py_index(root)
     if not mods:
@@ -754,6 +768,8 @@ def enrich_django(g, root):
                     space = kw.get("namespace") or app_name(sub)
                     walk(sub, route, ns + ((space,) if space else ()))
                 continue
+            if isinstance(view, ast.Name) and dotted_of(view, m) not in defs:
+                view = module_binding(m, view.id) or view   # `a, b = compose_views()` then path('', a)
             methods = django_view_methods(view, m, defs)
             if isinstance(view, ast.Call) and isinstance(view.func, ast.Attribute) and view.func.attr == "as_view":
                 view = view.func.value
@@ -901,6 +917,50 @@ def merge_graphify(g, doc):
 
 ENRICHERS = {"java-ee": enrich_java_ee, "django": enrich_django}
 
+MANAGE_CMD = re.compile(r"\bmanage\.py\s+([A-Za-z_][\w-]*)")
+MAPPING_ARG = re.compile(r"--mapping[=\s]+(\S+)")
+
+
+def enrich_data_mapping(g, profile_path):
+    """ADR-0032: the load and export commands move every table the committed data mapping names.
+
+    A mapping-driven loader picks its models by name at run time, so no parser sees which tables it writes.
+    The profile's `data.load` / `data.export` commands and the mapping they pass are the declared contract:
+    `command <name>` writes_to (load) / reads_from (export) each mapped target table that the graph has."""
+    try:
+        profile = yaml_load(pathlib.Path(profile_path))
+    except OSError:
+        return
+    data = (profile or {}).get("data") or {}
+    tables = {}
+    for n in g.nodes.values():
+        if n.get("type") == "table":
+            tables.setdefault(str(n.get("name", "")).lower(), []).append(n["id"])
+    commands = {}
+    for n in g.nodes.values():
+        if n.get("type") == "command":
+            commands.setdefault(n.get("name"), []).append(n["id"])
+    for key, etype in (("load", "writes_to"), ("export", "reads_from")):
+        for cmd in data.get(key) or []:
+            name, mapping = MANAGE_CMD.search(cmd or ""), MAPPING_ARG.search(cmd or "")
+            path = pathlib.Path(mapping.group(1) if mapping else data.get("mapping") or "")
+            if not name or not path.is_file():
+                continue
+            doc = yaml_load(path) or {}
+            for entry in doc.get("tables") or []:
+                for tid in tables.get(str(entry.get("target", "")).lower(), []):
+                    for cid in commands.get(name.group(1), []):
+                        g.edge(cid, tid, etype, "data-mapping", description=f"{path} → {entry.get('target')}")
+
+
+def yaml_load(path):
+    """YAML when PyYAML is available (it is wherever the harness runs), else nothing."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -909,6 +969,8 @@ def main(argv=None):
     ap.add_argument("--enricher", action="append", default=[], choices=sorted(ENRICHERS))
     ap.add_argument("--graphify", metavar="GRAPH_JSON", help="Graphify's graph.json for the same folder: merged "
                     "first, as the language-level layer (ADR-0025)")
+    ap.add_argument("--profile", help="the target's profile.yaml: its data.load/export commands and mapping add "
+                    "the data-mapping edges (ADR-0032)")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
     path = pathlib.Path(a.graph)
@@ -929,7 +991,11 @@ def main(argv=None):
         before = sum(g.added.values())
         ENRICHERS[name](g, root)
         print(f"{name}: +{sum(g.added.values()) - before}")
-    used = (["graphify"] if a.graphify else []) + a.enricher
+    if a.profile:
+        before = sum(g.added.values())
+        enrich_data_mapping(g, a.profile)
+        print(f"data-mapping: +{sum(g.added.values()) - before}")
+    used = (["graphify"] if a.graphify else []) + a.enricher + (["data-mapping"] if a.profile else [])
     doc.setdefault("project", {})["afsEnrichment"] = {"enrichers": used, "added": dict(sorted(g.added.items())),
                                                       **({"graphify": gmeta} if a.graphify else {})}
     pathlib.Path(a.out or path).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")

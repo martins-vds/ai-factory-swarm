@@ -323,6 +323,39 @@ class DjangoHttpMethodsTest(unittest.TestCase):
                          and n.get("filePath") == "src/shop/urls.py"}
                 self.assertEqual(names, {f"{method} /" for method in methods})
 
+    def test_module_level_views_built_by_a_factory_are_routed(self):
+        # pilot admin live map: `live_map, live_map_markers = compose_admin_map_views()`, then path('', live_map)
+        for urls in ("from shop.orders.composition import compose_order_view\n"
+                     "orders_view = compose_order_view()\n",
+                     "from shop.orders.composition import compose_order_view\n"
+                     "orders_view, markers_view = compose_order_view()\n",
+                     "from shop.orders.composition import compose_order_view\n"
+                     "orders_view, unused = compose_order_view(), None\n"):
+            with self.subTest(urls=urls.splitlines()[1]):
+                g = self.graph(pages={"src/shop/urls.py": urls + "from django.urls import include, path\n"
+                                      "urlpatterns = [path('', orders_view, name='orders'),\n"
+                                      "    path('api/', include('shop.orders.interfaces.urls'))]\n"})
+                if "unused" in urls:
+                    self.assertNotIn(("/", "compose_order_view"), edges(g, "routes"),
+                                     "a tuple of two calls isn't one factory's result")
+                else:
+                    self.assertIn(("/", "compose_order_view"), edges(g, "routes"))
+                    self.assertFalse(path(g, "endpoint=/").startswith(("**NO PATH**", "no matching")))
+
+    def test_data_mapping_links_the_load_and_export_commands_to_mapped_tables(self):
+        g = enrich("django")
+        with tempfile.TemporaryDirectory() as d:
+            mapping = pathlib.Path(d) / "mapping.yaml"
+            mapping.write_text("tables:\n  - target: shop_orders\n  - target: nowhere\n")
+            profile = pathlib.Path(d) / "profile.yaml"
+            profile.write_text(json.dumps({"data": {
+                "load": [f"python manage.py import_orders --snapshot {{snapshot}} --mapping {mapping}"],
+                "export": [f"python manage.py import_orders --mapping {mapping} --out {{out}}"]}}))
+            enrich_graph.enrich_data_mapping(g, profile)
+        self.assertIn(("import_orders", "shop_orders"), edges(g, "writes_to"))
+        self.assertIn(("import_orders", "shop_orders"), edges(g, "reads_from"))
+        self.assertTrue(any(e["description"].startswith("afs-enriched:data-mapping") for e in g.doc["edges"]))
+
     def test_direct_decorated_view_is_not_treated_as_a_factory(self):
         g = self.graph(
             "from django.views.decorators.http import require_POST\n"
@@ -545,6 +578,23 @@ class GraphGateTest(unittest.TestCase):
             self.repo(d, [], {}, graph=False)
             self.assertEqual(self.gate(d, "--side", "target").returncode, 0)
             self.assertEqual(self.gate(d, "--side", "target", "--require-graph").returncode, 1)
+
+    def test_unbuilt_slice_data_paths_warn_until_its_code_is_merged(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/api/health/"], {})
+            (r / ".migration/plan").mkdir()
+            (r / ".migration/plan/orders.md").write_text("# orders\n")
+            (r / ".migration/plan/orders.tickets.yaml").write_text(json.dumps({"slice": "orders", "tickets": [
+                {"id": "OR-01", "role": "afs-migrator", "files": ["src/a.py"], "blocked_by": []}]}))
+            g = self.gate(d, "--side", "target")
+            self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
+            self.assertIn("not enforced: OR-01 still open", g.stderr)
+            self.assertIn("not built yet: OR-01 open", g.stdout)
+            (r / ".migration/returns").mkdir()
+            (r / ".migration/returns/OR-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+            g = self.gate(d, "--side", "target")
+            self.assertEqual(g.returncode, 1, "built: the missing path fails")
+            self.assertIn("slice orders: data path from `endpoint=/api/health/`", g.stdout)
 
     def test_target_entry_points_must_be_owned_by_a_slice(self):
         import graph_gate

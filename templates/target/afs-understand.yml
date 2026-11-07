@@ -137,7 +137,7 @@ jobs:
           enrichers=$(python -c "import yaml,sys;g=yaml.safe_load(open('.migration/profile.yaml')).get('graph') or {{}};print(' '.join('--enricher '+e for e in (g.get('enrich') or {{}}).get(sys.argv[1]) or []))" "$SIDE")
           [ -n "$enrichers" ] || echo "::warning::No graph.enrich.$SIDE in the profile: no framework links (routes, data access) beyond what Understand Anything infers (ADR-0020)."
           python .migration/harness/tools/enrich_graph.py "$out/knowledge-graph.json" --root "$RUNNER_TEMP/analyze" \
-            --graphify "$gf/graphify-out/graph.json" $enrichers
+            --graphify "$gf/graphify-out/graph.json" $enrichers $([ "$SIDE" = target ] && echo --profile .migration/profile.yaml)
           # Identity (ADR-0019): what this graph describes, replacing the throwaway commit id in the JSONs.
           if [ "$SIDE" = source ]; then id="${{{{ steps.lock.outputs.sha }}}}"; else id="${{{{ github.sha }}}}"; fi
           echo "AFS_GRAPH_ID=$id" >> "$GITHUB_ENV"
