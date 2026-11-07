@@ -330,6 +330,28 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertIn("superseded attribution", result.stdout)
         self.assertIn("AFS-TOOL check_return_contract.py exit=0", result.stderr)
 
+    def advance_main(self):
+        git(self.repo, "checkout", "-q", "main")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "later on main")
+        git(self.repo, "checkout", "-q", "copilot/work")
+
+    def test_cli_accepts_a_base_that_moved_on_since_the_event(self):
+        """Pilot #243, #229, #260: a merge to main after the PR's last event must not fail every open PR."""
+        self.commit(RETURN)
+        self.commit(self.LATEST)
+        stale = self.revision("main")
+        self.advance_main()
+        result = self.actions_event_result(self.revision("HEAD"), stale)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("base moved on since the PR's last event", result.stdout)
+
+    def test_cli_still_rejects_a_base_the_event_commit_is_not_part_of(self):
+        self.commit(RETURN)
+        unrelated = self.revision("HEAD")             # the PR's own head is not part of main's history
+        result = self.actions_event_result(self.revision("HEAD"), unrelated)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("does not resolve to event base.sha", result.stdout)
+
     def test_cli_fails_explicitly_when_event_shas_are_missing(self):
         self.commit(RETURN)
         event = self.repo / "event.json"

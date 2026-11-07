@@ -279,10 +279,19 @@ def main():
         ["git", "-C", ".", "rev-parse", "--verify", f"{a.base}^{{commit}}"],
         capture_output=True, text=True,
     )
-    if configured_base.returncode or configured_base.stdout.strip() != base:
+    current = configured_base.stdout.strip() if not configured_base.returncode else ""
+    # The event's base.sha is the base as of the PR's last event; the base branch may have moved on since
+    # (pilot #243, #229, #260: every merge to main made open PRs fail here). Moving forward is fine: the
+    # diff is taken from the merge base. Only a base the event's commit isn't part of is inconsistent.
+    advanced = bool(current) and current != base and subprocess.run(
+        ["git", "-C", ".", "merge-base", "--is-ancestor", base, current], capture_output=True).returncode == 0
+    if not current or (current != base and not advanced):
         print(f"::error title=Return ownership context inconsistent::Configured --base {a.base!r} does not "
-              f"resolve to event base.sha {base}; refresh the event/base checkout and retry.")
+              f"resolve to event base.sha {base} or a commit after it; refresh the event/base checkout and retry.")
         return 1
+    if advanced:
+        print(f"base moved on since the PR's last event ({base[:7]} → {current[:7]}); comparing from the merge base")
+        base = current
     files = changed_return_files(base, head=head)
     ok, msg = check(pr.get("body") or "", files, parent_of=github_parent,
                     base=base, head=head, pr_url=pr.get("html_url"))
