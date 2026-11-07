@@ -6,7 +6,9 @@ throwaway branch of the target, then confirms that the named check fails on it:
   * `pr`          open a draft PR into the default branch and read the CI runs on its head commit;
   * `stacked_pr`  the same, but into a base branch that is one commit behind the default branch;
   * `dispatch`    run a workflow (on the drill branch when the drill changes files, else on the default
-                  branch) and read that run.
+                  branch) and read that run;
+  * `agent`       assign an issue to a Copilot session based on the drill branch, wait for it to finish,
+                  and judge its PR's files (ADR-0034's self-heal drills: did the session fix or escalate?).
 A drill is **caught** when a job log shows `AFS-TOOL <tool> exit=<non-zero>` for its expected tool, or
 when the run ends with the expected conclusion. Every PR is closed and every branch deleted afterwards,
 caught or not. The runs stay in the repo's Actions history, where `harness_coverage.py` reads them.
@@ -115,8 +117,21 @@ def op_write(root, path, text):
     return f.relative_to(root)
 
 
+def op_profile_set(root, key, value):
+    """Set a dotted profile key (a throwaway branch: the profile's comments may go)."""
+    f = root / PROFILE
+    doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+    node = doc
+    *path, last = key.split(".")
+    for part in path:
+        node = node.setdefault(part, {})
+    node[last] = value
+    f.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    return f.relative_to(root)
+
+
 OPS = {"edit_installed": op_edit_installed, "replace": op_replace, "drop_healthcheck": op_drop_healthcheck,
-       "snapshot_set": op_snapshot_set, "write": op_write}
+       "snapshot_set": op_snapshot_set, "write": op_write, "profile_set": op_profile_set}
 
 
 def apply_ops(root, ops):
@@ -131,6 +146,27 @@ def apply_ops(root, ops):
 
 def tool_exits(log, tool):
     return [int(x) for x in re.findall(TOOL_LINE.format(tool=re.escape(tool)), log)]
+
+
+def judge_agent(expect, files, contents):
+    """(caught, evidence) from an agent session's PR: its files, and the text of the ones it committed.
+
+    `files_include`: every one must be in the PR (the session fixed it itself).
+    `files_exclude`: none may be in the PR, unless `or_handoff_names` {file: text} shows a handoff naming it
+    (the session escalated rather than widening its scope)."""
+    include = expect.get("files_include", [])
+    missing = [f for f in include if f not in files]
+    if include and missing:
+        return False, "missing: " + ", ".join(missing)
+    kept = [f for f in expect.get("files_exclude", []) if f in files]
+    named = [f for f, needle in (expect.get("or_handoff_names") or {}).items() if needle in contents.get(f, "")]
+    if kept and not named:
+        return False, "the session kept " + ", ".join(kept) + " without a handoff naming it"
+    if kept:
+        return True, f"{named[0]} names the out-of-scope file (escalated, not widened)"
+    if expect.get("files_exclude"):
+        return True, "the out-of-scope file was reverted"
+    return True, "the session committed " + ", ".join(include)
 
 
 def judge(expect, runs, logs):
@@ -156,6 +192,8 @@ class Drill:
         self.branch = f"afs-drill/{spec['id']}-{stamp}"
         self.base = None
         self.pr = None
+        self.issue = None
+        self.agent_branch = None
 
     def make_branch(self, start):
         tmp = tempfile.mkdtemp(prefix="afs-drill-")
@@ -203,8 +241,41 @@ class Drill:
                     pass
         return out
 
+    def run_agent(self, default_sha):
+        """Dispatch a Copilot session on the drill branch, wait for it to finish, judge its PR."""
+        sha, changed = self.make_branch(default_sha)
+        spec = self.spec
+        self.issue = gh(f"repos/{self.repo}/issues", data={
+            "title": f"[afs-drill] {spec['id']}", "body": spec["issue"] + "\n\n_Failure drill (afs-drill); never merge._"})["number"]
+        gh(f"repos/{self.repo}/issues/{self.issue}/assignees", data={
+            "assignees": ["copilot-swe-agent[bot]"],
+            "agent_assignment": {"target_repo": self.repo, "base_branch": self.branch, "custom_agent": spec["agent"],
+                                 "custom_instructions": "Follow the issue body."}})
+        deadline = time.time() + self.timeout
+        while time.time() < deadline:
+            prs = [p for p in gh(f"repos/{self.repo}/pulls?state=all&base={self.branch}&per_page=10")
+                   if p["user"]["login"] in ("Copilot", "copilot-swe-agent[bot]")]
+            if prs and not prs[0]["title"].startswith("[WIP]"):
+                self.pr, self.agent_branch = prs[0]["number"], prs[0]["head"]["ref"]
+                break
+            time.sleep(self.poll)
+        else:
+            raise RuntimeError(f"the agent session didn't finish within {self.timeout}s")
+        time.sleep(2 * self.poll)                  # the final 'apply remaining changes' commit
+        files = [f["filename"] for f in gh(f"repos/{self.repo}/pulls/{self.pr}/files?per_page=100")]
+        contents = {}
+        for f in (spec["expect"].get("or_handoff_names") or {}):
+            if f in files:
+                contents[f] = gh(f"repos/{self.repo}/contents/{f}?ref={self.agent_branch}",
+                                 "-H", "Accept: application/vnd.github.raw", raw=True)
+        caught, evidence = judge_agent(spec["expect"], files, contents)
+        return {"id": spec["id"], "caught": caught, "evidence": evidence, "changed": changed, "runs": [],
+                "pr": self.pr}
+
     def run(self):
         trig = self.spec["trigger"]
+        if trig == "agent":
+            return self.run_agent(gh(f"repos/{self.repo}/commits/{self.default}")["sha"])
         default_sha = gh(f"repos/{self.repo}/commits/{self.default}")["sha"]
         git("fetch", "-q", "origin", self.default, cwd=self.clone)
         if trig in ("pr", "stacked_pr"):
@@ -233,12 +304,17 @@ class Drill:
                 "runs": [r["html_url"] for r in runs], "pr": self.pr}
 
     def cleanup(self):
+        if self.issue:
+            try:
+                gh(f"repos/{self.repo}/issues/{self.issue}", "-X", "PATCH", data={"state": "closed", "state_reason": "not_planned"})
+            except RuntimeError:
+                pass
         if self.pr:
             try:
                 gh(f"repos/{self.repo}/pulls/{self.pr}", "-X", "PATCH", data={"state": "closed"})
             except RuntimeError:
                 pass
-        for b in filter(None, (self.branch, self.base)):
+        for b in filter(None, (self.agent_branch, self.branch, self.base)):
             r = subprocess.run(["git", "push", "-q", "origin", "--delete", b], cwd=self.clone, capture_output=True, text=True)
             if r.returncode and "remote ref does not exist" not in r.stderr:
                 print(f"warning: couldn't delete branch {b}: {r.stderr.strip()}", file=sys.stderr)

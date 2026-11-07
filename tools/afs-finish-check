@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""afs-finish-check — an agent passes the PR checks before it stops (ADR-0034).
+
+Runs as a Copilot `agentStop` hook (`.github/hooks/afs-finish.json`) and as Claude Code's `Stop` hook, and
+by hand. It checks the session's own work, with the same rules CI applies:
+
+  mechanical  the return file `.migration/returns/<ticket>.<role>.yaml` is committed on this branch, and
+              `validate.py` (the CI check) reports nothing about a file this branch changed: schema, gates
+              matching the `afs-run` journal, PR reference, ledger evidence, handoff sections.
+  scope       every file this branch changed is in the ticket's planned files (`check_plan.py`), plus the
+              session's own records, plus `AFS-SCOPE: <path>` lines in the issue (an operator extension).
+              A file outside them needs a handoff that names it: an agent never widens its own scope.
+  stuck gate  a return that reports a handoff (`handoff:` set) must have committed that handoff.
+
+As a hook it reads the hook payload on stdin and prints `{"decision": "block", "reason": …}` to send the
+agent back with the exact fix, or nothing to let it stop. It allows the stop:
+  * when the profile's `self_heal.enabled` is not true (the hook is installed off until the drills pass on
+    the target; it then only reports what it would have blocked);
+  * after `self_heal.max_blocks` blocks in this session (default 2), or when the same failure repeats.
+    It then appends a `self-check failed` handoff for the ticket, so the work routes to the Slice
+    Coordinator and then the operator like any other handoff;
+  * when it can't tell which ticket the session is for, or on any error of its own (a hook never wedges a
+    session; CI still checks everything).
+
+Ticket and role come from `--ticket/--role`, else `AFS_TICKET`/`AFS_ROLE`, else the return files and
+journals this branch changed, else the agent prompt (`COPILOT_AGENT_PROMPT`).
+
+  afs-finish-check --hook                      # from the hook file; payload on stdin
+  afs-finish-check [--ticket T --role R]       # by hand: prints the findings, exit 1 if any
+"""
+import argparse
+import datetime
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+import yaml
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import check_plan  # noqa: E402
+
+MIG = pathlib.Path(".migration")
+ROLES = ("afs-analyst", "afs-auditor", "afs-bootstrapper", "afs-characterizer", "afs-migrator", "afs-planner",
+         "afs-program-orchestrator", "afs-slice-coordinator", "afs-specialist-migrator", "afs-verifier")
+SCOPED_ROLES = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
+SCOPE_LINE = re.compile(r"^\s*AFS-SCOPE:\s*`?([^`\s]+)`?\s*$", re.M)
+
+
+def git(*args):
+    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def branch_changes():
+    """Paths this branch changed: commits on no other remote branch, plus uncommitted work."""
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    others = [r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
+              if r not in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD")]
+    paths = set()
+    if others:
+        out = git("log", "--format=", "--name-only", "HEAD", "--not", *others)
+        paths |= {p for p in out.splitlines() if p}
+    for line in git("status", "--porcelain", "--untracked-files=all").splitlines():
+        p = line[3:].split(" -> ")[-1].strip().strip('"')
+        if p:
+            paths.add(p)
+    return sorted(p for p in paths if not p.startswith(".migration/runs/"))
+
+
+def identify(args, changed, prompt):
+    ticket = args.ticket or os.environ.get("AFS_TICKET") or None
+    role = args.role or os.environ.get("AFS_ROLE") or None
+    if ticket == "adhoc":
+        ticket = None
+    for p in changed:
+        m = re.match(r"\.migration/returns/(.+)\.(afs-[a-z-]+)\.ya?ml$", p)
+        if m and (ticket in (None, m.group(1))):
+            ticket, role = ticket or m.group(1), role or m.group(2)
+    for p in changed:
+        m = re.match(r"\.migration/evidence/runs/(.+)\.md$", p)
+        if m and not ticket:
+            ticket = m.group(1)
+    if prompt and not role:
+        found = [r for r in ROLES if f"`{r}`" in prompt or f"Role: {r}" in prompt]
+        role = found[0] if found else None
+    if prompt and not ticket:
+        known = set()
+        for _, (_, doc) in check_plan.load_plans(MIG, HERE.parent / "schemas" if (HERE.parent / "schemas").is_dir()
+                                                 else MIG / "harness" / "schemas", []).items():
+            known |= {t["id"] for t in doc["tickets"]}
+        hits = [k for k in sorted(known, key=len, reverse=True) if re.search(rf"`{re.escape(k)}`|\b{re.escape(k)}\b", prompt)]
+        ticket = hits[0] if hits else None
+    return ticket, role
+
+
+def schemas_dir():
+    for d in (MIG / "harness" / "schemas", HERE.parent / "schemas"):
+        if d.is_dir():
+            return d
+    return HERE.parent / "schemas"
+
+
+def own_records(ticket, role):
+    return {f".migration/returns/{ticket}.{role}.yaml", f".migration/evidence/runs/{ticket}.md",
+            f".migration/evidence/mutants/{ticket}.md", f".migration/handoffs/{ticket}.md"}
+
+
+def always_allowed(path):
+    return path.startswith((".migration/costs/", ".migration/quirks/"))
+
+
+def in_scope(path, allowed):
+    return any(path == a or (a.endswith("/") and path.startswith(a)) for a in allowed)
+
+
+def validate_errors(changed):
+    """validate.py's errors (the CI check) about files this branch changed."""
+    validate = HERE / "validate.py"
+    r = subprocess.run([sys.executable, str(validate), str(MIG), "--schemas", str(schemas_dir())],
+                       capture_output=True, text=True)
+    mine = [p for p in changed if p.startswith(".migration/")]
+    out = []
+    for line in r.stderr.splitlines():
+        if any(p in line for p in mine):
+            out.append(line.strip())
+    return out
+
+
+def findings(ticket, role, changed, prompt):
+    """[(kind, key, message)]: kind is mechanical, scope or stuck."""
+    found = []
+    ret = MIG / "returns" / f"{ticket}.{role}.yaml"
+    ret_rel = ret.as_posix()
+    if not ret.exists():
+        found.append(("mechanical", "no-return",
+                      f"No return file. Write and commit `{ret_rel}` with `role: {role}`, `ticket: {ticket}`, "
+                      "`issue:` this ticket's issue, `pr:` this PR, and every gate copied from your `afs-run` journal "
+                      f"(`.migration/evidence/runs/{ticket}.md`). See afs-migration-contract → Return files."))
+    elif ret_rel not in changed:
+        found.append(("mechanical", "stale-return",
+                      f"`{ret_rel}` exists but this branch didn't update it. Update it with this session's gates "
+                      "and PR, and commit it."))
+    for err in validate_errors(changed):
+        found.append(("mechanical", "validate:" + err.split(":")[0],
+                      f"CI's validate.py will fail on this: {err}. Fix it and commit."))
+
+    if ret.exists():
+        try:
+            doc = yaml.safe_load(ret.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            doc = {}
+        handoff = doc.get("handoff")
+        if handoff not in (None, "", "none", "null"):
+            hpath = str(handoff).split("#")[0]
+            if hpath not in changed:
+                found.append(("stuck", "no-handoff",
+                              f"Your return reports a handoff (`{handoff}`) but this branch didn't commit it. Write "
+                              f"the `## Handoff` section with afs-handoff and commit `{hpath}`."))
+
+    planned = check_plan.ticket_files(MIG, ticket) if role in SCOPED_ROLES else None
+    if planned is not None:
+        allowed = set(planned) | own_records(ticket, role) | set(SCOPE_LINE.findall(prompt or ""))
+        outside = [p for p in changed if not always_allowed(p) and not in_scope(p, allowed)]
+        handoff_file = MIG / "handoffs" / f"{ticket}.md"
+        named = handoff_file.read_text(encoding="utf-8") if handoff_file.as_posix() in changed and handoff_file.exists() else ""
+        unexplained = [p for p in outside if p not in named]
+        if unexplained:
+            found.append(("scope", "scope:" + ",".join(unexplained),
+                          "These files are outside ticket " + ticket + "'s planned files: "
+                          + ", ".join(f"`{p}`" for p in unexplained) + ". Don't widen your own scope: revert them, "
+                          "or, if the work truly needs them, write a handoff (afs-handoff) that names each file and "
+                          "why, set `handoff:` in your return, and stop. The operator decides."))
+    return found
+
+
+# ---------------------------------------------------------------- hook state
+
+def profile_self_heal():
+    try:
+        prof = yaml.safe_load((MIG / "profile.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        prof = {}
+    sh = prof.get("self_heal") or {}
+    return bool(sh.get("enabled")), int(sh.get("max_blocks", 2))
+
+
+def state_path(session):
+    safe = re.sub(r"[^A-Za-z0-9._-]", "-", session or "local")
+    return MIG / "runs" / "finish-check" / f"{safe}.json"
+
+
+def load_state(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"blocks": 0, "last": None}
+
+
+def write_give_up_handoff(ticket, role, found):
+    path = MIG / "handoffs" / f"{ticket}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    head = git("rev-parse", "--short", "HEAD").strip()
+    lines = ["", f"## Handoff — {role} · {now}",
+             f"**State:** blocked  ·  **Branch / PR:** {branch}  ·  **Last commit:** {head}",
+             "### Done", "- See this branch's commits and `afs-run` journal.",
+             "### Remaining", *[f"- [ ] {msg}" for _, _, msg in found],
+             "### Blockers / questions",
+             f"- self-check failed: `afs-finish-check` still found {len(found)} problem(s) after its retry budget "
+             "(ADR-0034). Written by the stop hook, not by the agent.",
+             "### Next step for the next session",
+             "Fix the items under Remaining, run `afs-finish-check`, and commit. Scope items need the operator.", ""]
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return path
+
+
+def hook(args):
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        payload = {}
+    enabled, max_blocks = profile_self_heal()
+    prompt = os.environ.get("COPILOT_AGENT_PROMPT", "")
+    changed = branch_changes()
+    ticket, role = identify(args, changed, prompt)
+    if not ticket or not role:
+        print(f"afs-finish-check: no ticket/role for this session (ticket={ticket}, role={role}); allowing the stop",
+              file=sys.stderr)
+        return 0
+    found = findings(ticket, role, changed, prompt)
+    session = payload.get("sessionId") or payload.get("session_id") or os.environ.get("COPILOT_SESSION_ID")
+    spath = state_path(session)
+    state = load_state(spath)
+    print(f"AFS-RESULT gate=finish-check ticket={ticket} role={role} findings={len(found)} "
+          f"blocks={state['blocks']} enabled={str(enabled).lower()}", file=sys.stderr)
+    if not found:
+        return 0
+    for kind, _, msg in found:
+        print(f"  [{kind}] {msg}", file=sys.stderr)
+    if not enabled:
+        print("afs-finish-check: self_heal.enabled is off; would have blocked", file=sys.stderr)
+        return 0
+    signature = sorted(key for _, key, _ in found)
+    if state["blocks"] >= max_blocks or signature == state["last"]:
+        why = "retry budget spent" if state["blocks"] >= max_blocks else "same failure twice"
+        path = write_give_up_handoff(ticket, role, found)
+        print(f"afs-finish-check: {why}; wrote {path} and allowing the stop", file=sys.stderr)
+        return 0
+    spath.parent.mkdir(parents=True, exist_ok=True)
+    spath.write_text(json.dumps({"blocks": state["blocks"] + 1, "last": signature}), encoding="utf-8")
+    reason = ("Before you stop, the harness's finish check (the same rules as CI, ADR-0034) found:\n"
+              + "\n".join(f"- {msg}" for _, _, msg in found)
+              + "\nFix these, commit, and push; then you may stop. Don't change anything else.")
+    print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--hook", action="store_true", help="run as the agentStop/Stop hook (payload on stdin)")
+    ap.add_argument("--ticket")
+    ap.add_argument("--role")
+    a = ap.parse_args()
+    if a.hook:
+        try:
+            return hook(a)
+        except Exception as exc:  # a hook never wedges a session
+            print(f"afs-finish-check: error, allowing the stop: {exc!r}", file=sys.stderr)
+            return 0
+    changed = branch_changes()
+    ticket, role = identify(a, changed, os.environ.get("COPILOT_AGENT_PROMPT", ""))
+    if not ticket or not role:
+        print("afs-finish-check: pass --ticket and --role (couldn't tell from this branch)", file=sys.stderr)
+        return 2
+    found = findings(ticket, role, changed, os.environ.get("COPILOT_AGENT_PROMPT", ""))
+    for kind, _, msg in found:
+        print(f"[{kind}] {msg}")
+    print(f"AFS-RESULT gate=finish-check ticket={ticket} role={role} findings={len(found)}")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    import afs_trace
+    afs_trace.run(main)
