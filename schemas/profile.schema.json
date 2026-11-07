@@ -159,6 +159,8 @@
       "properties": {
         "masking": { "type": "boolean", "default": false },
         "snapshot_owner": { "type": "string" },
+        "snapshot": { "type": "array", "items": { "type": "string" }, "description": "ADR-0032: commands that make the snapshot in {out} (export + manifest), run by the AFS data snapshot workflow when the snapshot owner dispatches it." },
+        "snapshot_java": { "type": "string", "description": "ADR-0032: Java version the snapshot workflow installs (setup-java, temurin), e.g. for a legacy runtime or the JDBC exporter." },
         "snapshot_dir": { "type": "string", "default": ".migration/data/snapshot", "description": "ADR-0032: where the operator puts the legacy snapshot (one CSV per table + manifest.json). Gitignored: production data is never committed." },
         "mapping": { "type": "string", "default": ".migration/data/mapping.yaml", "description": "ADR-0032: source → target tables, columns, transforms and references; the loader and data_reconcile.py both read it." },
         "load": { "type": "array", "items": { "type": "string" }, "description": "ADR-0032: commands that load {snapshot} into the target through the pipeline (idempotent)." },

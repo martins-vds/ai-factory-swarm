@@ -44,3 +44,18 @@ gate results come from tools.
   tool proves the data moved intact; the tests prove it still means the same.
 - One table's rows are held in memory during comparison. A very large table is split by key range into
   several mapped parts.
+
+## Amendment (2026-11-06): the snapshot is made by a workflow
+On the pilot, the "legacy environment" is a script in the target repo that builds and runs the app. It
+doesn't run on anyone's machine, so "the operator exports a snapshot" had no one to do it.
+- The generated **AFS data snapshot** workflow (`afs-snapshot.yml`, dispatched by hand, with a reason)
+  runs the profile's `data.snapshot` commands, which write into `{out}`, then checks the result and keeps
+  it as an artifact for 30 days. It never goes in git.
+- **Dispatching the workflow is the snapshot owner's act.** Agents never make a snapshot. Copilot setup
+  steps fetch the newest one into `data.snapshot_dir` (`data_snapshot.py fetch`).
+- `data_snapshot.py export` with `java/JdbcSnapshot.java` exports any JDBC-reachable database in the
+  snapshot format, with the driver pinned as a Maven coordinate and sha256. `data.snapshot_java` names
+  the Java the workflow installs.
+- **Visibility:** the artifact is as visible as the repo's Actions artifacts. For real production data,
+  use a private repo and masking (`data.masking`).
+
