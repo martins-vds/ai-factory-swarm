@@ -9,7 +9,8 @@ Inputs, all in the target repo:
                             its data_paths don't reach (a frame, a health check, a seed command)
 
 Data paths are directed (see check_graph.py): an anchor (a page, an endpoint, a view) must reach a table
-the way the code really flows.
+the way the code really flows. On the target side a slice's data paths are enforced once its
+implementation tickets are all done (`check_plan.unbuilt`); before that a missing path is a warning.
 
 Ownership (target, ADR-0026): every target entry point (`endpoint` or `command` node) must belong to a
 slice: reached by the flow from a slice's data_paths.target anchors, or listed in its entry_points.target.
@@ -38,6 +39,7 @@ sys.dont_write_bytecode = True       # installed harness files are drift-checked
 sys.path.insert(0, str(HERE))
 import check_graph  # noqa: E402
 import check_graph_fresh  # noqa: E402
+import check_plan  # noqa: E402
 
 
 def load_graph(side):
@@ -122,12 +124,21 @@ def main(argv=None):
     found = anchors(a.side)
     if not found:
         out.append("- none declared")
+    # Target: a slice's planned entry points exist only once its code is merged. Until then its data paths
+    # are reported, not enforced (pilot: booking's URLs were unwired while data migration was accepted).
+    building = check_plan.unbuilt(".migration") if a.side == "target" else {}
+    warnings = []
     for slice_name, anchor in found:
         line = check_graph.data_path(anchor, nodes, edges, by_id)
-        out.append(f"- `{slice_name}` **{anchor}**: {line}")
+        pending = building.get(slice_name)
+        out.append(f"- `{slice_name}` **{anchor}**: {line}" + (f" _(not built yet: {', '.join(pending)} open)_"
+                                                                 if pending else ""))
         if line.startswith("**NO PATH**") or line.startswith("no matching node"):
-            failures.append(f"slice {slice_name}: data path from `{anchor}`: {line}")
-    warnings = []
+            msg = f"slice {slice_name}: data path from `{anchor}`: {line}"
+            if pending:
+                warnings.append(f"{msg} (not enforced: {', '.join(pending)} still open)")
+            else:
+                failures.append(msg)
     if a.side == "target":
         out.append("\n## Entry points owned by a slice (ADR-0026)\n")
         loose, stale = unowned(nodes, edges)

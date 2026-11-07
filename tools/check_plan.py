@@ -204,6 +204,30 @@ def check(folder, schemas, errors, sample=False):
     return len(plans)
 
 
+def unbuilt(folder, schemas=None):
+    """{slice: [open implementation ticket ids]} for every slice whose code isn't all merged yet.
+
+    A ticket is done once its own role's return file is on the branch (or `done_before_returns`). The graph
+    gate (ADR-0020) holds a slice's target data paths only once its implementation tickets are done."""
+    folder = pathlib.Path(folder)
+    plans = load_plans(folder, pathlib.Path(schemas) if schemas else _schemas(folder), [])
+    returned = returns_by_ticket(folder)
+    out = {}
+    for name, (_, doc) in plans.items():
+        left = [t["id"] for t in doc["tickets"] if t["role"] in IMPLEMENTATION
+                and t["role"] not in returned.get(t["id"], set()) and not t.get("done_before_returns")]
+        if left:
+            out[name] = left
+    return out
+
+
+def _schemas(folder):
+    for d in (pathlib.Path(folder) / "harness" / "schemas", HERE.parent / "schemas"):
+        if d.is_dir():
+            return d
+    return HERE.parent / "schemas"
+
+
 def ticket_files(folder, ticket):
     """The planned file list of one ticket, or None when no plan lists it (used by the finish check)."""
     errors = []
