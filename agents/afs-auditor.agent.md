@@ -28,12 +28,19 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
 - `documentation-writer` — the final report's readability.
 
 ## Procedure
-**Graphs first (ADR-0019).** Run `python .migration/harness/tools/check_graph_fresh.py --require
-source,target` before anything else. If it fails, stop with a handoff naming the stale or missing side:
-the dispatcher runs the afs-understand workflow (`side=source` or `side=target`) and merges its PR. Then
-run `graph_gate.py --side source` and `graph_gate.py --side target --require-graph` (ADR-0020): each
-slice's anchors must reach data through the directed flow on both sides. Never audit from a stale graph
-or a failing gate, and never report `verdict: complete` while either fails (CI rejects that).
+**Graphs first (ADR-0019, ADR-0035).**
+- **Source graph:** run `python .migration/harness/tools/check_graph_fresh.py --require source` and
+  `graph_gate.py --side source` before anything else. If either fails, stop with a handoff: the
+  dispatcher runs afs-understand `side=source` and merges its PR.
+- **Target graph:** at slice acceptance this comes from the **AFS acceptance gates** run you audit. That
+  run built the target graph for its own commit, gated it there (`graph-target` step, ownership enforced)
+  and kept it in its artifact. `afs-acceptance verify` checks that the graph describes that commit. Audit
+  that commit: `git checkout <commit>` for your code reading, or confirm the analysed paths are unchanged
+  since it. Never use the committed target graph as acceptance evidence: it's a reference and may be
+  stale.
+- Merges to `main` after the run's commit don't invalidate your audit; it is "as of" that commit. CI
+  accepts `verdict: complete` only with the verified result committed under
+  `.migration/evidence/acceptance-runs/`.
 
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
 exists and passes now, the flow connects end to end. Classify every delta with the five gap classes.

@@ -14,16 +14,32 @@ permissions:
   contents: read
 
 jobs:
+  # ADR-0035: the target graph is built for this exact commit, gated in this run and kept in its artifact.
+  graph:
+    permissions:
+      contents: write
+      pull-requests: write
+      copilot-requests: write
+    uses: ./.github/workflows/afs-understand.yml
+    with: {{ side: target, publish: false }}
+    secrets: inherit
   acceptance:
+    needs: graph
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       AFS_ACCEPTANCE_TICKET: ${{{{ inputs.ticket }}}}
       AFS_ACCEPTANCE_OUT: .migration/runs/acceptance-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
+      AFS_GRAPH_TARGET_BUILD: .migration/runs/graph-target-${{{{ github.run_id }}}}
     steps:
       - uses: actions/checkout@v5
         with: {{ fetch-depth: 0 }}
+      - name: Fetch the target graph built for this commit
+        uses: actions/download-artifact@v4
+        with:
+          name: afs-graph-target
+          path: ${{{{ env.AFS_GRAPH_TARGET_BUILD }}}}
       - uses: actions/setup-python@v5
         with: {{ python-version: "{python_version}" }}
       - name: Install gate dependencies

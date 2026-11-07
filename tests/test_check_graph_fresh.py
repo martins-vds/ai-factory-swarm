@@ -105,7 +105,13 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("graphs/target: no graph", r.stderr)
 
-    def test_acceptance_requires_both_graphs(self):
+    def run_record(self, commit, trees, status="passed"):
+        d = self.repo / ".migration/evidence/acceptance-runs"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "42-1.json").write_text(json.dumps({"status": status, "exit": 0 if status == "passed" else 1,
+                                                 "commit": commit, "target_graph": {"trees": trees}}))
+
+    def test_acceptance_needs_the_source_graph_and_a_bound_acceptance_run(self):
         self.graph("source", {"source_sha": PIN}, PIN)
         self.commit("source graph")
         git(self.repo, "branch", "base")
@@ -118,12 +124,35 @@ class FreshnessTest(unittest.TestCase):
         self.commit("accept")
         r = self.run_tool("--acceptance-since", "base")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("acceptance", r.stdout)
-        self.assertIn("graphs/target: no graph", r.stderr)
-        self.target_graph()
-        self.commit("target graph")
-        self.assertEqual(self.run_tool("--acceptance-since", "base").returncode, 0)
+        self.assertIn("cites no acceptance run", r.stderr)
+        # The run checked commit C and built its graph there; main then moved on (src changed). Still valid.
+        accepted = git(self.repo, "rev-parse", "HEAD")
+        trees = {"src": git(self.repo, "rev-parse", "HEAD:src")}
+        (self.repo / "src/app.py").write_text("x = 2\n")
+        self.commit("another slice merged during the audit")
+        self.run_record(accepted, trees)
+        self.commit("audit evidence")
+        r = self.run_tool("--acceptance-since", "base")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # a graph that doesn't describe the cited commit, or a failed run, doesn't bind
+        self.run_record(accepted, {"src": "0" * 40})
+        self.commit("wrong graph")
+        self.assertIn("doesn't describe commit", self.run_tool("--acceptance-since", "base").stderr)
+        self.run_record(accepted, trees, status="failed")
+        self.commit("failed run")
+        self.assertIn("did not pass", self.run_tool("--acceptance-since", "base").stderr)
 
+    def test_env_points_the_target_side_at_the_acceptance_build(self):
+        self.graph("source", {"source_sha": PIN}, PIN)
+        built = self.repo / "built"
+        built.mkdir()
+        head = git(self.repo, "rev-parse", "HEAD")
+        (built / "SNAPSHOT.txt").write_text(f"target_commit: {head}\ntree.src: {git(self.repo, 'rev-parse', 'HEAD:src')}\n")
+        env = {**__import__("os").environ, "AFS_GRAPH_TARGET_DIR": str(built)}
+        r = subprocess.run([sys.executable, str(TOOL), "--require", "source,target"], cwd=self.repo,
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(str(built), r.stdout)
 
     def test_only_checks_the_named_graph(self):
         self.graph("source", {"source": f"o/src@{PIN}"}, PIN)        # unstamped, but not ours

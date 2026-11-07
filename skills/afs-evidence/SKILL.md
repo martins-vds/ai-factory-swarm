@@ -97,7 +97,9 @@ merge anything. Install it through a reviewed, pinned bootstrap rollout before d
    `result.json` unchanged to `.migration/evidence/acceptance-runs/<run-id>-<attempt>.json` (a reserved
    report directory, never test-fixture storage) and link it with the original Actions run and artifact
    name. Cite any newly produced `mutants.md`; copy its contents unchanged if needed.
-   Keep raw logs out of git. Record the artifact's 30-day retention; retain a verified download until
+   The verified result also records `target_graph`: the target graph the run built for its own commit
+   and gated (ADR-0035). That committed result is what lets CI accept `verdict: complete` after `main`
+   has moved on. Keep raw logs out of git. Record the artifact's 30-day retention; retain a verified download until
    review is complete. Copy scores only from the actual mutation result, never calculate your own.
 
 Cancellation checkpoints and partial logs are diagnostic evidence only. A hard-killed process can

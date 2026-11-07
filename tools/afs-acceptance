@@ -4,6 +4,9 @@
 afs-acceptance run --ticket T --out .migration/runs/acceptance-ID
 afs-acceptance verify ARTIFACT --commit SHA --run-id ID --attempt N
 
+The target graph is built for the run's own commit by the workflow's graph job (AFS_GRAPH_TARGET_BUILD), copied
+into the artifact, checked against the commit's tree hashes, and gated there (ADR-0035).
+
 Artifacts are evidence, not an acceptance verdict. The Auditor must also check the actual Actions
 run's repository, source SHA and successful conclusion. Hashes detect corruption, not authenticity.
 """
@@ -82,7 +85,8 @@ def commands(profile):
         ("services", [sys.executable, str(HERE / "afs-services"), "check"]),
         ("graph-freshness", [sys.executable, str(HERE / "check_graph_fresh.py"), "--require", "source,target"]),
         ("graph-source", [sys.executable, str(HERE / "graph_gate.py"), "--side", "source", "--require-graph"]),
-        ("graph-target", [sys.executable, str(HERE / "graph_gate.py"), "--side", "target", "--require-graph"]),
+        ("graph-target", [sys.executable, str(HERE / "graph_gate.py"), "--side", "target", "--require-graph",
+                          "--enforce-ownership"]),
     ]
     for gate in GATES:
         rows = gates.get(gate)
@@ -90,6 +94,41 @@ def commands(profile):
             raise EvidenceError(f"profile gates.{gate} must be a nonempty command list")
         plan += [(f"{gate}-{i}", ["bash", "-c", cmd]) for i, cmd in enumerate(rows)]
     return [{"name": name, "command": cmd} for name, cmd in plan]
+
+
+def snapshot_lines(path):
+    out = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def adopt_target_graph(out, commit):
+    """ADR-0035: the target graph this run gates is built for this commit (by the workflow's graph job) and kept
+    in the artifact. Its tree hashes must equal the commit's; the gates then read it through AFS_GRAPH_TARGET_DIR."""
+    build = os.environ.get("AFS_GRAPH_TARGET_BUILD")
+    if not build or not (pathlib.Path(build) / "SNAPSHOT.txt").is_file():
+        raise EvidenceError("no target graph built for this commit: the AFS acceptance gates workflow's graph job "
+                            "sets AFS_GRAPH_TARGET_BUILD (ADR-0035)")
+    snap = snapshot_lines(pathlib.Path(build) / "SNAPSHOT.txt")
+    trees = {k[len("tree."):]: v for k, v in snap.items() if k.startswith("tree.")}
+    if not trees:
+        raise EvidenceError("the built target graph is unstamped (no tree.<path> lines)")
+    off = [p for p, t in sorted(trees.items()) if git("rev-parse", f"{commit}:{p}").decode().strip() != t]
+    if off:
+        raise EvidenceError(f"the built target graph doesn't describe {commit[:12]}: {', '.join(off)}")
+    return build, snap, trees
+
+
+def keep_target_graph(out, adopted):
+    build, snap, trees = adopted
+    dest = out / "graph" / "target" / "full"
+    shutil.copytree(build, dest)
+    os.environ["AFS_GRAPH_TARGET_DIR"] = str(dest.resolve())
+    return {"dir": dest.relative_to(out).as_posix(), "commit": snap.get("target_commit"), "trees": trees,
+            "run": snap.get("run")}
 
 
 def result_fields(log):
@@ -145,7 +184,9 @@ def run(ticket, out):
     commit = git("rev-parse", "HEAD").decode().strip()
     if os.environ.get("GITHUB_SHA", commit) != commit:
         raise EvidenceError("checked-out revision differs from the Actions source SHA")
+    adopted = adopt_target_graph(out, commit)
     out.mkdir(parents=True)
+    target_graph = keep_target_graph(out, adopted)
     for path in INPUTS:
         dest = out / "inputs" / pathlib.Path(path).name
         dest.parent.mkdir(exist_ok=True)
@@ -157,7 +198,7 @@ def run(ticket, out):
         "inputs": {path: digest(pathlib.Path(path)) for path in INPUTS},
         "workflow": {key: os.environ.get(key) for key in
                      ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT")},
-        "plan": plan, "steps": [],
+        "plan": plan, "steps": [], "target_graph": target_graph,
     }
     survivors = pathlib.Path(f".migration/evidence/mutants/{ticket}.md")
     survivors_before = survivors.stat().st_mtime_ns if survivors.is_file() else None
@@ -242,6 +283,13 @@ def verify(out, commit, run_id, attempt):
         if digest(pathlib.Path(path)) != result["inputs"][path] \
                 or digest(out / "inputs" / pathlib.Path(path).name) != result["inputs"][path]:
             raise EvidenceError(f"artifact input mismatch: {path}")
+    graph = result.get("target_graph") or {}
+    trees = graph.get("trees") or {}
+    if not trees or not any(name.startswith(f"{graph.get('dir')}/") for name in result["files"]):
+        raise EvidenceError("artifact has no target graph built for its commit (ADR-0035)")
+    for path, tree in trees.items():
+        if git("rev-parse", f"{commit}:{path}").decode().strip() != tree:
+            raise EvidenceError(f"artifact target graph doesn't describe {commit[:12]}: {path}")
     profile = yaml.safe_load(pathlib.Path(INPUTS[0]).read_text(encoding="utf-8"))
     if workflow.get("GITHUB_REPOSITORY") != profile["target"]["repo"]:
         raise EvidenceError("artifact repository differs from the profile target")

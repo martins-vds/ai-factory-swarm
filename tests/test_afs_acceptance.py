@@ -50,6 +50,13 @@ class AcceptanceTest(unittest.TestCase):
         self.out = self.repo / ".migration/runs/acceptance-123-1"
         self.env = {**os.environ, "GITHUB_SHA": self.sha, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1",
                     "GITHUB_REPOSITORY": "example/target", "GITHUB_SERVER_URL": "https://github.com"}
+        # ADR-0035: the workflow's graph job builds the target graph for this commit (gitignored download).
+        self.build = self.repo / ".migration/runs/graph-build"
+        self.build.mkdir(parents=True)
+        (self.build / "SNAPSHOT.txt").write_text(f"side: target\ntarget_commit: {self.sha}\n"
+                                                 f"tree.src: {self.git('rev-parse', 'HEAD:src')}\n")
+        (self.build / "knowledge-graph.json").write_text("{}")
+        self.env["AFS_GRAPH_TARGET_BUILD"] = str(self.build)
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.repo).decode().strip()
@@ -103,6 +110,22 @@ class AcceptanceTest(unittest.TestCase):
         self.assertEqual(verified.returncode, 0, verified.stderr)
         self.assertIn("status=verified", verified.stdout)
         self.assertNotEqual(self.run_gates().returncode, 0, "existing artifacts must not be overwritten")
+
+    def test_the_run_gates_its_own_target_graph_for_its_commit(self):
+        run = self.run_gates()
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        graph = self.result()["target_graph"]
+        self.assertEqual(graph["dir"], "graph/target/full")
+        self.assertIn("graph/target/full/SNAPSHOT.txt", self.result()["files"])
+        self.assertEqual(self.result()["plan"][5]["command"][-1], "--enforce-ownership")
+
+    def test_no_graph_or_a_graph_of_other_code_is_refused(self):
+        env = dict(self.env)
+        del self.env["AFS_GRAPH_TARGET_BUILD"]
+        self.assertIn("no target graph built", self.run_gates().stderr)
+        self.env = env
+        (self.build / "SNAPSHOT.txt").write_text("tree.src: " + "0" * 40 + "\n")
+        self.assertIn("doesn't describe", self.run_gates().stderr)
 
     def test_auditor_report_commit_can_advance_without_invalidating_execution_inputs(self):
         self.assertEqual(self.run_gates().returncode, 0)

@@ -50,10 +50,11 @@ slice.
    push makes the approval stale. Never submit, request on someone's behalf, or relay a review or a
    sign-off yourself, even when you hold the approver's GitHub login. If they report problems, set
    `human_check: issues` and link each one.
-   **Before dispatching the Auditor**, make both graphs fresh (ADR-0019): run the afs-understand workflow
-   with `side=target` on `main` (and `side=source` if `check_graph_fresh.py` says so), merge its PR, and
-   confirm `python .migration/harness/tools/check_graph_fresh.py --require source,target` passes. Remote
-   sessions can't run workflows, so this is the dispatcher's step.
+   **Before dispatching the Auditor**, the dispatcher starts one **AFS acceptance gates** run on `main`
+   (ADR-0035). It builds the target graph for that exact commit, gates it, and runs full mutation; the
+   Auditor audits that run's commit. No target-graph PR is needed, and later merges don't invalidate it.
+   Only a stale **source** graph (a re-pinned `source.lock`) needs afs-understand `side=source` and its PR
+   first. Remote sessions can't run workflows, so starting the run is the dispatcher's step.
 6. **Ticket reconciliation (ADR-0030), before coordinator completion or closing the slice epic.** After
    the work has reached `main`, ensure every related work, fix, verifier and bootstrap issue is linked
    beneath the slice epic, then enumerate its descendants; do not include unrelated slices or

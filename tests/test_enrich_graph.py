@@ -622,21 +622,30 @@ class GraphGateTest(unittest.TestCase):
             self.assertEqual(r2.returncode, 0, "outside acceptance, ownership problems are warnings")
             self.assertIn("matches no node", r2.stderr)
 
-    def test_unowned_entry_point_fails_at_acceptance(self):
+    def test_unowned_entry_point_fails_when_ownership_is_enforced(self):
         import graph_gate
         with tempfile.TemporaryDirectory() as d:
             r = self.repo(d, ["endpoint=/"], {})
-            cwd, accepting = os.getcwd(), graph_gate.check_graph_fresh.accepting
+            cwd = os.getcwd()
             try:
                 os.chdir(r)
-                graph_gate.check_graph_fresh.accepting = lambda base: True
                 with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
-                    code = graph_gate.main(["--side", "target", "--acceptance-since", "base"])
+                    code = graph_gate.main(["--side", "target", "--enforce-ownership"])
             finally:
-                graph_gate.check_graph_fresh.accepting = accepting
                 os.chdir(cwd)
             self.assertEqual(code, 1)
             self.assertIn("endpoint=/api/board/ (src/shop/orders/interfaces/urls.py) is owned by no slice", out.getvalue())
+
+    def test_target_graph_dir_override(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/"], {"nodes": ["table"]}, graph=False)
+            built = r / "built"
+            built.mkdir()
+            (built / "knowledge-graph.json").write_text(json.dumps(enrich("django").doc))
+            env = {**os.environ, "AFS_GRAPH_TARGET_DIR": str(built)}
+            g = subprocess.run([sys.executable, str(ROOT / "tools/graph_gate.py"), "--side", "target", "--require-graph"],
+                               cwd=r, capture_output=True, text=True, env=env)
+            self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
 
 
 class SliceSchemaTest(unittest.TestCase):
