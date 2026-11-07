@@ -293,6 +293,21 @@ def main():
         print(f"base moved on since the PR's last event ({base[:7]} → {current[:7]}); comparing from the merge base")
         base = current
     files = changed_return_files(base, head=head)
+    event = json.loads(pathlib.Path(a.event).read_text(encoding="utf-8"))
+    default = ((event.get("repository") or {}).get("default_branch")) or "main"
+    if (pr.get("base") or {}).get("ref") not in (None, default):
+        # A stacked PR (a Verifier or fix session on another PR's branch) never lands by itself: it is folded
+        # into the PR below it, and only the PR into the default branch lands. Pilot BK-05A: each fix session
+        # re-pointed the shared return's `issue:`/`pr:` to itself, which broke the PR below it, and a session
+        # can't know its PR number before the PR exists. So a stacked PR must commit a return file; its
+        # identity (issue, PR) is checked on the landing PR, against every version in the stack's history.
+        if not files:
+            print("::error title=Return contract invalid::no return file in this PR: commit "
+                  ".migration/returns/<ticket>.<role>.yaml. See afs-migration-contract → Return files.")
+            return 1
+        print(f"stacked PR into {pr['base']['ref']}: return file(s) {', '.join(files)} committed; issue and PR "
+              f"identity are checked on the PR into {default}")
+        return 0
     ok, msg = check(pr.get("body") or "", files, parent_of=github_parent,
                     base=base, head=head, pr_url=pr.get("html_url"))
     if pasted_contract(pr.get("body") or ""):

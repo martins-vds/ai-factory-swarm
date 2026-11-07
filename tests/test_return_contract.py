@@ -352,6 +352,36 @@ class SupersededReturnTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("does not resolve to event base.sha", result.stdout)
 
+    def stacked_event(self, base_ref):
+        event = self.repo / "event.json"
+        event.write_text(json.dumps({"repository": {"default_branch": "main"}, "pull_request": {
+            "head": {"ref": "copilot/fix", "sha": self.revision("HEAD")},
+            "base": {"ref": base_ref, "sha": self.revision(base_ref)},
+            "body": "Fixes #320", "html_url": "https://github.com/martins-vds/ai-factory-pilot-target/pull/321",
+        }}), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools/check_return_contract.py"), "--base", base_ref, "--event", str(event)],
+            cwd=self.repo, env={**os.environ, "GITHUB_REPOSITORY": ""}, capture_output=True, text=True)
+
+    def test_stacked_pr_needs_a_return_but_not_its_own_identity(self):
+        """Pilot BK-05A: a fix session on another PR's branch can't name a PR that doesn't exist yet."""
+        self.commit(RETURN)                                   # the work PR's return, naming #38
+        git(self.repo, "branch", "copilot/verify")
+        git(self.repo, "checkout", "-q", "-b", "copilot/fix")
+        self.commit(self.LATEST)                              # the fix session's edit names #39, not #321
+        result = self.stacked_event("copilot/verify")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("checked on the PR into main", result.stdout)
+
+    def test_stacked_pr_without_a_return_still_fails(self):
+        self.commit(RETURN)
+        git(self.repo, "branch", "copilot/verify")
+        git(self.repo, "checkout", "-q", "-b", "copilot/fix")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "no return")
+        result = self.stacked_event("copilot/verify")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no return file in this PR", result.stdout)
+
     def test_cli_fails_explicitly_when_event_shas_are_missing(self):
         self.commit(RETURN)
         event = self.repo / "event.json"
