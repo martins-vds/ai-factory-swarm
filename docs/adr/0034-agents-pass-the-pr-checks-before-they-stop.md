@@ -79,9 +79,11 @@ another agent turn, with its `reason` as the prompt. That turn counts against th
 - Scope stays a human decision. The planner checks on harness #98 are the deterministic fix for the
   scope cases; this ADR only makes them escalate faster.
 - An extra turn costs time and tokens against the job's timeout. The budget bounds it.
-- **To confirm on the first pilot run:** the cloud agent writes a final "apply remaining changes" commit
-  after the hooks. The first live run must confirm that work done in a blocked-then-continued turn is
-  committed and pushed. If it isn't, the reason must tell the agent to commit and push itself.
+- **Confirmed on the pilot (2026-11-07, drill PR #365):** the hook blocked once ("no return file"), the
+  agent wrote and pushed the return, and the second stop was clean. Work from the extra turn was committed.
+  The first drill run (#362) wasn't blocked: in the cloud agent `COPILOT_AGENT_PROMPT` is empty, so the hook
+  couldn't tell the role. The hook now takes the role from the plan, reads the issue from the session's
+  `user.message` events, and records every run in `.migration/evidence/finish-check/<session>.json`.
 - Local workers: the Copilot CLI reads the same `.github/hooks/` file. Claude Code's `Stop` hook uses
   the same `decision: "block"` contract but is configured in `.claude/settings.json`. Copilot also reads
   that file, so writing it could run the check twice per stop. Bootstrap doesn't write it until that is
