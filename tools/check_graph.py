@@ -203,6 +203,13 @@ def reachable(starts, edges):
     return seen
 
 
+def data_reached(starts, edges, by_id):
+    """Every table/schema the directed flow reaches from the start nodes, by name. The path above is only the
+    shortest one: an anchor that writes six tables must not read as reaching one (pilot DM-AUDIT)."""
+    seen = reachable(starts, edges)
+    return sorted({by_id[n].get("name", n) for n in seen if by_id.get(n, {}).get("type") in DATA_TYPES})
+
+
 def data_path(anchor, nodes, edges, by_id):
     starts = anchor_nodes(anchor, nodes)
     if not starts:
@@ -220,7 +227,9 @@ def data_path(anchor, nodes, edges, by_id):
                 chain.append(f"{d}{et}")
                 cur = parent
             chain.append(f"`{by_id.get(cur, {}).get('name', cur)}`")
-            return " ".join(reversed(chain))
+            reached = data_reached(starts, edges, by_id)
+            more = f" — reaches {len(reached)} data node(s): {', '.join(reached)}" if len(reached) > 1 else ""
+            return " ".join(reversed(chain)) + more
         for nxt, et, d in adj[cur]:
             if nxt not in prev:
                 prev[nxt] = (cur, et, d)
