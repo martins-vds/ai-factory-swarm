@@ -16,6 +16,9 @@ Usage: validate.py <folder> [--schemas <dir>]
                        (legacy returns and unchanged null-PR history from before this rule are exempt)
   handoffs/*.md      → every `## Handoff — <role> · <UTC>` section has its required subsections
   quirks/*.md        → quirk drafts have Question, Evidence, Impact and Options sections
+  plan/*.md          → each has `<slice>.tickets.yaml` (schemas/plan-tickets.schema.json), checked by
+                       check_plan.py: new ids, files named, no shared file without a blocking edge,
+                       cross_slice listed, test-name clashes, capability ledger entries (harness #98)
 Exits 1 if anything is invalid. Requires: jsonschema, pyyaml.
 """
 import argparse
@@ -28,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 
+import check_plan
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
@@ -354,6 +358,7 @@ def main():
                     errors.append(f"{path}: file name must be '{want}.yaml'")
 
     checked += check_markdown(folder, errors)
+    checked += check_plan.check(folder, schemas, errors, a.sample)
 
     if checked == 0:
         errors.append(f"{folder}: nothing to validate (no profile.yaml, capabilities.yaml or ledger/)")

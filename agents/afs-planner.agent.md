@@ -45,7 +45,18 @@ strategy, UI direction), `profile.context.working_budget`.
    for acceptance, and list in `entry_points.target` every other target endpoint or command the slice
    adds that those anchors don't reach (a frame, a seed command): at acceptance, an entry point no slice
    owns fails the gate (ADR-0026). The spec is validated by `schemas/slice.schema.json`.
-7. Write the plan as a draft for review (do not publish).
+7. **List the tickets for the tools** in `.migration/plan/<slice>.tickets.yaml`
+   (`schemas/plan-tickets.schema.json`): `id`, `role`, `specialty`, `files`, `capabilities`, `blocked_by`,
+   and `cross_slice` for files another slice also changes. The file list is the ticket's **whole scope**:
+   a session may change nothing else (ADR-0034). So list everything the work will touch, including:
+   - the ticket's own capability ledger entries (`.migration/ledger/<id>.yaml`);
+   - a test package's `__init__.py` when a test file's name is already used in another folder;
+   - a shared test or setting the change will break (e.g. a test that asserts the exact installed apps);
+   - a view or module owned by an earlier ticket that this one must extend (and a blocking edge to it).
+
+   Use new ids that no earlier ticket, return, journal or handoff used. Run `validate.py .migration`:
+   `check_plan.py` fails the plan on any of the above that it can detect.
+8. Write the plan as a draft for review (do not publish).
 
 ## Rules
 - Do not decide architecture or mappings yourself; use the decision-map answers. Missing decision → a

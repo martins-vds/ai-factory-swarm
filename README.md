@@ -119,6 +119,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 **Contracts and tracking**
 
 - `validate.py`: validate a target's `.migration/` state
+- `check_plan.py`: plan tickets are dispatch-ready: new ids, complete file lists, no shared file without a blocking edge (run by `validate.py`)
 - `check_inputs.py`: every path a ticket names exists
 - `check_return_contract.py`: an agent PR commits its return file
 - `check_slice_returns.py`: a slice epic closes only with every return file
