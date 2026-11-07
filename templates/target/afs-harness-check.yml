@@ -63,7 +63,7 @@ jobs:
       # data; the target graph is held to the same at acceptance.
       - name: The source graph only grows
         if: github.event_name == 'pull_request'
-        run: python .migration/harness/tools/preserve_graph.py check --base "origin/${{{{ github.base_ref }}}}" --side source
+        run: python .migration/harness/tools/preserve_graph.py check --base "origin/${{{{ github.event.pull_request.base.ref }}}}" --side source
 
       - name: Code graphs reach the data
         run: |
