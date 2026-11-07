@@ -14,7 +14,7 @@ def guard_script():
                          .replace("}}", "}"))
     steps = [s for job in doc["jobs"].values() for s in job["steps"] if s.get("name") == "Session records are append-only"]
     assert steps, "the harness check must guard session records"
-    return steps[0]["run"].replace("${{ github.base_ref }}", "base")
+    return steps[0]["run"].replace("${{ github.event.pull_request.base.ref }}", "base")
 
 
 class SessionRecordTest(unittest.TestCase):
