@@ -1,6 +1,7 @@
 # ADR-0034: Agents pass the PR checks before they stop, within a budget, then escalate by failure kind
 
-- Status: Proposed
+- Status: Accepted (martins-vds, 2026-11-07: budget 2 blocks; every role with a return; the planner
+  lists predictable files; drills, then enforce)
 - Date: 2026-11-07
 
 ## Context
@@ -52,7 +53,10 @@ another agent turn, with its `reason` as the prompt. That turn counts against th
    | **Scope**: the fix needs a file or a decision outside the ticket | a file not in the list, a ruling needed | escalate at once. The hook allows the stop, and the agent writes a handoff naming the file or question. An agent never extends its own scope. |
    | **Unreachable**: the gate fails and the agent has no new lead | mutation or CRAP stuck below threshold, a failing test it can't explain | the restart rule: a fresh session from the handoff. The same ticket failing again escalates to the operator (ADR-0008). Repeated failures are also a signal that a tool may be missing information. |
 
-   The finish check decides the kind. The agent doesn't.
+   The finish check decides the kind. The agent doesn't. There is **no standing scope allowance**, not
+   even for an empty test-package `__init__.py` or the ticket's own capability ledger entries. The planner
+   lists those in every ticket (deterministic plan checks, harness #98), so a complete list is the
+   planner's job and anything outside it is a scope failure.
 4. **A budget, with loop detection.** The hook keeps a per-session counter in `.migration/runs/`. It
    allows the stop:
    - after `self_heal.max_blocks` blocks (profile setting, default 2); or
@@ -61,9 +65,12 @@ another agent turn, with its `reason` as the prompt. That turn counts against th
    The agent then writes a handoff with state `blocked` and reason `self-check failed: <check>`, and
    it routes like any other handoff: Slice Coordinator, then the operator. A hook error never blocks: it
    allows the stop and records the error, as the cost hook does.
-5. **Proven by a drill.** `afs-drill` gains two drills:
+5. **Proven by drills, then enforced.** `afs-drill` gains two drills:
    - a session that leaves out its return file fixes it within the session;
    - a session that edits a file outside its list escalates without retrying.
+
+   Blocking is switched on for a target only after both drills pass on it; until then bootstrap
+   installs the hook disabled. From then on it covers every new ticket.
 
 ## Consequences
 - The common mechanical miss is fixed inside the session, with no operator comment and no new session.
