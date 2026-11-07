@@ -112,6 +112,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `graph_gate.py`: required node/edge types; every slice anchor reaches data; every entry point owned
 - `check_graph.py`: what a graph contains, for review
 - `check_graph_fresh.py`: graphs describe the code they claim to
+- `preserve_graph.py`: the source graph only grows; a regeneration keeps earlier flows, and CI fails a PR that loses one
 - `check_domain_coverage.py`: requested entry points have a connected domain flow
 - `extract_slice.py`: cut a slice of the source for a targeted graph run
 
