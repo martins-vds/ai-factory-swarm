@@ -36,7 +36,7 @@ class AfsMutationTest(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, 0, stdout="<testsuite/>", stderr="")
 
         with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(m.subprocess, "run", fake_run):
-            xml, _, failed = m.run_shard(1, d, ["src/a.py", "src/b.py"], {"src/a.py": "x", "src/b.py": "y"},
+            xml, _, failed, _ = m.run_shard(1, d, ["src/a.py", "src/b.py"], {"src/a.py": "x", "src/b.py": "y"},
                                          {"POSTGRES_DB": "cargotracker"})
         self.assertEqual([f for f, _ in failed], ["src/b.py"])
         self.assertIn("baseline tests failed", failed[0][1])
@@ -76,6 +76,38 @@ class AfsMutationTest(unittest.TestCase):
                     self.assertIsNone(m.write_survivors([], 1.0, 0.8, 1, 0, "main"), "no ticket: nothing to write")
             finally:
                 os.chdir(cwd)
+
+    def test_survivor_diffs_come_from_mutmut_show(self):
+        def fake_run(cmd, **kw):
+            if cmd[:2] == ["mutmut", "run"]:
+                return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
+            if cmd[:2] == ["mutmut", "junitxml"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=JUNIT, stderr="")
+            if cmd[:2] == ["mutmut", "show"]:
+                self.assertEqual(cmd[2], "3")
+                return subprocess.CompletedProcess(cmd, 0, stdout="--- src/a.py\n+++ src/a.py\n@@ -5 +5 @@\n"
+                                                   "-    return a + b\n+    return a - b\n", stderr="")
+            raise AssertionError(cmd)
+
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(m.subprocess, "run", fake_run):
+            _, _, _, diffs = m.run_shard(0, d, ["src/a.py"], {"src/a.py": "x"}, {})
+        self.assertEqual(diffs, {"src/a.py:5 Mutant #3": "@@ -5 +5 @@\n-    return a + b\n+    return a - b"})
+
+    def test_survivor_file_shows_each_mutants_diff(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            cwd = os.getcwd()
+            try:
+                os.chdir(d)
+                os.mkdir(".migration")
+                with unittest.mock.patch.dict(os.environ, {"AFS_TICKET": "DM-05C"}):
+                    path = m.write_survivors(["src/a.py:5 Mutant #3", "src/a.py:9 Mutant #4"], 0.5, 0.8, 2, 2, "main",
+                                             {"src/a.py:5 Mutant #3": "-    return a + b\n+    return a - b"})
+                text = path.read_text()
+            finally:
+                os.chdir(cwd)
+        self.assertIn("- `src/a.py:5 Mutant #3`\n\n  ```diff\n  -    return a + b\n  +    return a - b\n  ```", text)
+        self.assertIn("- `src/a.py:9 Mutant #4`", text, "a survivor without a diff is still listed")
 
     def test_default_excludes(self):
         ex = m.DEFAULT_EXCLUDE
