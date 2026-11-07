@@ -61,11 +61,29 @@ def git(*args):
     return r.stdout if r.returncode == 0 else ""
 
 
+def other_branch_tips(branch):
+    """Commits at the tip of every other branch on the remote that HEAD already contains.
+
+    The cloud agent's clone may track only its own branch, so the remote-tracking refs can miss the base
+    branch of a stacked PR (pilot, 2026-11-07: a Verifier on a Migrator's branch was charged with the
+    Migrator's files). `git ls-remote` lists every branch; a tip HEAD contains is base history, not this
+    session's work."""
+    tips = set()
+    for line in git("ls-remote", "--heads", "origin").splitlines():
+        sha, _, ref = line.partition("\t")
+        if not sha or ref == f"refs/heads/{branch}":
+            continue
+        if subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True).returncode == 0:
+            tips.add(sha)
+    tips |= {r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
+             if r not in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD")}
+    return sorted(tips)
+
+
 def branch_changes():
-    """Paths this branch changed: commits on no other remote branch, plus uncommitted work."""
+    """Paths this branch changed: commits on no other branch, plus uncommitted work."""
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
-    others = [r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
-              if r not in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD")]
+    others = other_branch_tips(branch)
     paths = set()
     if others:
         out = git("log", "--format=", "--name-only", "HEAD", "--not", *others)
@@ -82,17 +100,18 @@ def identify(args, changed, prompt):
     role = args.role or os.environ.get("AFS_ROLE") or None
     if ticket == "adhoc":
         ticket = None
-    for p in changed:
-        m = re.match(r"\.migration/returns/(.+)\.(afs-[a-z-]+)\.ya?ml$", p)
-        if m and (ticket in (None, m.group(1))):
+    returned = [m for m in (re.match(r"\.migration/returns/(.+)\.(afs-[a-z-]+)\.ya?ml$", p) for p in changed) if m]
+    if not role and prompt:
+        role = prompt_role(prompt)
+    for m in returned:
+        if ticket in (None, m.group(1)) and role in (None, m.group(2)):
             ticket, role = ticket or m.group(1), role or m.group(2)
     for p in changed:
         m = re.match(r"\.migration/evidence/runs/(.+)\.md$", p)
         if m and not ticket:
             ticket = m.group(1)
     if prompt and not role:
-        found = [r for r in ROLES if f"`{r}`" in prompt or f"Role: {r}" in prompt]
-        role = found[0] if found else None
+        role = prompt_role(prompt)
     if prompt and not ticket:
         known = set()
         for _, (_, doc) in check_plan.load_plans(MIG, HERE.parent / "schemas" if (HERE.parent / "schemas").is_dir()
@@ -103,6 +122,15 @@ def identify(args, changed, prompt):
     if ticket and not role:
         role = planned_role(ticket)
     return ticket, role
+
+
+def prompt_role(prompt):
+    """The role the issue states (`**Role:** `afs-x``), else the first role the prompt mentions."""
+    m = re.search(r"\*\*Role:\*\*\s*`(afs-[a-z-]+)`", prompt)
+    if m and m.group(1) in ROLES:
+        return m.group(1)
+    at = [(prompt.find(f"`{r}`"), r) for r in ROLES if f"`{r}`" in prompt]
+    return min(at)[1] if at else None
 
 
 def planned_role(ticket):

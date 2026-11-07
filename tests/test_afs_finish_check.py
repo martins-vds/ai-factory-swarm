@@ -145,6 +145,31 @@ class FinishCheckTest(unittest.TestCase):
         trace = json.loads((self.repo / ".migration/evidence/finish-check/t1.json").read_text())
         self.assertEqual((trace[0]["prompt_from"], trace[0]["scope_lines"]), ("transcript", ["src/settings.py"]))
 
+    def test_verifier_on_a_stacked_branch_in_a_single_branch_clone(self):
+        # pilot DM-05F, 2026-11-07: the Migrator's commits on the base branch were charged to the Verifier,
+        # and the Migrator's return file made the hook take the Migrator's role.
+        r = self.repo
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-work")
+        self.write("src/wizard.py")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml",
+                   "role: afs-specialist-migrator\nticket: BK-05D\nissue: o/r#291\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "migrator work")
+        git(r, "push", "-q", "origin", "copilot/bk-05d-work")
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-verify")
+        git(r, "update-ref", "-d", "refs/remotes/origin/copilot/bk-05d-work")   # the clone doesn't track the base
+        self.write("tests/test_wizard_extra.py")
+        self.write(".migration/returns/BK-05D.afs-verifier.yaml", "role: afs-verifier\nticket: BK-05D\nissue: o/r#353\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "verifier work")
+        out, _ = self.run_hook(session="v1", prompt="**Role:** `afs-verifier`. Verify ticket #291 (`BK-05D`) after "
+                                                    "`afs-specialist-migrator` finished.")
+        trace = json.loads((r / ".migration/evidence/finish-check/v1.json").read_text())[0]
+        self.assertEqual(trace["role"], "afs-verifier")
+        self.assertNotIn("src/wizard.py", trace["changed"])
+        self.assertNotIn(".migration/returns/BK-05D.afs-specialist-migrator.yaml", trace["changed"])
+        self.assertNotIn("outside", (out or {}).get("reason", ""))
+
     def test_unknown_session_is_allowed(self):
         self.write("notes.txt")
         out, err = self.run_hook(prompt="fix a typo")
