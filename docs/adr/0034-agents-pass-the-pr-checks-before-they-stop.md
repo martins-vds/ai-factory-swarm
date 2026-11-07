@@ -83,5 +83,8 @@ another agent turn, with its `reason` as the prompt. That turn counts against th
   after the hooks. The first live run must confirm that work done in a blocked-then-continued turn is
   committed and pushed. If it isn't, the reason must tell the agent to commit and push itself.
 - Local workers: the Copilot CLI reads the same `.github/hooks/` file. Claude Code's `Stop` hook uses
-  the same `decision: "block"` contract but is configured in `.claude/settings.json`, so bootstrap
-  writes that entry too. One script serves both.
+  the same `decision: "block"` contract but is configured in `.claude/settings.json`. Copilot also reads
+  that file, so writing it could run the check twice per stop. Bootstrap doesn't write it until that is
+  checked on a local worker; the script already accepts both payloads.
+- **Operator scope extensions are machine-readable:** an `AFS-SCOPE: <path>` line in the issue (one per
+  path) adds that path to the ticket's scope. The finish check reads it from the agent's prompt.
