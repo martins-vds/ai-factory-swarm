@@ -105,6 +105,12 @@ def meaningful_pr_reference(value):
     return isinstance(value, str) and PR_REFERENCE.fullmatch(value) is not None
 
 
+def shallow_history(folder):
+    """True when the repository holding `folder` is a shallow clone (history-based checks can't run)."""
+    r = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=folder, capture_output=True, text=True)
+    return r.returncode == 0 and r.stdout.strip() == "true"
+
+
 def pre_rule_null_pr(path, folder):
     """Keep an unchanged null-PR return that predates this validator rule as historical output."""
     def git(*args):
@@ -213,8 +219,13 @@ def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
     if finished:
         if (doc.get("role") in pr_roles and not meaningful_pr_reference(doc.get("pr")) and
                 not (doc.get("pr") is None and pre_rule_null_pr(path, folder))):
-            errors.append(f"{path}: finished return requires a meaningful PR reference; fill `pr:` before "
-                          "finishing (or record a handoff while work is incomplete)")
+            if doc.get("pr") is None and shallow_history(folder):
+                errors.append(f"{path}: can't check this return's pre-rule exemption: the clone's history is "
+                              "shallow. Run `git fetch --unshallow origin` (afs-setup-check step 2) and re-run; "
+                              "don't edit the return")
+            else:
+                errors.append(f"{path}: finished return requires a meaningful PR reference; fill `pr:` before "
+                              "finishing (or record a handoff while work is incomplete)")
         for key, value in (doc.get("gates") or {}).items():
             if value is None:
                 errors.append(f"{path}: gates.{key} is null in a finished return; give the value, or "
