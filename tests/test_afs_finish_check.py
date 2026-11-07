@@ -170,6 +170,23 @@ class FinishCheckTest(unittest.TestCase):
         self.assertNotIn(".migration/returns/BK-05D.afs-specialist-migrator.yaml", trace["changed"])
         self.assertNotIn("outside", (out or {}).get("reason", ""))
 
+    def test_another_roles_return_must_be_restored(self):
+        r = self.repo
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 343\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "migrator")
+        git(r, "push", "-q", "origin", "copilot/bk-05d")
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-verify")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 999\n")
+        self.write(".migration/returns/BK-05D.afs-verifier.yaml", "role: afs-verifier\nticket: BK-05D\n")
+        out, _ = self.run_hook(session="o1", prompt="**Role:** `afs-verifier`. Verify `BK-05D`.")
+        self.assertIn("another role's or ticket's return", out["reason"])
+        self.assertIn("BK-05D.afs-specialist-migrator.yaml", out["reason"])
+        # put back exactly: no longer a finding, even though a commit touched it
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 343\n")
+        out, _ = self.run_hook(session="o2", prompt="**Role:** `afs-verifier`. Verify `BK-05D`.")
+        self.assertNotIn("another role", (out or {}).get("reason", ""))
+
     def test_unknown_session_is_allowed(self):
         self.write("notes.txt")
         out, err = self.run_hook(prompt="fix a typo")

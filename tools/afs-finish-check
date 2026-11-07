@@ -11,6 +11,8 @@ by hand. It checks the session's own work, with the same rules CI applies:
               session's own records, plus `AFS-SCOPE: <path>` lines in the issue (an operator extension).
               A file outside them needs a handoff that names it: an agent never widens its own scope.
   stuck gate  a return that reports a handoff (`handoff:` set) must have committed that handoff.
+  own return  no other return file differs from the base branch: a session writes only its own (pilot:
+              a Verifier rewrote the Migrator's return to point at its own PR).
 
 As a hook it reads the hook payload on stdin and prints `{"decision": "block", "reason": …}` to send the
 agent back with the exact fix, or nothing to let it stop. It allows the stop:
@@ -78,6 +80,27 @@ def other_branch_tips(branch):
     tips |= {r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
              if r not in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD")}
     return sorted(tips)
+
+
+def base_tip():
+    """The nearest other-branch tip HEAD contains: where this session's own work starts."""
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    best, best_n = None, None
+    for tip in other_branch_tips(branch):
+        n = git("rev-list", "--count", f"{tip}..HEAD").strip()
+        if n.isdigit() and (best_n is None or int(n) < best_n):
+            best, best_n = tip, int(n)
+    return best
+
+
+def net_changed_returns():
+    """Return files whose content now differs from the base tip (an edit put back is not a change)."""
+    tip = base_tip()
+    if not tip:
+        return []
+    out = git("diff", "--name-only", tip, "--", ".migration/returns/")
+    untracked = git("ls-files", "--others", "--exclude-standard", "--", ".migration/returns/")
+    return sorted({p for p in (out + untracked).splitlines() if p})
 
 
 def branch_changes():
@@ -189,6 +212,12 @@ def findings(ticket, role, changed, prompt):
         found.append(("mechanical", "stale-return",
                       f"`{ret_rel}` exists but this branch didn't update it. Update it with this session's gates "
                       "and PR, and commit it."))
+    others = [p for p in net_changed_returns() if p != ret_rel]
+    if others:
+        found.append(("mechanical", "other-returns:" + ",".join(others),
+                      "You changed another role's or ticket's return file: " + ", ".join(f"`{p}`" for p in others)
+                      + ". A session writes only its own return (`" + ret_rel + "`). Restore each one exactly as it "
+                      "was on your base branch (`git checkout <base> -- <file>`) and commit."))
     for err in validate_errors(changed):
         found.append(("mechanical", "validate:" + err.split(":")[0],
                       f"CI's validate.py will fail on this: {err}. Fix it and commit."))
