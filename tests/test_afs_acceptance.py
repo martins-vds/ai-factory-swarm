@@ -111,6 +111,46 @@ class AcceptanceTest(unittest.TestCase):
         self.assertIn("status=verified", verified.stdout)
         self.assertNotEqual(self.run_gates().returncode, 0, "existing artifacts must not be overwritten")
 
+    def publish(self, origin):
+        """What the workflow's publish job does: the artifact's files as the tree of afs/acceptance/<run>-<attempt>."""
+        work = pathlib.Path(self.tmp.name + "-publish")
+        shutil.copytree(self.out, work)
+        self.addCleanup(shutil.rmtree, work, True)
+        for cmd in (["init", "-q", "-b", "afs/acceptance/123-1"], ["add", "-A"],
+                    ["-c", "user.name=bot", "-c", "user.email=bot@x", "commit", "-qm", "evidence"],
+                    ["push", "-q", str(origin), "HEAD:refs/heads/afs/acceptance/123-1"]):
+            subprocess.run(["git", *cmd], cwd=work, check=True, capture_output=True)
+
+    def test_evidence_fetched_from_the_publish_branch_verifies_like_the_artifact(self):
+        # pilot BK-ACCEPT: Copilot's firewall blocked the artifact's storage host; git reaches the branch
+        self.assertEqual(self.run_gates().returncode, 0)
+        origin = pathlib.Path(self.tmp.name + "-origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+        self.addCleanup(shutil.rmtree, origin, True)
+        self.git("remote", "add", "origin", str(origin))
+        self.publish(origin)
+        shutil.rmtree(self.out)
+        self.out = self.repo / ".migration/runs/fetched"
+        fetched = self.execute("fetch", "--run-id", "123", "--attempt", "1", "--dest", str(self.out))
+        self.assertEqual(fetched.returncode, 0, fetched.stderr)
+        verified = self.verify()
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertIn("status=verified", verified.stdout)
+        again = self.execute("fetch", "--run-id", "123", "--attempt", "1", "--dest", str(self.out))
+        self.assertEqual(again.returncode, 2, "a non-empty destination is refused")
+        missing = self.execute("fetch", "--run-id", "124", "--attempt", "1", "--dest", str(self.repo / ".migration/runs/x"))
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("no evidence branch afs/acceptance/124-1", missing.stderr)
+
+    def test_the_workflow_publishes_evidence_from_a_write_job_that_runs_no_target_code(self):
+        text = (ROOT / "templates/target/afs-acceptance.yml").read_text()
+        publish = text.split("\n  publish:\n", 1)[1]
+        self.assertIn("needs: acceptance", publish)
+        self.assertIn("afs/acceptance/${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}", publish)
+        self.assertNotIn("actions/checkout", publish, "the write job never checks out or runs target code")
+        acceptance = text.split("\n  acceptance:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        self.assertNotIn("contents: write", acceptance, "the gate job stays read-only")
+
     def test_the_run_gates_its_own_target_graph_for_its_commit(self):
         run = self.run_gates()
         self.assertEqual(run.returncode, 0, run.stderr + run.stdout)

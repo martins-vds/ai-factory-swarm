@@ -258,6 +258,29 @@ def run(ticket, out):
     return code
 
 
+def fetch(run_id, attempt, dest, remote="origin"):
+    """The run's evidence from the branch its workflow's publish job pushed (git reaches github.com from any
+    session, unlike the artifact's storage hosts). Integrity is checked by `verify`, exactly as for the
+    artifact; this only copies the tree out, refusing a non-empty destination."""
+    if not re.fullmatch(r"[0-9]+", str(run_id)) or not re.fullmatch(r"[0-9]+", str(attempt)):
+        raise EvidenceError("run id and attempt must be numbers")
+    branch = f"afs/acceptance/{run_id}-{attempt}"
+    dest = pathlib.Path(dest)
+    if dest.exists() and any(dest.iterdir()):
+        raise EvidenceError(f"{dest} is not empty")
+    try:
+        git("fetch", "--quiet", remote, f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}")
+    except subprocess.CalledProcessError as e:
+        raise EvidenceError(f"no evidence branch {branch} on {remote}: the run's publish job may not have "
+                            f"finished, or the run left no artifact") from e
+    dest.mkdir(parents=True, exist_ok=True)
+    archive = subprocess.run(["git", "archive", "--format=tar", f"{remote}/{branch}"], capture_output=True, check=True)
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive.stdout, check=True)
+    tip = git("rev-parse", f"{remote}/{branch}").decode().strip()
+    print(f"fetched {branch} at {tip} into {dest}")
+    return tip
+
+
 def verify(out, commit, run_id, attempt):
     result = json.loads((out / "result.json").read_text(encoding="utf-8"))
     if result.get("format") != 1 or result.get("status") != "passed" or result.get("exit") != 0:
@@ -341,6 +364,10 @@ def main(argv=None):
     runner = sub.add_parser("run")
     runner.add_argument("--ticket", required=True)
     runner.add_argument("--out", type=pathlib.Path, required=True)
+    fetcher = sub.add_parser("fetch", help="fetch a run's evidence from its afs/acceptance/<run>-<attempt> branch")
+    fetcher.add_argument("--run-id", required=True)
+    fetcher.add_argument("--attempt", required=True)
+    fetcher.add_argument("--dest", type=pathlib.Path, required=True)
     checker = sub.add_parser("verify")
     checker.add_argument("artifact", type=pathlib.Path)
     checker.add_argument("--commit", required=True)
@@ -351,6 +378,9 @@ def main(argv=None):
     try:
         if args.operation == "verify":
             return verify(args.artifact, args.commit, args.run_id, args.attempt)
+        if args.operation == "fetch":
+            fetch(args.run_id, args.attempt, args.dest)
+            return 0
         def interrupted(signum, frame):
             raise Interrupted(signum)
         for sig in (signal.SIGTERM, signal.SIGINT):
