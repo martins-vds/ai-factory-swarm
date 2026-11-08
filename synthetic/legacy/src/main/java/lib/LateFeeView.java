@@ -10,12 +10,8 @@ import jakarta.ws.rs.core.Response;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
-/**
- * GET /fees/{loanId}: an HTML page with the loan's late fee.
- *
- * The fee rule lives here, in the page that renders it: 25 cents per day late, capped at 10 dollars,
- * waived for returns at most 2 days late. (Scenario `misplaced-rule`, ADR-0037.)
- */
+/** GET /fees/{loanId}: an HTML page with the loan's late fee (25 cents per day late, capped at 10 dollars,
+ * waived for returns at most 2 days late). */
 @Path("fees")
 public class LateFeeView {
     private final LoanRepository loans;

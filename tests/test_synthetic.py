@@ -1,6 +1,7 @@
 """ADR-0037: every return-file, ledger and label value path is targeted by a synthetic scenario or was
 exercised by the pilot; the synthetic legacy app builds; coverage unions across targets."""
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -54,6 +55,16 @@ class CatalogTest(unittest.TestCase):
         self.assertIn("@Path(", java)
         self.assertTrue((legacy / "pom.xml").exists())
         self.assertIn("legacy smoke test passed", (ROOT / "synthetic/legacy-smoke.yml").read_text())
+
+
+class BlindTest(unittest.TestCase):
+    def test_the_legacy_app_names_no_scenario_or_expected_outcome(self):
+        # the first Bootstrapper cited a copied catalog as its evidence: the target must stay blind (ADR-0037)
+        words = re.compile(r"scenario|ADR-|tier\b|characteri[sz]|misplaced|review-only|coverage|harness", re.I)
+        for p in (ROOT / "synthetic/legacy").rglob("*"):
+            if p.is_file():
+                with self.subTest(p.name):
+                    self.assertIsNone(words.search(p.read_text(errors="ignore")), p)
 
 
 class UnionTest(unittest.TestCase):

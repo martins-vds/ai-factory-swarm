@@ -42,7 +42,9 @@ install.
    patches, `graph.enrich` and `graph.require` (copy the stack pack's `graph` block; bootstrap refuses a
    profile without them), risk-map exclusions (vendored/minified/generated code), stack skills, gate commands,
    thresholds (defaults unless the operator says otherwise), concurrency, context budgets, RTK edition.
-5. **Install** with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
+5. **Install** (in a session that may write `.github/`; the Copilot coding agent may not change
+   `.github/agents/`, so there you stop after steps 1–4, commit the profile and checklist, and hand off: the
+   dispatcher runs this step) with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
    installed): `--target <clone> --profile <profile> --capabilities <checklist> --stack-pack
    stacks/<pack>.json --create-gap-issues`. Give a new gap `ticket: new` and bootstrap opens its operator
    issue. It installs pinned role agents to `.github/agents/`, skills (built-in menu plus stack pack) to
