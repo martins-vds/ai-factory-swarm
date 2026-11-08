@@ -16,7 +16,7 @@ Two layers (ADR-0025):
 
 Framework enrichers (the stack pack names which ones a migration uses):
   java-ee   JPA @Entity/@Table → table; EntityManager queries/find → reads_from; persist/merge/remove →
-            writes_to; JAX-RS @Path + verbs → endpoint, routes; JSF *.xhtml → page, EL #{bean.x} →
+            writes_to; JAX-RS @Path + verbs → endpoint, routes; JSF *.xhtml, static HTML and JSP → page, EL #{bean.x} →
             routes to the @Named bean; CDI/EJB @Inject/@EJB fields → calls; JMS producers →
             publishes → queue → triggers → @MessageDriven; @ServerEndpoint → `WS` endpoint; CDI
             Event<T>.fire → publishes → `cdi-event` → triggers → @Observes; @Schedule → `timer` → triggers;
@@ -440,6 +440,30 @@ def enrich_java_ee(g, root):
             if hit:
                 sub = rel(hit, root)
                 g.edge(pid, g.node("page", sub, sub, "jsf-page", f"JSF page {sub}"), "contains", "jsf-include")
+
+    # Pages beyond JSF: static HTML and JSP views. A JAX-RS resource that serves one (a string literal naming
+    # its path, e.g. getResourceAsStream("/static/about.html")) routes to it (synthetic target: the
+    # stack pack requires `page`, and an app whose UI is static HTML had none).
+    skip = {"target", "build", "node_modules", "test", "tests", ".git"}
+    views = sorted(f for f in root.rglob("*") if f.is_file() and f.suffix.lower() in (".html", ".htm", ".jsp")
+                   and not skip & set(f.relative_to(root).parts[:-1]))
+    for f in views:
+        path = rel(f, root)
+        kind = "jsp-page" if f.suffix.lower() == ".jsp" else "static-page"
+        pid = g.node("page", path, path, kind, f"{'JSP' if kind == 'jsp-page' else 'Static'} page {path}")
+        fid = f"file:{path}"
+        if fid in g.nodes:
+            g.edge(fid, pid, "contains", kind)
+        link_page(g, pid, f.read_text(encoding="utf-8", errors="ignore"), eps, "page-script")
+        parts = f.relative_to(root).parts
+        anchor_dirs = [i for i, x in enumerate(parts) if x in ("resources", "webapp", "static", "public")]
+        served = "/".join(parts[anchor_dirs[0] + 1:]) if anchor_dirs else f.name   # path as the app names it
+        for fq, t in types.items():
+            if not re.search(rf"\"/?{re.escape(served)}\"", t.text):
+                continue
+            for n in list(g.nodes.values()):
+                if n.get("type") == "endpoint" and n.get("filePath") == t.path:
+                    g.edge(n["id"], pid, "routes", "serves-page", description=f"serves {served}")
 
 
 # ---------------------------------------------------------------------------------------------- Django
