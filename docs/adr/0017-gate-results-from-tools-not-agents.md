@@ -64,3 +64,16 @@ checked normally. Returns in `.migration/harness/legacy-returns.json` retain the
 older returns not covered by either history rule or that list are not silently grandfathered. Detecting
 the rule-introduction commit requires local Git history that contains it; if that history is unavailable,
 the validator fails closed and the return needs attribution.
+
+### Amendment (2026-11-08): a failing test run always kills the mutant
+
+mutmut 2.x reads a mutant as killed only when the test command exits 1. A mutant that breaks an
+import makes pytest exit 2 (collection error), and mutmut counted it as survived. On the pilot this
+held BK-05H at 0.763 for two sessions: all nine survivors were `x = None` or `include('XX…XX')` in
+`urls.py`, which existing tests already caught. The number came from a tool, but the tool misread the
+tests' result.
+
+`afs-mutation` now runs each mutant's narrowed tests in-process through `afs-mutation --pytest`, which
+exits 1 for any failing run (pytest 2, 3, 4) and passes 0 and 5 through. A baseline that can't import
+now fails as a mutmut error instead of passing silently. Scores recorded before this change may be
+too low, never too high. A `--runner` the operator passes is still used as given.
