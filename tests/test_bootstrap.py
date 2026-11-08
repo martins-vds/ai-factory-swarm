@@ -128,6 +128,15 @@ class BootstrapTest(unittest.TestCase):
             with self.assertRaisesRegex(bootstrap.BootstrapError, "isn't on origin/main"):
                 bootstrap.check_release(False)
 
+    def test_workflows_that_install_dev_requirements_install_a_playwright_browser(self):
+        # synthetic SY-03: Playwright from requirements-dev.txt had no browser; the session edited the generated
+        # setup file to add one. Every workflow that installs the dev requirements installs the browser too.
+        for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-acceptance.yml"):
+            text = (ROOT / "templates/target" / name).read_text()
+            self.assertIn("requirements-dev.txt", text)
+            self.assertIn("playwright install --with-deps chromium", text, name)
+            self.assertIn('python -c "import playwright"', text, name)
+
     def test_every_workflow_declares_its_permissions(self):
         # ADR-0039: a target may set read-only default workflow permissions; no harness workflow relies on the default
         for wf in sorted((ROOT / "templates/target").glob("*.yml")):

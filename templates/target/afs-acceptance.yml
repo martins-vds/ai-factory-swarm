@@ -48,6 +48,9 @@ jobs:
           for f in requirements-dev.txt requirements.txt; do
             if [ -f "$f" ]; then pip install -q -r "$f"; break; fi
           done
+          # A target that tests its UI in a browser lists Playwright in its dev requirements; its browser
+          # isn't a pip package, so install it here (sessions can't edit this generated file).
+          if python -c "import playwright" 2>/dev/null; then python -m playwright install --with-deps chromium; fi
       - name: Start real test services
         run: python .migration/harness/tools/afs-services up
       - name: Run fresh acceptance gates, including full mutation
