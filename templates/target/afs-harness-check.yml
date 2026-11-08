@@ -38,7 +38,7 @@ jobs:
       - name: Migration state is valid
         run: python .migration/harness/tools/validate.py .migration
       - name: Session records are append-only
-        if: github.event_name == 'pull_request'
+        if: "!cancelled() && github.event_name == 'pull_request'"
         run: |
           # ADR-0021: the session hook commits one record per agent session. A PR may add records, never
           # change or delete one: they are the only trace of what sessions cost and which tools they ran.
@@ -48,6 +48,7 @@ jobs:
             exit 1
           fi
       - name: No unopened quirk drafts
+        if: "!cancelled()"   # every check reports, not only the first that fails
         run: |
           # Quirk drafts are an outbox: the orchestrator opens each as an issue, links it in the ledger and
           # removes the file. A PR that still carries drafts is not ready to merge.
@@ -56,26 +57,31 @@ jobs:
             exit 1
           fi
       - name: Compose file defines the profile's test services, each with a healthcheck
+        if: "!cancelled()"   # every check reports, not only the first that fails
         run: python .migration/harness/tools/afs-services lint
       # ADR-0019: a stale source graph always fails; an acceptance (auditor verdict: complete) also needs a
       # target graph built from this code. Otherwise a stale target graph is only a warning.
       - name: Code graphs describe the code they claim to
+        if: "!cancelled()"   # every check reports, not only the first that fails
         run: python .migration/harness/tools/check_graph_fresh.py ${{{{ github.event_name == 'pull_request' && format('--acceptance-since origin/{{0}}', github.event.pull_request.base.ref) || '' }}}}
       # ADR-0020: the source graph has the profile's required types and every slice's source anchors reach
       # data; the target graph is held to the same at acceptance.
       - name: The source graph only grows
-        if: github.event_name == 'pull_request'
+        if: "!cancelled() && github.event_name == 'pull_request'"
         run: python .migration/harness/tools/preserve_graph.py check --base "origin/${{{{ github.event.pull_request.base.ref }}}}" --side source
 
       - name: Code graphs reach the data
+        if: "!cancelled()"   # every check reports, not only the first that fails
         run: |
           python .migration/harness/tools/graph_gate.py --side source > /dev/null
           if [ "${{{{ github.event_name }}}}" = pull_request ]; then
             python .migration/harness/tools/graph_gate.py --side target --acceptance-since "origin/${{{{ github.event.pull_request.base.ref }}}}" > /dev/null
           fi
       - name: Harness files are unchanged
+        if: "!cancelled()"   # every check reports, not only the first that fails
         run: python .migration/harness/tools/check_installed.py
       - name: RTK block and hook match RTK {rtk_version}
+        if: "!cancelled()"   # every check reports, not only the first that fails
         env:
           GH_TOKEN: ${{{{ github.token }}}}
         run: |
