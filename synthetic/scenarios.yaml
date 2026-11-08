@@ -1,0 +1,109 @@
+# ADR-0037: the synthetic target's scenarios. Each targets coverage paths (harness_coverage.py keys) that
+# real work must produce. pilot_exercised: paths the pilot has already produced (harness_coverage.py, 2026-11-08).
+version: 1
+pilot: martins-vds/ai-factory-pilot-target
+pilot_exercised:
+- label:afs:capability-gap
+- label:afs:slice
+- label:afs:ticket
+- label:wayfinder:grilling
+- label:wayfinder:map
+- label:wayfinder:research
+- label:wayfinder:task
+- ledger:characterization_tier:A
+- ledger:characterization_tier:B
+- ledger:kind:behavioral
+- ledger:kind:data
+- ledger:kind:integration
+- ledger:kind:structural
+- ledger:kind:ui
+- ledger:status:dropped
+- ledger:status:in-progress
+- ledger:status:migrated
+- ledger:status:pending
+- ledger:status:replaced
+- ledger:verification:characterized
+- ledger:verification:differential
+- ledger:verification:legacy-test
+- ledger:verification:pending
+- ledger:verification:spec-derived
+- role:afs-analyst
+- role:afs-auditor
+- role:afs-bootstrapper
+- role:afs-characterizer
+- role:afs-migrator
+- role:afs-planner
+- role:afs-program-orchestrator
+- role:afs-slice-coordinator
+- role:afs-specialist-migrator
+- role:afs-verifier
+- value:afs-auditor:gaps.class:broken-flow
+- value:afs-auditor:gaps.class:integration
+- value:afs-auditor:gaps.class:missing
+- value:afs-auditor:gaps.class:untested
+- value:afs-auditor:verdict:complete
+- value:afs-auditor:verdict:gaps-remain
+- value:afs-bootstrapper:characterization_tier:A
+- value:afs-program-orchestrator:dispatched.status:returned
+- value:afs-program-orchestrator:dispatched.status:running
+- value:afs-slice-coordinator:human_check:deferred
+- value:afs-slice-coordinator:human_check:passed
+- value:afs-slice-coordinator:human_check:requested
+- value:afs-specialist-migrator:specialty:data
+- value:afs-specialist-migrator:specialty:messaging
+- value:afs-specialist-migrator:specialty:ui
+- value:afs-verifier:findings.severity:blocker
+- value:afs-verifier:findings.severity:major
+- value:afs-verifier:findings.severity:minor
+- value:afs-verifier:verdict:blocked
+- value:afs-verifier:verdict:changes-required
+- value:afs-verifier:verdict:pass
+scenarios:
+- id: misplaced-rule
+  targets:
+  - value:afs-auditor:gaps.class:misplaced
+  legacy: src/main/java/lib/LateFeeView.java
+  how: The late-fee rule is computed in the page that renders it. A target that carries it over faithfully puts a business
+    rule in the interface layer; the Auditor classifies that delta as misplaced (ADR-0001).
+- id: partial-runtime
+  targets:
+  - value:afs-bootstrapper:characterization_tier:B
+  legacy: src/main/java/lib/FinePayments.java
+  how: 'Fine payments call a payment gateway with no test instance, so the legacy app runs only partly: the Bootstrapper''s
+    capability check finds the legacy environment partial (tier B).'
+- id: spec-only
+  targets:
+  - value:afs-bootstrapper:characterization_tier:C
+  - ledger:characterization_tier:C
+  legacy: docs/reports-spec.md
+  how: The monthly report exists only as a written spec. Bootstrapping before `run.sh` is provided gives tier C for the target;
+    the report capability itself can only be characterized from the spec (ledger tier C).
+- id: deferred-capability
+  targets:
+  - ledger:status:deferred
+  legacy: docs/export-csv.md
+  how: The operator decides to defer the CSV export when approving the plan; the Planner records it as a proposed deferral
+    and the ledger entry becomes deferred.
+- id: static-page
+  targets:
+  - ledger:verification:review-only
+  legacy: src/main/resources/static/about.html
+  how: The about page has no behaviour to execute; its migration can only be verified by review.
+- id: blocked-dispatch
+  targets:
+  - value:afs-program-orchestrator:dispatched.status:blocked
+  legacy: src/main/java/lib/FinePayments.java
+  how: Fine payments depend on the late-fee ticket; a Program Orchestrator checkpoint taken while it waits records the dispatch
+    as blocked.
+- id: human-check-issues
+  targets:
+  - value:afs-slice-coordinator:human_check:issues
+  legacy: src/main/java/lib/LateFeeView.java
+  how: 'The fee page''s exact text (''Fee: $4.75'', ''19 day(s) late'') is easy to get subtly wrong. The operator''s side-by-side
+    check reports what differs; the operator decides, never an agent (ADR-0031).'
+- id: prototype-decision
+  targets:
+  - label:wayfinder:prototype
+  legacy: docs/export-csv.md
+  how: How overdue members are told (email or an in-app banner) is an open decision with no legacy behaviour to copy; the
+    decision map resolves it by building a prototype.

@@ -1,6 +1,6 @@
 # ADR-0037: A synthetic target exercises the paths the pilot can't
 
-- Status: Proposed
+- Status: Accepted (martins-vds, 2026-11-07: "Merge … 122")
 - Date: 2026-11-08
 - Extends: ADR-0027
 

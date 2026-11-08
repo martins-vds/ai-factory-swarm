@@ -27,6 +27,8 @@ enough. `afs-drill` makes the failing runs on purpose. Step-level evidence never
 
   harness_coverage.py --repo owner/repo [--runs 60] [--out .migration/coverage.md]
   harness_coverage.py --offline                      git evidence only (no GitHub calls)
+  harness_coverage.py --repo o/r --json pilot.json      also write each path's status by key
+  harness_coverage.py --union pilot.json synthetic.json  the union across targets (ADR-0037)
 Prints the Markdown report and `AFS-RESULT gate=coverage …`. Exit 0 (a report, not a gate). Needs git, PyYAML.
 """
 import argparse
@@ -187,43 +189,74 @@ def value_at(doc, dotted):
     return {str(v) for v in cur if not isinstance(v, (dict, list))}
 
 
+RANK = {True: 2, None: 1, False: 0}
+
+
+def union(files, out_path=None):
+    """ADR-0037: a path counts once any target exercised it; each line names the target(s) that did."""
+    reports = [json.loads(pathlib.Path(f).read_text(encoding="utf-8")) for f in files]
+    keys = sorted({k for r in reports for k in r["paths"]})
+    lines, done = ["# Harness coverage across targets\n", "Union of: " + ", ".join(f"`{r.get('repo')}`" for r in reports) + "\n"], 0
+    for k in keys:
+        entries = [(r.get("repo"), r["paths"][k]) for r in reports if k in r["paths"]]
+        best = max((e["ok"] for _, e in entries), key=lambda v: RANK[v])
+        by = [repo for repo, e in entries if e["ok"] is True]
+        done += best is True
+        mark = {True: "✅", None: "⚠️", False: "❌"}[best]
+        lines.append(f"- {mark} `{k}`" + (f" (by {', '.join(by)})" if by else ""))
+    lines.append(f"\n**{done} of {len(keys)} paths exercised across {len(reports)} target(s); {len(keys) - done} to go.**")
+    text = "\n".join(lines) + "\n"
+    if out_path:
+        pathlib.Path(out_path).write_text(text, encoding="utf-8")
+    print(text)
+    print(f"AFS-RESULT gate=coverage-union targets={len(reports)} paths={len(keys)} exercised={done} gaps={len(keys) - done}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", help="owner/repo, for workflow runs and labels")
     ap.add_argument("--runs", type=int, default=60, help="recent runs per workflow to inspect")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--out")
+    ap.add_argument("--json", help="also write every path's status, by key, for --union")
+    ap.add_argument("--union", nargs="+", metavar="JSON", help="combine --json reports of several targets (ADR-0037)")
     a = ap.parse_args(argv)
+    if a.union:
+        return union(a.union, a.out)
     u = universe()
     out, gaps, total = ["# Harness coverage\n",
                         "Derived from the installed harness; evidence from git history and GitHub (ADR-0027).\n"], [], 0
 
-    def line(ok, text):
+    paths = {}
+
+    def line(ok, text, key):
         nonlocal total
         total += 1
         mark = {True: "✅", None: "⚠️", False: "❌"}[ok]
         if ok is not True:
             gaps.append(text)
         out.append(f"- {mark} {text}")
+        paths[key] = {"ok": ok, "text": text}
 
     returns = history(".migration/returns")
     ledger = history(".migration/ledger")
     out.append("## Agent roles (a committed return file)\n")
     seen_roles = collections.Counter(r.get("role") for r in returns)
     for role in u["roles"]:
-        line(seen_roles[role] > 0, f"`{role}`: {seen_roles[role]} return file version(s)")
+        line(seen_roles[role] > 0, f"`{role}`: {seen_roles[role]} return file version(s)", f"role:{role}")
     out.append("\n## Role-specific values in return files\n")
     for role, fields in sorted(u["role_fields"].items()):
         mine = [r for r in returns if r.get("role") == role]
         for field, values in sorted(fields.items()):
             seen = set().union(*[value_at(r, field) for r in mine]) if mine else set()
             for v in values:
-                line(v in seen, f"`{role}` `{field}: {v}`")
+                line(v in seen, f"`{role}` `{field}: {v}`", f"value:{role}:{field}:{v}")
     out.append("\n## Ledger values (any version of any entry)\n")
     for field, values in sorted(u["ledger"].items()):
         seen = set().union(*[value_at(e, field) for e in ledger]) if ledger else set()
         for v in values:
-            line(v in seen, f"`{field}: {v}`")
+            line(v in seen, f"`{field}: {v}`", f"ledger:{field}:{v}")
 
     # Tools: pass/fail from journals and workflow steps
     passed, failed, where = collections.defaultdict(int), collections.defaultdict(int), collections.defaultdict(set)
@@ -272,7 +305,8 @@ def main(argv=None):
             ok = True if p and f else (None if p or f or unconfirmed[t] else False)
         extra = f", step-level only {unconfirmed[t]}" if unconfirmed[t] else ""
         extra += " · no verdict: seen running is enough" if t in u["no_verdict"] else ""
-        line(ok, f"`{t}`: passed {p}, failed {f}{extra}" + (f" ({'; '.join(sorted(where[t]))})" if where[t] else ""))
+        line(ok, f"`{t}`: passed {p}, failed {f}{extra}" + (f" ({'; '.join(sorted(where[t]))})" if where[t] else ""),
+             f"tool:{t}")
     if wf_conclusions:
         out.append("\n## Generated workflows (recent runs)\n")
         for name, c in sorted(wf_conclusions.items()):
@@ -280,16 +314,19 @@ def main(argv=None):
                 ok = bool(c.get("success") or c.get("failure"))
             else:
                 ok = True if c.get("success") and c.get("failure") else (None if c.get("success") else False)
-            line(ok, f"`{name}`: " + (", ".join(f"{k}={v}" for k, v in sorted(c.items(), key=str)) or "never ran"))
+            line(ok, f"`{name}`: " + (", ".join(f"{k}={v}" for k, v in sorted(c.items(), key=str)) or "never ran"),
+                 f"workflow:{name}")
         labels = [lb["name"] for lb in gh(f"repos/{a.repo}/labels?per_page=100") or []
                   if lb["name"].startswith(("afs:", "wayfinder:"))]
         out.append("\n## Labels (issues ever labelled)\n")
         for lb in sorted(labels):
             n = len(gh(f"repos/{a.repo}/issues?state=all&labels={lb}&per_page=100") or [])
-            line(n > 0, f"`{lb}`: {n} issue(s)")
+            line(n > 0, f"`{lb}`: {n} issue(s)", f"label:{lb}")
     covered = total - len(gaps)
     out.append(f"\n**{covered} of {total} paths exercised; {len(gaps)} to go.**")
     report = "\n".join(out) + "\n"
+    if a.json:
+        pathlib.Path(a.json).write_text(json.dumps({"repo": a.repo, "paths": paths}, indent=1) + "\n", encoding="utf-8")
     if a.out:
         pathlib.Path(a.out).write_text(report, encoding="utf-8")
     print(report)
