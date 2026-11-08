@@ -280,6 +280,9 @@
       "timeout": 3600,
       "expect": {
         "tool": "data_snapshot.py"
+      },
+      "inputs": {
+        "reason": "afs-drill: an export that can't reach the legacy database must fail"
       }
     },
     {

@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** GET /about: a static page. Nothing to execute but the page itself. (Scenario `static-page`, ADR-0037.) */
+/** GET /about: the about page. */
 @Path("about")
 public class AboutPage {
     @GET

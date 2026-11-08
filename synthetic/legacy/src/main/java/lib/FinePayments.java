@@ -13,13 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
-/**
- * POST /payments/{loanId}: charges the late fee through the library's payment gateway.
- *
- * The gateway (PAYMENT_GATEWAY_URL, default https://payments.lending-library.invalid) has no test
- * instance, so this part of the legacy app can't run outside production: it can be characterized only
- * partly. (Scenario `partial-runtime`, ADR-0037.)
- */
+/** POST /payments/{loanId}: charges the late fee through the library's payment gateway (PAYMENT_GATEWAY_URL). */
 @Path("payments")
 public class FinePayments {
     private final LoanRepository loans;

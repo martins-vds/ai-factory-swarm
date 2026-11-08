@@ -1,7 +1,7 @@
 # Monthly lending report (specification)
 
-The legacy reporting module was a separate product whose code and runtime are lost. This specification is
-all that remains. (Scenario `spec-only`, ADR-0037.)
+The reporting module was a separate product; its code and runtime are no longer available. This specification is
+all that remains.
 
 - Run on the first day of each month for the previous month.
 - One row per member: member id, loans started, loans returned late, total late fees in cents.

@@ -15,3 +15,7 @@ paths appear only when the normal role sessions, gates and operator decisions pr
 The catalog test (`tests/test_synthetic.py`) fails when the harness can produce a return-file or ledger
 value that no scenario targets and that isn't recorded as exercised by a real pilot
 (`pilot_exercised` in `scenarios.yaml`).
+
+**Keep the target blind.** Nothing in the target repository (legacy code, docs, README, issues) may name a
+scenario or its expected outcome. Agents decide from evidence; a hint makes the outcome worthless. The first
+Bootstrapper run read a copied catalog and cited it as evidence for its tier, so the catalog stays here only.

@@ -104,6 +104,12 @@ class DrillDataTest(unittest.TestCase):
                     self.assertIn(d["expect"]["tool"], tools, "a drill expects a real tool")
                 if d["trigger"] == "dispatch":
                     self.assertIn(d["workflow"], workflows)
+                    text = (ROOT / "templates/target" / d["workflow"]).read_text()
+                    head = text[text.index("\non:"):text.index("\njobs:")]           # the triggers only
+                    on = yaml.safe_load(head.replace("{{", "{").replace("}}", "}"))[True]
+                    required = [k for k, v in ((on.get("workflow_dispatch") or {}).get("inputs") or {}).items()
+                                if (v or {}).get("required")]
+                    self.assertFalse(set(required) - set(d.get("inputs", {})), "the drill gives every required input")
 
 
 class VerdictTest(unittest.TestCase):
