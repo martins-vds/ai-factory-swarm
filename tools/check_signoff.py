@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A slice's human sign-off is an approving PR review by a named approver (ADR-0031).
+"""A slice's human sign-off is an approving PR review by a named approver (ADR-0031, ADR-0036).
 
 A Slice Coordinator records the human side-by-side check as `human_check: passed` in its return file.
 An agent can write that line, so the line alone proves nothing. The sign-off is the approver's own
@@ -16,11 +16,18 @@ sign-off, the PRs that contain the commit that set it (`commits/{sha}/pulls`), s
 plain git still needs the approval. With no new sign-off the check passes. Older returns are not
 re-judged.
 
+A deferral (`human_check: deferred`, ADR-0036) is a sign-off decision too: it needs the same approval, plus
+`human_check_issue` and a `human_check_due` at most 30 days ahead. Every run lists deferrals; one past due
+warns, and one more than 30 days past due fails. `--deferrals --comment` (daily schedule) reminds on the issue.
+
+  check_signoff.py --repo owner/repo --deferrals [--comment]
+
 Residual risk (ADR-0031): a session holding the approver's own GitHub login could submit the review.
 Agents must never do that; the review is the approver's act alone.
 Uses git, PyYAML and `gh api`.
 """
 import argparse
+import datetime
 import json
 import pathlib
 import subprocess
@@ -50,19 +57,94 @@ def approvers(profile_text):
     return [a for a in ((doc.get("signoff") or {}).get("approvers") or []) if a]
 
 
-def passed(text):
+SIGNED = ("passed", "deferred")       # a deferral is a sign-off decision too (ADR-0036)
+MAX_DEFER_DAYS, FAIL_AFTER_DAYS = 30, 30
+
+
+def coordinator(text):
     try:
         doc = yaml.safe_load(text or "") or {}
     except yaml.YAMLError:
-        return False
-    return isinstance(doc, dict) and doc.get("role") == "afs-slice-coordinator" and doc.get("human_check") == "passed"
+        return {}
+    return doc if isinstance(doc, dict) and doc.get("role") == "afs-slice-coordinator" else {}
+
+
+def state(text):
+    return coordinator(text).get("human_check")
+
+
+def passed(text):
+    return state(text) == "passed"
 
 
 def new_signoffs(old_ref, new_ref):
-    """Return files that say `human_check: passed` at new_ref and didn't at old_ref."""
+    """Return files whose `human_check` became `passed` or `deferred` (or a deferral changed) in this change."""
     names = (git("diff", "--name-only", "--diff-filter=AM", old_ref, new_ref, "--", RETURNS) or "").split()
-    return [n for n in names if n.endswith((".yaml", ".yml"))
-            and passed(git("show", f"{new_ref}:{n}")) and not passed(git("show", f"{old_ref}:{n}"))]
+    out = []
+    for n in names:
+        if not n.endswith((".yaml", ".yml")):
+            continue
+        new, old = coordinator(git("show", f"{new_ref}:{n}")), coordinator(git("show", f"{old_ref}:{n}"))
+        if new.get("human_check") not in SIGNED:
+            continue
+        keys = ("human_check", "human_check_issue", "human_check_due")
+        if [new.get(k) for k in keys] != [old.get(k) for k in keys]:
+            out.append(n)
+    return out
+
+
+def deferral_problems(doc, today):
+    """A deferral names its tracking issue and a due date at most 30 days ahead (ADR-0036)."""
+    out = []
+    if not str(doc.get("human_check_issue") or "").strip():
+        out.append("human_check: deferred needs human_check_issue: the open issue, assigned to an approver, "
+                   "that lists what to compare")
+    due = parse_date(doc.get("human_check_due"))
+    if due is None:
+        out.append("human_check: deferred needs human_check_due: YYYY-MM-DD")
+    elif (due - today).days > MAX_DEFER_DAYS:
+        out.append(f"human_check_due {due} is more than {MAX_DEFER_DAYS} days away")
+    return out
+
+
+def parse_date(value):
+    try:
+        return datetime.date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def deferrals(today, returns=RETURNS):
+    """(file, doc, days past due) for every deferred human check in the working tree."""
+    out = []
+    for p in sorted(pathlib.Path(returns).glob("*.y*ml")):
+        doc = coordinator(p.read_text(encoding="utf-8"))
+        if doc.get("human_check") == "deferred":
+            due = parse_date(doc.get("human_check_due"))
+            out.append((p.as_posix(), doc, (today - due).days if due else None))
+    return out
+
+
+def report_deferrals(repo, today, comment=False):
+    """Warn about every deferral past due; fail one more than 30 days past due; optionally comment daily."""
+    failures = 0
+    for f, doc, late in deferrals(today):
+        issue, due = doc.get("human_check_issue"), doc.get("human_check_due")
+        if late is None or late <= 0:
+            print(f"{f}: human check deferred until {due} ({issue})")
+            continue
+        msg = (f"the human side-by-side check for this slice was deferred until {due} and is {late} day(s) "
+               f"overdue ({issue}); do it, or renew the deferral on an approved PR (ADR-0036)")
+        if late > FAIL_AFTER_DAYS:
+            failures += 1
+            print(f"::error file={f}::{msg}; more than {FAIL_AFTER_DAYS} days overdue fails this check")
+        else:
+            print(f"::warning file={f}::{msg}")
+        num = str(issue).rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+        if comment and num.isdigit():
+            subprocess.run(["gh", "api", f"repos/{repo}/issues/{num}/comments", "-f",
+                            f"body=Reminder (harness, ADR-0036): {msg}."], capture_output=True)
+    return failures
 
 
 def approved_by(reviews, logins, head):
@@ -88,8 +170,14 @@ def main(argv=None):
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--pr", type=int)
     mode.add_argument("--range", help="<before>..<after> of a push")
+    mode.add_argument("--deferrals", action="store_true", help="report deferred human checks (scheduled run)")
     ap.add_argument("--base", help="base ref of the PR (pull-request mode)")
+    ap.add_argument("--comment", action="store_true", help="with --deferrals: remind on each overdue issue")
     a = ap.parse_args(argv)
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    if a.deferrals:
+        return 1 if report_deferrals(a.repo, today, a.comment) else 0
+    overdue = report_deferrals(a.repo, today)
 
     if a.pr:
         if not a.base:
@@ -102,14 +190,19 @@ def main(argv=None):
     files = new_signoffs(old, new)
     if not files:
         print("no new human sign-off in this change")
-        return 0
+        return 1 if overdue else 0
     logins = approvers(PROFILE.read_text(encoding="utf-8") if PROFILE.exists() else "")
     if not logins:
         print(f"::error::{', '.join(files)} records a human sign-off, but the profile's signoff.approvers lists "
               "nobody. Name who may sign off slices (ADR-0031).")
         return 1
-    failures = 0
+    failures = overdue
     for f in files:
+        doc = coordinator(git("show", f"{new}:{f}"))
+        if doc.get("human_check") == "deferred":
+            for prob in deferral_problems(doc, today):
+                failures += 1
+                print(f"::error file={f}::{prob} (ADR-0036)")
         if a.pr:
             prs = [a.pr]
         else:
@@ -125,7 +218,7 @@ def main(argv=None):
         else:
             failures += 1
             where = f"PR #{prs[0]}" if prs else "a PR (this change was pushed without one)"
-            print(f"::error file={f}::human_check: passed needs an approving review on {where} by one of "
+            print(f"::error file={f}::human_check: {doc.get('human_check')} needs an approving review on {where} by one of "
                   f"{', '.join(logins)}, on the PR's current head commit. Approving the PR is the sign-off; "
                   "a push after the approval makes it stale (ADR-0031).")
     return 1 if failures else 0

@@ -1,4 +1,7 @@
 """tools/check_signoff.py (ADR-0031): a human sign-off is an approver's review on the exact head commit."""
+import contextlib
+import datetime
+import io
 import os
 import pathlib
 import subprocess
@@ -134,6 +137,35 @@ class SignoffTest(unittest.TestCase):
         self.commit("not a coordinator")
         self.assertEqual(self.run_check(self.pr_args(), []), 0)
 
+
+
+    def defer(self, issue="o/r#418", due=None):
+        due = due or (datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=7)).isoformat()
+        text = coordinator("deferred").rstrip("\n") + f"\nhuman_check_issue: {issue}\nhuman_check_due: '{due}'\n"
+        self.write(RET, text)
+        self.commit("defer")
+
+    def test_a_deferral_needs_the_approvers_review_too(self):
+        self.defer()
+        self.assertEqual(self.run_check(self.pr_args(), []), 1)
+        self.assertEqual(self.run_check(self.pr_args(), [review("alice", "APPROVED", self.rev())]), 0)
+
+    def test_a_deferral_needs_its_issue_and_a_near_due_date(self):
+        self.defer(issue="", due=(datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=45)).isoformat())
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = self.run_check(self.pr_args(), [review("alice", "APPROVED", self.rev())])
+        self.assertEqual(code, 1)
+        self.assertIn("needs human_check_issue", out.getvalue())
+        self.assertIn("more than 30 days away", out.getvalue())
+
+    def test_overdue_deferrals_warn_then_fail(self):
+        self.defer(due=(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=3)).isoformat())
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(check_signoff.main(["--repo", "o/r", "--deferrals"]), 0)
+        self.assertIn("3 day(s) overdue", out.getvalue())
+        self.defer(due=(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=31)).isoformat())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(check_signoff.main(["--repo", "o/r", "--deferrals"]), 1)
 
 if __name__ == "__main__":
     unittest.main()

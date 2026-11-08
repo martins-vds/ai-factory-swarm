@@ -1373,6 +1373,7 @@
               "requested",
               "passed",
               "issues",
+              "deferred",
               null
             ]
           },
