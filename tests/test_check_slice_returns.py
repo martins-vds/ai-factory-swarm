@@ -759,3 +759,19 @@ class HistoricalAttributionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HumanCheckTest(unittest.TestCase):
+    def test_an_epic_closes_only_once_its_human_check_has_passed(self):
+        import check_slice_returns as csr
+        subs = [{"number": 413}]
+        for check, blocked in (("passed", False), ("requested", True), ("deferred", True), ("issues", True)):
+            with self.subTest(check=check):
+                doc = {"role": "afs-slice-coordinator", "issue": "o/r#413", "human_check": check,
+                       "human_check_issue": "o/r#418", "human_check_due": "2026-11-14"}
+                found = csr.human_check_problems("o/r", subs, {"x.afs-slice-coordinator.yaml": doc})
+                self.assertEqual(bool(found), blocked, found)
+                if check == "deferred":
+                    self.assertIn("tracked in o/r#418", found[0])
+        other = {"role": "afs-slice-coordinator", "issue": "o/r#999", "human_check": "requested"}
+        self.assertEqual(csr.human_check_problems("o/r", subs, {"y": other}), [], "another epic's coordinator")

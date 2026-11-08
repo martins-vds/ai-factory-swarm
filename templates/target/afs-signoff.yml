@@ -2,7 +2,8 @@
 # ADR-0031: a slice's human sign-off (`human_check: passed` in a Slice Coordinator's return file) counts only
 # with an approving review, by a login in the profile's signoff.approvers, on the PR's current head commit.
 # Runs again when a review is submitted or dismissed, and on every push to the default branch, so a merge made
-# with plain git can't skip it.
+# with plain git can't skip it. ADR-0036: `human_check: deferred` needs the same approval; every run lists
+# deferrals, an overdue one warns (and fails after 30 days), and a daily run reminds on the tracking issue.
 name: AFS human sign-off
 
 on:
@@ -12,6 +13,8 @@ on:
     types: [submitted, dismissed]
   push:
     branches: [main]
+  schedule:
+    - cron: "17 14 * * *"     # ADR-0036: daily reminder on each overdue deferred human check
 
 jobs:
   signoff:
@@ -20,6 +23,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: write              # the daily reminder comment (ADR-0036)
     steps:
       - uses: actions/checkout@v5
         with: {{ fetch-depth: 0 }}
@@ -30,7 +34,9 @@ jobs:
         env:
           GH_TOKEN: ${{{{ github.token }}}}
         run: |
-          if [ "${{{{ github.event_name }}}}" = push ]; then
+          if [ "${{{{ github.event_name }}}}" = schedule ]; then
+            python3 .migration/harness/tools/check_signoff.py --repo "${{{{ github.repository }}}}" --deferrals --comment
+          elif [ "${{{{ github.event_name }}}}" = push ]; then
             python3 .migration/harness/tools/check_signoff.py --repo "${{{{ github.repository }}}}" \
               --range "${{{{ github.event.before }}}}..${{{{ github.sha }}}}"
           else

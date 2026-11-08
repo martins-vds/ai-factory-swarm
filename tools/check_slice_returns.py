@@ -221,6 +221,23 @@ def problems(repo, subs, returned, since):
     return out
 
 
+def human_check_problems(repo, subs, current):
+    """ADR-0036: a slice epic closes only once its Slice Coordinator's human check is `passed`. A
+    requested, deferred or failed check under the epic keeps it open (no Coordinator return: nothing to check)."""
+    numbers = {f"{repo}#{s['number']}" for s in subs}
+    out = []
+    for path, doc in sorted(current.items()):
+        if doc.get("role") != "afs-slice-coordinator" or doc.get("issue") not in numbers:
+            continue
+        check = doc.get("human_check")
+        if check != "passed":
+            extra = (f", due {doc.get('human_check_due')}, tracked in {doc.get('human_check_issue')}"
+                     if check == "deferred" else "")
+            out.append(f"{path}: the slice's human side-by-side check is `{check}`{extra}; the epic closes "
+                       "only once it is `passed` with an approver's review (ADR-0031, ADR-0036)")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", required=True)
@@ -245,7 +262,7 @@ def main(argv=None):
             print(diagnostic)
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as e:
         history_errors.append(f"return history unavailable: {e}; fetch complete HEAD ancestry and retry")
-    found = problems(a.repo, subs, returned, since) + history_errors
+    found = problems(a.repo, subs, returned, since) + history_errors + human_check_problems(a.repo, subs, current)
     print(f"slice epic #{a.epic}: {len(subs)} ticket(s); rule since {since or 'unknown'}")
     for p in found:
         print(f"::error::{p}")

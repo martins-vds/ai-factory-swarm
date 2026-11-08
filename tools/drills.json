@@ -214,6 +214,21 @@
       "expect": {
         "tool": "check_graph_fresh.py"
       }
+    },
+    {
+      "id": "deferral-without-approval",
+      "why": "A Slice Coordinator's `human_check: deferred` without an approver's review is rejected: only an approver defers (ADR-0036).",
+      "ops": [
+        {
+          "op": "write",
+          "path": ".migration/returns/DRILL-DEFER.afs-slice-coordinator.yaml",
+          "text": "role: afs-slice-coordinator\nticket: DRILL-DEFER\nissue: drill#0\nhuman_check: deferred\nhuman_check_issue: drill#0\nhuman_check_due: '2099-01-01'\n"
+        }
+      ],
+      "trigger": "pr",
+      "expect": {
+        "tool": "check_signoff.py"
+      }
     }
   ]
 }
