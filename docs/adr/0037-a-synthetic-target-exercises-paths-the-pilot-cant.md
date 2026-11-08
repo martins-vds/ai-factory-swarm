@@ -64,3 +64,18 @@ guarantee every path; a target built to trigger them can.
   - multi-repo `harness_coverage.py`;
   - the catalog test;
   - bootstrapping the new repo.
+
+### Amendment (2026-11-08): one source per characterization tier
+
+The first blind Bootstrapper built and ran `legacy/` and rated it tier A. That was correct: a payment
+gateway answering 502 is behaviour of an app that runs, not a blocked build. The tier rates a whole
+source, so one legacy app can only ever produce one tier.
+
+Tiers B and C get their own sources in the synthetic repo:
+- `legacy-billing/` can't be built, because a vendor library is only in a private repository. Its
+  vendor-free classes and tests still compile from source, so it should rate tier B.
+- `legacy-reports/` has only a specification and saved output, so it should rate tier C.
+
+Each gets one Bootstrapper session that assesses that source and commits its return under its own ticket
+id. Only `legacy/` continues past bootstrap. The catalog test checks that tiers A, B and C each have a
+distinct source, and the blindness test now covers all three.

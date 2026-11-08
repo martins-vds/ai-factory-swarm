@@ -1,0 +1,5 @@
+branch,loans_issued,returns,still_out,overdue,late_fees_billed,active_members
+Eastside,412,398,121,17,$86.25,203
+Harbor,0,0,0,0,$0.00,0
+Main,1033,1012,344,52,$241.50,517
+ALL BRANCHES,1445,1410,465,69,$327.75,720

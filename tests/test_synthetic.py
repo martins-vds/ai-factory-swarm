@@ -16,6 +16,7 @@ import harness_coverage as hc  # noqa: E402
 
 CATALOG = yaml.safe_load((ROOT / "synthetic/scenarios.yaml").read_text())
 LABELS = ["wayfinder:prototype"]   # labels whose path only real work produces
+SOURCES = ("legacy", "legacy-billing", "legacy-reports")   # one Bootstrapper tier per source
 
 
 def value_paths():
@@ -44,7 +45,9 @@ class CatalogTest(unittest.TestCase):
         universe = value_paths() | {f"label:{lb}" for lb in LABELS}
         for s in CATALOG["scenarios"]:
             with self.subTest(s["id"]):
-                self.assertTrue((ROOT / "synthetic/legacy" / s["legacy"]).exists(), s["legacy"])
+                source = s.get("source", "legacy")
+                self.assertIn(source, SOURCES)
+                self.assertTrue((ROOT / "synthetic" / source / s["legacy"]).exists(), (source, s["legacy"]))
                 self.assertTrue(s["how"].strip())
                 self.assertTrue(set(s["targets"]) <= universe, set(s["targets"]) - universe)
 
@@ -57,11 +60,40 @@ class CatalogTest(unittest.TestCase):
         self.assertIn("legacy smoke test passed", (ROOT / "synthetic/legacy-smoke.yml").read_text())
 
 
+class SourcesTest(unittest.TestCase):
+    def test_each_bootstrapper_tier_has_its_own_source(self):
+        # one source has one tier: A, B and C need three sources (ADR-0037 amendment)
+        by_tier = {t.rsplit(":", 1)[1]: s.get("source", "legacy") for s in CATALOG["scenarios"] for t in s["targets"]
+                   if t.startswith("value:afs-bootstrapper:characterization_tier:")}
+        by_tier.setdefault("A", "legacy")
+        self.assertEqual(sorted(by_tier), ["A", "B", "C"])
+        self.assertEqual(len(set(by_tier.values())), 3, by_tier)
+
+    def test_the_billing_source_cannot_build_but_its_arithmetic_compiles_alone(self):
+        billing = ROOT / "synthetic/legacy-billing"
+        pom = (billing / "pom.xml").read_text()
+        self.assertIn("<artifactId>vault-client</artifactId>", pom)
+        self.assertNotIn("repo.maven.apache.org", pom)
+        java = {p.name: p.read_text() for p in (billing / "src/main/java").rglob("*.java")}
+        vendor = {n for n, src in java.items() if "com.northgate" in src}
+        self.assertTrue(vendor and set(java) - vendor, "some classes need the vendor jar, some don't")
+        for name in ("InvoiceCalculator.java", "InvoiceLine.java"):
+            self.assertNotIn("com.northgate", java[name])
+            self.assertNotIn("CardVault", java[name])
+        self.assertTrue(list((billing / "src/test/java").rglob("*Test.java")))
+
+    def test_the_reports_source_has_no_code(self):
+        reports = ROOT / "synthetic/legacy-reports"
+        files = [p for p in reports.rglob("*") if p.is_file()]
+        self.assertTrue(files)
+        self.assertFalse([p for p in files if p.suffix in {".java", ".py", ".sql", ".xml", ".sh", ".rpt"}])
+
+
 class BlindTest(unittest.TestCase):
     def test_the_legacy_app_names_no_scenario_or_expected_outcome(self):
         # the first Bootstrapper cited a copied catalog as its evidence: the target must stay blind (ADR-0037)
         words = re.compile(r"scenario|ADR-|tier\b|characteri[sz]|misplaced|review-only|coverage|harness", re.I)
-        for p in (ROOT / "synthetic/legacy").rglob("*"):
+        for p in (q for src in SOURCES for q in (ROOT / "synthetic" / src).rglob("*")):
             if p.is_file():
                 with self.subTest(p.name):
                     self.assertIsNone(words.search(p.read_text(errors="ignore")), p)

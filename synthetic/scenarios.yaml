@@ -65,19 +65,28 @@ scenarios:
   legacy: src/main/java/lib/LateFeeView.java
   how: The late-fee rule is computed in the page that renders it. A target that carries it over faithfully puts a business
     rule in the interface layer; the Auditor classifies that delta as misplaced (ADR-0001).
-- id: partial-runtime
+- id: vendor-blocked-build
   targets:
   - value:afs-bootstrapper:characterization_tier:B
-  legacy: src/main/java/lib/FinePayments.java
-  how: 'Fine payments call a payment gateway with no test instance, so the legacy app runs only partly: the Bootstrapper''s
-    capability check finds the legacy environment partial (tier B).'
-- id: spec-only
+  source: legacy-billing
+  legacy: pom.xml
+  how: Member billing needs a card-vault client that is only in a vendor's private Maven repository, so it can't be built or
+    run. Its invoice arithmetic doesn't touch the vendor client, so those classes and their JUnit tests compile and run from
+    source alone (ADR-0005 recipe). A Bootstrapper session pinned to this source gives tier B. One source has one tier, so
+    this needs its own source (ADR-0037 amendment).
+- id: spec-only-source
   targets:
   - value:afs-bootstrapper:characterization_tier:C
+  source: legacy-reports
+  legacy: docs/monthly-circulation.md
+  how: The circulation reports' server was retired and its definitions lost; only the librarians' spec and saved output
+    remain. Nothing can be built, so a Bootstrapper session pinned to this source gives tier C.
+- id: spec-only-capability
+  targets:
   - ledger:characterization_tier:C
   legacy: docs/reports-spec.md
-  how: The monthly report exists only as a written spec. Bootstrapping before `run.sh` is provided gives tier C for the target;
-    the report capability itself can only be characterized from the spec (ledger tier C).
+  how: Within the runnable app, the monthly report exists only as a written spec, so that capability's ledger entry can only
+    be characterized from the spec (ledger tier C).
 - id: deferred-capability
   targets:
   - ledger:status:deferred
