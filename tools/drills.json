@@ -229,6 +229,80 @@
       "expect": {
         "tool": "check_signoff.py"
       }
+    },
+    {
+      "id": "plan-shared-file-no-edge",
+      "why": "Two planned tickets that change the same file with no blocking edge between them are caught before dispatch (harness #98).",
+      "ops": [
+        {
+          "op": "write",
+          "path": ".migration/plan/afs-drill.md",
+          "text": "# afs-drill\n\nThrowaway plan for a failure drill.\n"
+        },
+        {
+          "op": "write",
+          "path": ".migration/plan/afs-drill.tickets.yaml",
+          "text": "slice: afs-drill\ntickets:\n  - id: DRILL-P1\n    role: afs-migrator\n    files: [drill/shared.py]\n    blocked_by: []\n  - id: DRILL-P2\n    role: afs-migrator\n    files: [drill/shared.py]\n    blocked_by: []\n"
+        }
+      ],
+      "trigger": "pr",
+      "expect": {
+        "tool": "check_plan.py"
+      }
+    },
+    {
+      "id": "source-flow-lost",
+      "why": "A source domain graph that lost a flow is caught: the source graph only grows (ADR-0033).",
+      "ops": [
+        {
+          "op": "drop_domain_flow",
+          "side": "source"
+        }
+      ],
+      "trigger": "pr",
+      "expect": {
+        "tool": "preserve_graph.py"
+      }
+    },
+    {
+      "id": "snapshot-export-fails",
+      "why": "A data snapshot whose export can't reach the legacy database fails the snapshot workflow, not an empty snapshot (ADR-0032).",
+      "ops": [
+        {
+          "op": "replace",
+          "file": "@profile",
+          "pattern": "jdbc:[A-Za-z0-9]+:[^' \\n]+",
+          "with": "jdbc:derby:/nonexistent/afs-drill-db"
+        }
+      ],
+      "trigger": "dispatch",
+      "workflow": "afs-snapshot.yml",
+      "timeout": 3600,
+      "expect": {
+        "tool": "data_snapshot.py"
+      }
+    },
+    {
+      "id": "enricher-misconfigured",
+      "why": "A graph build whose profile names an enricher the harness doesn't have fails instead of producing an unenriched graph (ADR-0020).",
+      "ops": [
+        {
+          "op": "profile_set",
+          "key": "graph.enrich.target",
+          "value": [
+            "no-such-enricher"
+          ]
+        }
+      ],
+      "trigger": "dispatch",
+      "workflow": "afs-understand.yml",
+      "inputs": {
+        "side": "target"
+      },
+      "timeout": 3600,
+      "expect": {
+        "tool": "enrich_graph.py"
+      }
     }
   ]
 }

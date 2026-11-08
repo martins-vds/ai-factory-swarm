@@ -358,7 +358,10 @@ def main():
                     errors.append(f"{path}: file name must be '{want}.yaml'")
 
     checked += check_markdown(folder, errors)
+    before = len(errors)
     checked += check_plan.check(folder, schemas, errors, a.sample)
+    # check_plan runs inside validate.py, so announce its own verdict for harness coverage (ADR-0027)
+    print(f"AFS-TOOL check_plan.py exit={1 if len(errors) > before else 0}", file=sys.stderr)
 
     if checked == 0:
         errors.append(f"{folder}: nothing to validate (no profile.yaml, capabilities.yaml or ledger/)")

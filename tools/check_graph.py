@@ -240,4 +240,4 @@ def data_path(anchor, nodes, edges, by_id):
 
 if __name__ == "__main__":
     import afs_trace
-    afs_trace.run(main)
+    afs_trace.run(main, verdict=False)   # report only: the workflow never gates on it; graph_gate.py does
