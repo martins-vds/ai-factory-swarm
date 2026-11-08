@@ -66,3 +66,26 @@ jobs:
           git -C "$d" checkout -q FETCH_HEAD
           git -C "$d" apply --check "$GITHUB_WORKSPACE/patches/understand-anything/argument-hint.patch"
           echo "patch applies at ${commit:0:7}"
+
+  synthetic-sources:
+    name: Synthetic legacy sources behave as designed (ADR-0037)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - name: legacy-billing can't be built (vendor client is private)
+        working-directory: synthetic/legacy-billing
+        run: |
+          if mvn -q -B package > /tmp/billing.log 2>&1; then
+            echo "::error::legacy-billing built; it must fail on the vendor client"; exit 1
+          fi
+          grep -q "vault-client" /tmp/billing.log || { cat /tmp/billing.log; echo "::error::failed for another reason"; exit 1; }
+      - name: legacy-billing's arithmetic compiles and tests pass from source alone
+        working-directory: synthetic/legacy-billing
+        run: |
+          mvn -q -B dependency:get -Dartifact=junit:junit:4.13.2
+          M=~/.m2/repository
+          CP="$M/junit/junit/4.13.2/junit-4.13.2.jar:$M/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar"
+          javac -d /tmp/out -cp "$CP" -sourcepath src/main/java -implicit:class src/test/java/billing/*Test.java
+          java -cp "/tmp/out:$CP" org.junit.runner.JUnitCore billing.InvoiceCalculatorTest
