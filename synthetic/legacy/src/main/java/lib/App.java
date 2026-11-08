@@ -1,36 +1,27 @@
 package lib;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.Persistence;
+import org.glassfish.grizzly.http.server.HttpServer;
+import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
+import org.glassfish.jersey.server.ResourceConfig;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.net.URI;
 
-/** The Lending Library: loans, late fees, fine payments, an about page. Standard library only. */
+/** The Lending Library: loans, late fees, fine payments, an about page. JAX-RS on Grizzly, JPA on H2. */
 public final class App {
-    public static void main(String[] args) throws IOException {
-        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
-        LoanStore store = new LoanStore();
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-        server.createContext("/loans", new LoanResource(store));
-        server.createContext("/fees", new LateFeeView(store));
-        server.createContext("/payments", new FinePayments(store));
-        server.createContext("/about", ex -> send(ex, 200, "text/html",
-                Files.readString(Path.of("src/main/resources/static/about.html"))));
-        server.start();
+    public static void main(String[] args) throws Exception {
+        String port = System.getenv().getOrDefault("PORT", "8080");
+        EntityManagerFactory emf = Persistence.createEntityManagerFactory("library");
+        LoanRepository loans = new LoanRepository(emf);
+        ResourceConfig config = new ResourceConfig()
+                .register(new LoanResource(loans))
+                .register(new LateFeeView(loans))
+                .register(new FinePayments(loans))
+                .register(new AboutPage());
+        HttpServer server = GrizzlyHttpServerFactory.createHttpServer(URI.create("http://0.0.0.0:" + port + "/"), config);
         System.out.println("Lending Library listening on " + port);
-    }
-
-    static void send(HttpExchange ex, int status, String type, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        ex.getResponseHeaders().set("Content-Type", type + "; charset=utf-8");
-        ex.sendResponseHeaders(status, bytes.length);
-        try (OutputStream out = ex.getResponseBody()) {
-            out.write(bytes);
-        }
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> { server.shutdownNow(); emf.close(); }));
+        Thread.currentThread().join();
     }
 }
