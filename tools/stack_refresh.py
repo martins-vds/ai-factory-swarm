@@ -114,14 +114,15 @@ def refresh(repo, prs, default, dry_run=False, post=False, ident=("AFS stack ref
                      "--quiet", f"origin/{base}", "-m", f"Merge {base} into {head} (stack refresh, ADR-0038)",
                      check=False)
         if merged.returncode != 0:
+            files = git("diff", "--name-only", "--diff-filter=U", check=False).stdout.split()   # before the abort
             git("merge", "--abort", check=False)
             blocked.add(head)
-            files = git("diff", "--name-only", "--diff-filter=U", check=False).stdout.split()
-            lines.append(f"- #{n} `{head}` CONFLICT merging `{base}`: resolve by hand or in a session")
+            where = f" in {', '.join(f'`{f}`' for f in files)}" if files else ""
+            lines.append(f"- #{n} `{head}` CONFLICT merging `{base}`{where}: resolve by hand or in a session")
             problems += 1
             if post and not dry_run:
                 comment(repo, n, f"Stack refresh (ADR-0038) couldn't merge `{base}` into `{head}`: the merge "
-                                 f"conflicts{(' in ' + ', '.join(f'`{f}`' for f in files)) if files else ''}. "
+                                 f"conflicts{where}. "
                                  f"Merge `origin/{base}` into this branch, resolve, and push; the PRs stacked "
                                  f"on it are refreshed on the next push to `{default}`.")
             continue

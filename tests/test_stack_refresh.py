@@ -99,7 +99,7 @@ class StackRefreshTest(unittest.TestCase):
         sh(w, "git", "push", "-q", "origin", "main")
         r = self.run_tool([pr(2, "s2", "s1"), pr(1, "s1", "main")])
         self.assertEqual(r.returncode, 1)
-        self.assertIn("#1 `s1` CONFLICT", r.stdout)
+        self.assertIn("#1 `s1` CONFLICT merging `main` in `s1.txt`", r.stdout, "names the conflicting files")
         self.assertIn("#2 `s2` skipped", r.stdout)
         self.assertFalse(self.contains("main", "s1"))
         self.assertEqual(sh(w, "git", "status", "--porcelain"), "", "the merge was aborted")

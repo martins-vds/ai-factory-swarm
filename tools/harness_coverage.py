@@ -280,7 +280,12 @@ def main(argv=None):
     wf_conclusions = {}
     if not a.offline and a.repo:
         for name in u["workflows"]:
-            runs = (gh(f"repos/{a.repo}/actions/workflows/{name}/runs?per_page={a.runs}") or {}).get("workflow_runs", [])
+            try:
+                runs = (gh(f"repos/{a.repo}/actions/workflows/{name}/runs?per_page={a.runs}") or {}).get("workflow_runs", [])
+            except RuntimeError as e:
+                if "HTTP 404" not in str(e):
+                    raise
+                runs = []          # not on the default branch yet (a target mid-setup): no runs, not an error
             wf_conclusions[name] = collections.Counter(r.get("conclusion") for r in runs)
             for run in runs:
                 for job in (gh(f"repos/{a.repo}/actions/runs/{run['id']}/jobs") or {}).get("jobs", []):
