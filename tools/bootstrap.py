@@ -91,7 +91,9 @@ OPERATOR_CHECKLIST = [
     "Actions enabled: allow all actions and reusable workflows",
     "Workflow permissions: allow GitHub Actions to create and approve pull requests",
     "Copilot coding agent enabled for this repository",
-    "Workflow runs on Copilot PRs do not wait for approval",
+    "Copilot PR workflow runs: keep Require approval for workflow runs on (ADR-0039 default) and approve each push "
+    "after checking its .github/ changes; turning it off needs ADR-0039's mitigations (one AFS_STACK_TOKEN per repo, "
+    "main protected, read-only default workflow permissions)",
     "Public repo, or an Actions budget (Copilot sessions and CI use Actions minutes)",
     "Private source only: SOURCE_READ_TOKEN secret in Actions and in the `copilot` environment",
     "Dispatcher (L0 or you) has gh logged in as a user with write access",

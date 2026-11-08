@@ -101,6 +101,7 @@ humans, and approved for cutover.
 | 36 | A slice's human check may be deferred by an approver, with a tracked issue and deadline; a deferred slice doesn't close | [0036](adr/0036-a-human-check-may-be-deferred-by-an-approver.md) |
 | 37 | A synthetic target, built from a scenario catalog, exercises the coverage paths the pilot can't; coverage is the union across targets | [0037](adr/0037-a-synthetic-target-exercises-paths-the-pilot-cant.md) |
 | 38 | When the default branch moves, open stacked PRs are refreshed bottom-up by a workflow with a push token that starts CI; agent sessions in progress and conflicts are skipped and reported | [0038](adr/0038-stacked-prs-are-refreshed-when-the-default-branch-moves.md) |
+| 39 | Workflow runs on Copilot PRs wait for a person's approval by default; the dispatcher never approves them; turning approval off is a per-repo choice that needs the listed mitigations | [0039](adr/0039-copilot-workflow-runs-wait-for-approval-by-default.md) |
 
 ---
 
