@@ -107,6 +107,10 @@ class BootstrapTest(unittest.TestCase):
     def run_bootstrap(self, caps=CAPS, **kw):
         return bootstrap.bootstrap(self.target, PROFILE, caps, [PACK], **kw)
 
+    def test_gitignore_keeps_bytecode_out(self):
+        self.run_bootstrap(offline=True)
+        self.assertIn("__pycache__/", (self.target / ".gitignore").read_text().splitlines())
+
     def test_a_profile_naming_a_missing_compose_file_is_refused(self):
         # synthetic SY-01: services.compose named compose.yaml before it existed; every CI job then failed
         (self.target / "compose.yaml").unlink()

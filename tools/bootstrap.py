@@ -17,7 +17,7 @@ and open it as the setup PR. What it writes:
   .github/copilot-instructions.md                                      harness block, then RTK block (upserted)
   .github/workflows/copilot-setup-steps.yml, afs-harness-check.yml,
                     afs-understand.yml, afs-acceptance.yml             generated workflows
-  .gitignore                                                           .source/, .migration/runs/
+  .gitignore                                                           .source/, .migration/runs/, __pycache__/
 
 Gap capabilities whose `ticket` is `new` become operator issues on the target repo
 (`--create-gap-issues`, uses the `gh api` REST calls; set AFS_GH to use another executable). Without the flag, bootstrap
@@ -531,7 +531,8 @@ def write_copilot_files(target, lock, version, commit, profile=None):
 def merge_gitignore(target):
     gi = target / ".gitignore"
     lines = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
-    for entry in (".source/", ".migration/runs/", ".migration/data/snapshot/", ".migration/data/target-export/"):   # ADR-0032: data never committed
+    for entry in (".source/", ".migration/runs/", ".migration/data/snapshot/", ".migration/data/target-export/",   # ADR-0032: data never committed
+                  "__pycache__/"):   # synthetic SY-01: a session committed the harness tools' bytecode
         if entry not in lines:
             lines.append(entry)
     write(gi, "\n".join(lines) + "\n")
