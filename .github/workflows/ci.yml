@@ -52,8 +52,10 @@ jobs:
         run: |
           pip install -q jsonschema pyyaml
           d=$(mktemp -d)
+          printf 'services:\n  db:\n    image: postgres:17\n    healthcheck:\n      test: [CMD, pg_isready]\n' > "$d/compose.yaml"
           python tools/bootstrap.py --target "$d" --profile templates/migration/profile.yaml \
-            --capabilities templates/migration/capabilities.yaml --stack-pack stacks/java-to-django.json --skip-private-sources
+            --capabilities templates/migration/capabilities.yaml --stack-pack stacks/java-to-django.json --skip-private-sources \
+            --allow-unreleased
           (cd "$d" && python .migration/harness/tools/check_installed.py && python .migration/harness/tools/validate.py .migration)
       - name: Vendored afs- skills match their pinned upstream
         run: python tools/vendor_skills.py --check

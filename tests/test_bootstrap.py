@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from unittest import mock
 
 import yaml
@@ -19,6 +20,7 @@ import bootstrap  # noqa: E402
 PROFILE = ROOT / "templates/migration/profile.yaml"
 CAPS = ROOT / "templates/migration/capabilities.yaml"
 PACK = ROOT / "stacks/java-to-django.json"
+COMPOSE = "services:\n  db:\n    image: postgres:17\n    healthcheck:\n      test: [CMD, pg_isready]\n"
 
 
 def bootstrap_process(target, ready, release, pause_at, outcomes):
@@ -99,9 +101,27 @@ class BootstrapTest(unittest.TestCase):
     def setUp(self):
         self.target = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.target)
+        (self.target / "compose.yaml").write_text(COMPOSE)
 
     def run_bootstrap(self, caps=CAPS, **kw):
         return bootstrap.bootstrap(self.target, PROFILE, caps, [PACK], **kw)
+
+    def test_a_profile_naming_a_missing_compose_file_is_refused(self):
+        # synthetic SY-01: services.compose named compose.yaml before it existed; every CI job then failed
+        (self.target / "compose.yaml").unlink()
+        with self.assertRaisesRegex(bootstrap.BootstrapError, "compose.yaml.*doesn't have"):
+            self.run_bootstrap(offline=True)
+        self.assertFalse((self.target / ".migration/harness").exists(), "nothing installed")
+
+    def test_only_a_released_harness_installs_by_default(self):
+        with unittest.mock.patch.object(bootstrap, "harness_identity", return_value=("0.2.0", "a" * 40, True)):
+            with self.assertRaisesRegex(bootstrap.BootstrapError, "uncommitted"):
+                bootstrap.check_release(False)
+            bootstrap.check_release(True)
+        with unittest.mock.patch.object(bootstrap, "harness_identity", return_value=("0.2.0", "b" * 40, False)), \
+                unittest.mock.patch.object(bootstrap, "run", return_value=""):
+            with self.assertRaisesRegex(bootstrap.BootstrapError, "isn't on origin/main"):
+                bootstrap.check_release(False)
 
     def caps_with_new_gap(self):
         doc = yaml.safe_load(CAPS.read_text())
@@ -343,7 +363,7 @@ class BootstrapTest(unittest.TestCase):
         lock.write_text(json.dumps({"pid": os.getpid(), "started_at": "now"}) + "\n")
         out = subprocess.run(
             [sys.executable, str(ROOT / "tools/bootstrap.py"), "--target", str(self.target),
-             "--profile", str(PROFILE), "--capabilities", str(CAPS), "--offline"],
+             "--profile", str(PROFILE), "--capabilities", str(CAPS), "--offline", "--allow-unreleased"],
             capture_output=True, text=True)
         self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
         self.assertIn(str(os.getpid()), out.stderr)
