@@ -99,6 +99,7 @@ humans, and approved for cutover.
 | 34 | Agents pass the PR checks before they stop: a stop hook blocks on mechanical misses within a budget; scope and stuck gates escalate | [0034](adr/0034-agents-pass-the-pr-checks-before-they-stop.md) |
 | 35 | The acceptance target graph is built by the acceptance run for the exact commit it checks; the committed target graph is a reference | [0035](adr/0035-the-acceptance-target-graph-is-built-for-the-revision-it-checks.md) |
 | 36 | A slice's human check may be deferred by an approver, with a tracked issue and deadline; a deferred slice doesn't close | [0036](adr/0036-a-human-check-may-be-deferred-by-an-approver.md) |
+| 37 | A synthetic target, built from a scenario catalog, exercises the coverage paths the pilot can't; coverage is the union across targets | [0037](adr/0037-a-synthetic-target-exercises-paths-the-pilot-cant.md) |
 
 ---
 
