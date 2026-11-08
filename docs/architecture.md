@@ -100,6 +100,7 @@ humans, and approved for cutover.
 | 35 | The acceptance target graph is built by the acceptance run for the exact commit it checks; the committed target graph is a reference | [0035](adr/0035-the-acceptance-target-graph-is-built-for-the-revision-it-checks.md) |
 | 36 | A slice's human check may be deferred by an approver, with a tracked issue and deadline; a deferred slice doesn't close | [0036](adr/0036-a-human-check-may-be-deferred-by-an-approver.md) |
 | 37 | A synthetic target, built from a scenario catalog, exercises the coverage paths the pilot can't; coverage is the union across targets | [0037](adr/0037-a-synthetic-target-exercises-paths-the-pilot-cant.md) |
+| 38 | When the default branch moves, open stacked PRs are refreshed bottom-up by a workflow with a push token that starts CI; agent sessions in progress and conflicts are skipped and reported | [0038](adr/0038-stacked-prs-are-refreshed-when-the-default-branch-moves.md) |
 
 ---
 

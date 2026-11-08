@@ -515,7 +515,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
     for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-acceptance.yml", "afs-costs.yml",
-                 "afs-map-fog.yml", "afs-ticket-guard.yml", "afs-signoff.yml", "afs-snapshot.yml"):
+                 "afs-map-fog.yml", "afs-ticket-guard.yml", "afs-signoff.yml", "afs-snapshot.yml", "afs-stack-refresh.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")
