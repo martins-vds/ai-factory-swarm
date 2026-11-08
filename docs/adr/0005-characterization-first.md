@@ -47,3 +47,16 @@ so tiers B and C can be compared on the same capability.
   code *did*. The ledger records this, and such capabilities get human review in slice acceptance.
 - Without tier A, the differential checks and side-by-side comparisons of ADR-0006 are replaced by
   checks against the characterization tests and specs plus human domain review.
+
+### Amendment (2026-11-08): tier C only after the tier-B recipe was tried
+
+On the synthetic target (ADR-0037), a Bootstrapper rated a member-billing source tier C. Its full Maven
+build and `mvn test` failed on a vendor library from a private repository. It never tried compiling the
+invoice arithmetic and its JUnit tests from source alone, which works: the harness CI proves it. The
+instruction asked whether the blocking dependencies were "compile-only". The session read that as a Maven
+scope, not as "can the tested code compile without them". Tier C evidence is the weakest the harness
+accepts, so it must not be reached by skipping a step.
+
+The Bootstrapper now tries the tier-B recipe whenever there is no running environment. A tier-C return
+must carry `tier_b_attempt`: either `ran: <command> -> <result>` or `no code: <contents>`. `validate.py`
+rejects a tier C without one.

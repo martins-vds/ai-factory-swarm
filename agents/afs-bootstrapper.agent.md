@@ -30,9 +30,15 @@ install.
 ## Procedure
 1. **Detect stacks** from build files and a quick scan: languages, frameworks, build tools, data stores,
    UI technology, integrations, source encoding.
-2. **Characterization tier.** Is a legacy environment running (tier A)? Does the source build, and if not,
-   which dependencies block it — are they compile-only, so tier B is possible? Otherwise tier C. Record
-   the evidence (`afs-migration-contract` → references/characterization.md).
+2. **Characterization tier.** Is a legacy environment running (tier A)? If not, **try the tier-B recipe
+   before anything else**: a full build that fails on a private or missing dependency is the case tier B
+   exists for. Compile only what the source's own tests (or the units you would test) reach, e.g.
+   `javac -sourcepath <src> -implicit:class <tests>` with public test jars, and run what compiles. Code
+   that compiles and runs that way is tier B, even if the app as a whole never can. Tier C only when that
+   attempt fails, or there is no code. Record the commands and results
+   (`afs-migration-contract` → references/characterization.md). For tier C, `tier_b_attempt` in your
+   return is required: `"ran: <command> -> <result>"` or `"no code: <what the source contains>"`; validate
+   rejects a tier C without it.
 3. **Capability checklist.** For each required capability (build-run, characterization harness, tests,
    coverage, complexity, CRAP, mutation testing, lint/format, stack idioms, data migration, UI end-to-end,
    code graph, **graph data links** (a harness enricher for the stack, ADR-0020; none = `gap`), output
@@ -84,6 +90,7 @@ the return file; never paste its contents (a description can't be updated later,
 setup_pr: <link>
 characterization_tier: <A|B|C>
 tier_evidence: <one line>
+# tier_b_attempt: "ran: <command> -> <result>" | "no code: <contents>"   (required for tier C)
 capabilities: {met: <n>, gap: <n>, waived: <n>, not_applicable: <n>}
 gap_tickets: [<link: capability>]
 validation: <pass|fail + first errors>
