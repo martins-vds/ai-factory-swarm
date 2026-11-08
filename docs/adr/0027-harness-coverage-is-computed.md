@@ -58,3 +58,14 @@ about any one of them. Neither does a step that calls a tool on only one branch:
   `afs_trace.run(main, verdict=False)`, and a workflow with `# afs-coverage: no-verdict`. Coverage then
   needs to see it run, not fail. Errors in such tools still exit non-zero; they just aren't a path to drill.
 
+
+### Amendment (2026-11-08): coverage keeps its evidence
+
+On the pilot, `check_plan.py`, `check_runtime.py` and `afs-map-fog.yml` went from covered to open with no
+change to the harness. Their failing drill runs had dropped out of the recent-runs window the report reads.
+`--runs` was also silently capped at GitHub's 100-per-page limit. Coverage that expires isn't evidence.
+
+`harness_coverage.py --keep` now records the first evidence seen for each side of each tool and workflow
+in `.migration/evidence/coverage.json`: a run link, a journal gate, or an agent session. Every run reads
+that file back, so a path once exercised stays exercised, with a link to its proof. The file is committed
+like any other evidence. `--runs` now pages past 100.

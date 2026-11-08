@@ -1,4 +1,5 @@
 """tools/harness_coverage.py (ADR-0027): coverage computed from the installed harness and the repo's history."""
+import json
 import os
 import pathlib
 import shutil
@@ -77,6 +78,42 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class KeptEvidenceTest(CoverageTest):
+    """A path once exercised stays exercised: --keep records each side's first evidence, later runs read it
+    back after the run that showed it has aged out (pilot: check_plan.py's failing drill fell out of the
+    120-run window)."""
+    def run_cov(self, *extra):
+        r = subprocess.run([sys.executable, str(TOOL), "--offline", *extra], cwd=self.d, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_kept_evidence_outlives_the_run_that_showed_it(self):
+        head = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n|---|---|---|---|---|---|---|---|\n"
+        row = "| 2026-11-01T00:00:00+00:00 | {g} | {c} | 1.0 | `python .migration/harness/tools/crap.py` | `x` |  |  |\n"
+        self.commit({".migration/evidence/runs/T-1.md": head + row.format(g="crap", c=1) + row.format(g="crap", c=0)}, "both")
+        self.assertIn("✅ `crap.py`", self.run_cov("--keep"))
+        kept = json.loads((self.d / ".migration/evidence/coverage.json").read_text())
+        self.assertEqual(set(kept["paths"]["tool:crap.py"]), {"pass", "fail"})
+        self.commit({".migration/evidence/runs/T-1.md": head}, "the evidence ages out")   # history keeps it, so
+        self.git("checkout", "-q", "--orphan", "fresh")                                       # start a history without it
+        self.git("rm", "-rq", "--cached", ".")
+        self.commit({".migration/evidence/runs/T-2.md": head + row.format(g="crap", c=0),
+                     ".migration/evidence/coverage.json": (self.d / ".migration/evidence/coverage.json").read_text()},
+                    "only a passing run is visible now")
+        self.git("branch", "-D", "main")
+        out = self.run_cov()
+        self.assertIn("✅ `crap.py`", out)
+        self.assertIn("fail kept: journal: crap", out)
+
+    def test_without_kept_evidence_a_pass_alone_is_not_enough(self):
+        head = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n|---|---|---|---|---|---|---|---|\n"
+        row = "| 2026-11-01T00:00:00+00:00 | crap | 0 | 1.0 | `python .migration/harness/tools/crap.py` | `x` |  |  |\n"
+        self.commit({".migration/evidence/runs/T-1.md": head + row}, "pass only")
+        self.assertIn("⚠️ `crap.py`", self.run_cov("--keep"))
+        kept = json.loads((self.d / ".migration/evidence/coverage.json").read_text())
+        self.assertEqual(set(kept["paths"]["tool:crap.py"]), {"pass"})
+
+
 class MidSetupTest(CoverageTest):
     """A target whose harness workflows aren't on its default branch yet (synthetic target mid-setup): GitHub
     answers 404 for their runs. That is no evidence, not a crash."""
@@ -94,6 +131,26 @@ class MidSetupTest(CoverageTest):
                            capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("AFS-RESULT gate=coverage", r.stdout)
+
+
+class PagingTest(unittest.TestCase):
+    def test_more_than_100_runs_reads_several_pages_of_one_size(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import harness_coverage as hc
+        asked = []
+
+        def fake(path, raw=False):
+            asked.append(path)
+            page = int(path.rsplit("page=", 1)[1])
+            n = 100 if page < 3 else 40
+            return {"workflow_runs": [{"id": page * 1000 + i} for i in range(n)]}
+        orig, hc.gh = hc.gh, fake
+        try:
+            runs = hc.workflow_runs("o/r", "w.yml", 250)
+        finally:
+            hc.gh = orig
+        self.assertEqual(len(runs), 240)
+        self.assertTrue(all("per_page=100&" in p for p in asked), asked)
 
 
 class TransientTest(unittest.TestCase):
