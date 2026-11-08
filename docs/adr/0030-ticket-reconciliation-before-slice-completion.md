@@ -1,6 +1,6 @@
 # ADR-0030: Reconcile slice tickets before coordinator completion
 
-- Status: Accepted
+- Status: Accepted; amended 2026-11-07 (killed sessions)
 - Date: 2026-11-05
 
 ## Context
@@ -51,6 +51,11 @@ related issue tree is stale.
     or blocker handoff, Characterizer failing cases, and Auditor gaps-remain. The return must belong to the
     superseded issue and identify the same owning PR; for example, a Bootstrapper's blocked validation is
     preserved as Bootstrapper evidence, not rewritten as a Verifier result.
+    **Amendment (2026-11-07, martins-vds: "Yes in the reconciliation rule"):** a session killed before it
+    could write a return (on the pilot, a Coordinator stopped by the cloud agent's one-hour limit) can't
+    meet that. Its failure may instead cite `failure.session_run`, the agent session's own Actions run id.
+    The checker requires that run to be an agent session run on the failure PR's branch that ended
+    cancelled, timed out or failed. The PR must have no return file; a session that wrote one is judged by it.
   - `retained-open`: the issue remains open and states the outstanding work and actual blocker. It is not
     represented as completed or automatically closed.
 - The AFS map fog workflow checks this report before the existing ADR-0024 return-file check. A missing,

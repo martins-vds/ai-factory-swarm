@@ -62,7 +62,8 @@ slice.
    each issue, review the landing and role evidence, then record exactly one disposition in
    `.migration/evidence/ticket-reconciliation/<epic>.yaml`: `completed` with landing PR(s) and committed
    role return(s), `superseded` with a replacement issue plus the closed-unmerged failure PR and that
-   role's own failed return, or `retained-open` with actual outstanding work and blocker. A completed
+   role's own failed return (or, for a session killed before it could write one, `failure.session_run`: its
+   own cancelled, timed-out or failed agent run), or `retained-open` with actual outstanding work and blocker. A completed
    return must identify this issue directly or through same-path, same-ticket/role committed history; its
    owning PR must be cited and contain that return. A closed-unmerged PR counts as completed only when
    its exact head is in `main` ancestry; a later carrier PR may provide that landing. A return file, green
