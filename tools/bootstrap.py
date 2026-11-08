@@ -604,6 +604,19 @@ def ensure_labels(target_repo):
                "-f", f"name={name}", "-f", f"color={color}", "-f", f"description={desc}")
 
 
+def checked_at(target, caps_doc):
+    """The checklist's check time: kept when the checklist is unchanged, so a re-install (a harness rollout)
+    doesn't rewrite a line every open PR touching capabilities.yaml then conflicts on (synthetic SY-02, SY-03)."""
+    try:
+        previous = yaml.safe_load((pathlib.Path(target) / ".migration/capabilities.yaml").read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        previous = None
+    strip = lambda d: {k: v for k, v in (d or {}).items() if k != "checked_at"}
+    if isinstance(previous, dict) and previous.get("checked_at") and strip(previous) == strip(caps_doc):
+        return previous["checked_at"]
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def check_profile_services(profile, target):
     """The profile's test services must name a compose file the target has: every CI job and Copilot setup
     step starts them, so a missing file fails the setup PR's every check (synthetic target, SY-01)."""
@@ -726,7 +739,7 @@ def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_is
         if create_gap_issues:
             ensure_labels(profile["target"]["repo"])
             created = open_gap_issues(caps_doc, profile["target"]["repo"])
-        caps_doc["checked_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        caps_doc["checked_at"] = checked_at(target, caps_doc)
         write_state(staging, profile, profile_path, caps_doc)
 
         errors = []
