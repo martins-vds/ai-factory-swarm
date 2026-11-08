@@ -77,8 +77,15 @@ merge anything. Install it through a reviewed, pinned bootstrap rollout before d
 2. `afs-acceptance run` records runtime/integrity/service and both-side graph preflights, then the
    profile's exact build, idiom, tests, CRAP and **mutation_full** command lists through `afs-run`.
    Ordinary PR checks still run changed-code mutation only.
-3. Wait for the actual Actions run, not the agent's finish event. Download the matching
-   `afs-acceptance-<sha>-<run-id>-<attempt>` artifact under gitignored `.migration/runs/`.
+3. Wait for the actual Actions run, not the agent's finish event. Fetch its evidence from the branch
+   the run's `publish` job pushed (git reaches github.com from any session; Copilot's firewall blocks
+   some of the storage hosts that serve artifacts):
+   ```bash
+   python .migration/harness/tools/afs-acceptance fetch --run-id <run-id> --attempt <attempt> \
+     --dest .migration/runs/acceptance-<run-id>-<attempt>
+   ```
+   If the branch is missing (an older run, or its publish job failed), download the matching
+   `afs-acceptance-<sha>-<run-id>-<attempt>` artifact under gitignored `.migration/runs/` instead.
    Independently inspect that run using GitHub: correct repository, source SHA, attempt, workflow
    source and **successful** conclusion. Hashes prove file integrity, not who produced the artifact.
 4. On the Auditor's checkout, verify the downloaded directory:

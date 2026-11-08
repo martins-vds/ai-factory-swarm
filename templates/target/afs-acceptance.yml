@@ -67,3 +67,34 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
+  # Copilot's firewall allows only some of the storage hosts that serve artifacts, so a session's download
+  # can fail by luck (pilot BK-ACCEPT, run 42506832839). This job, on GitHub's runner, republishes the
+  # artifact as a branch the session fetches over git; `afs-acceptance fetch` + `verify` check it as before.
+  # It is the only job with write access, and it runs no target code.
+  publish:
+    needs: acceptance
+    if: ${{{{ always() && needs.acceptance.result != 'skipped' }}}}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download this run's evidence
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: afs-acceptance-${{{{ github.sha }}}}-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
+          path: evidence
+      - name: Publish it to afs/acceptance/<run>-<attempt>
+        if: ${{{{ steps.download.outcome == 'success' }}}}
+        env:
+          GH_TOKEN: ${{{{ github.token }}}}
+          BRANCH: afs/acceptance/${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
+        run: |
+          cd evidence
+          git init -q -b "$BRANCH"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Acceptance evidence: run ${{{{ github.run_id }}}} attempt ${{{{ github.run_attempt }}}} at ${{{{ github.sha }}}}"
+          git push -q "https://x-access-token:${{GH_TOKEN}}@github.com/${{{{ github.repository }}}}.git" "HEAD:refs/heads/$BRANCH"
+          echo "Evidence branch: $BRANCH" >> "$GITHUB_STEP_SUMMARY"

@@ -67,3 +67,18 @@ imports that run's artifact (`afs-evidence`'s durable Actions procedure).
   to `check_graph_fresh.py`; bind the Auditor's return to the run and commit, and check that binding in CI;
   update the Auditor's procedure and `afs-evidence`; prove it with a drill that merges code during an
   audit and still gets a valid acceptance.
+
+### Amendment (2026-11-08): sessions fetch acceptance evidence over git
+
+The pilot's booking acceptance (run 42506832839) passed, but its Slice Coordinator couldn't import it:
+`curl: (6) Could not resolve host: productionresultssa32.blob.core.windows.net`. GitHub serves each
+artifact from one of many numbered storage hosts, and Copilot's firewall allows only some of them. The
+data-migration run had landed on an allowed one by luck. Allowing all of `blob.core.windows.net` would
+let a session send data to any Azure storage account.
+
+The acceptance workflow now has a `publish` job. It runs after the gates on GitHub's runner, downloads
+the run's artifact, and pushes its files as the tree of the branch `afs/acceptance/<run-id>-<attempt>`.
+It is the only job with write access, and it checks out and runs no target code; the gate job stays
+read-only. `afs-acceptance fetch --run-id --attempt --dest` copies that tree out, and `afs-acceptance
+verify` checks it exactly as it checks an artifact. The artifact download remains the fallback for runs
+without a branch. The branches stay as a record of what was imported.
