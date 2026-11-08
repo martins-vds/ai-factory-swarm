@@ -20,6 +20,12 @@ list, and the setup PR repeats it as a checklist.
 | 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret** for the account that **pays** for Copilot, named in profile `costs.billing` (see below) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
 | 11 | **Who signs off slices** (ADR-0031): profile `signoff.approvers`, the GitHub logins whose approving review on the coordinator's PR is the human sign-off. Open that PR from the Copilot coding agent (or any login that isn't an approver): GitHub doesn't let a PR's author approve it | `.migration/profile.yaml` | `human_check: passed` is only a claim; the approver's review on the exact head commit is the sign-off | **AFS human sign-off** fails on the PR and on `main` |
 
+**Merge the setup PR first.** Copilot's setup steps (`copilot-setup-steps.yml`) run only from the default
+branch, while hooks in `.github/hooks/` are read from the branch a session works on. A session based on an
+unmerged setup branch therefore gets the RTK pre-tool hook without RTK, and every tool call fails. On the
+synthetic target two Bootstrapper sessions ended with nothing done this way. Fix a setup PR from your own
+clone; dispatch sessions once it is on the default branch.
+
 ## Slice completion and ticket reconciliation
 
 Before a coordinator completes a slice or closes its epic, require the committed

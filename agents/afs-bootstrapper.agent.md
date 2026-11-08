@@ -72,6 +72,10 @@ install.
    pass and the test gate runs against it. Copilot setup steps and the CI gates start these services, so
    agents never test against mocks where a real service exists. A later slice that needs a new service
    adds it to the same file.
+   The setup PR must be complete when it's opened (profile, checklist, test services) and is merged
+   before any Copilot session runs: Copilot's setup steps come from the default branch only, but a
+   branch's hooks are live, so a session based on the unmerged setup branch has no RTK and the RTK
+   pre-tool hook blocks every tool call. Fix a setup PR from the dispatcher's clone, never by a session.
 7. **Graph first (ADR-0020).** Once the setup PR is merged, the dispatcher runs the afs-understand
    workflow with `side=source` on `main` and merges its PR. It builds, enriches and stamps the full source
    graph. `python .migration/harness/tools/graph_gate.py --side source --require-graph` must pass before

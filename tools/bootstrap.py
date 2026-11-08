@@ -85,6 +85,9 @@ LABELS = [
 
 
 OPERATOR_CHECKLIST = [
+    "Merge the setup PR before dispatching any Copilot session: setup steps run only from the default branch, "
+    "while a branch's hooks are live, so a session based on the unmerged setup branch has no RTK and its "
+    "pre-tool hook blocks every tool call (synthetic target, SY-01)",
     "Actions enabled: allow all actions and reusable workflows",
     "Workflow permissions: allow GitHub Actions to create and approve pull requests",
     "Copilot coding agent enabled for this repository",
