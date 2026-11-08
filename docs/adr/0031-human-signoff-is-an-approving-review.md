@@ -1,6 +1,6 @@
 # ADR-0031: A slice's human sign-off is an approving PR review
 
-- Status: Accepted (martins-vds, 2026-11-06: "Approving PR review")
+- Status: Accepted (martins-vds, 2026-11-06: "Approving PR review"); deferral added by ADR-0036
 - Date: 2026-11-06
 
 ## Context
