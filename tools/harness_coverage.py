@@ -20,12 +20,18 @@ The evidence is what the repo kept:
     tool, counted as unconfirmed: a step may call a tool on a branch that didn't run;
   * issues per label (GitHub).
 
+**Kept evidence.** Workflow runs age out of GitHub's recent-runs window, and with them the failing run that
+proved a gate catches something. `--keep` merges what this run saw into `.migration/evidence/coverage.json`
+(a link to the first run, journal or session that showed each side) and every run reads that file back, so
+a path once exercised stays exercised, with its proof. Commit the file like any evidence.
+
 A tool or workflow is exercised on both paths when it has been seen passing **and** failing; a gate that
 has only ever passed has never been shown to catch anything. One that reports and never blocks declares
 it (`afs_trace.run(main, verdict=False)`, or `# afs-coverage: no-verdict` in a workflow): seeing it run is
 enough. `afs-drill` makes the failing runs on purpose. Step-level evidence never makes a tool ✅.
 
   harness_coverage.py --repo owner/repo [--runs 60] [--out .migration/coverage.md]
+  harness_coverage.py --repo o/r --keep              also record what it saw in .migration/evidence/coverage.json
   harness_coverage.py --offline                      git evidence only (no GitHub calls)
   harness_coverage.py --repo o/r --json pilot.json      also write each path's status by key
   harness_coverage.py --union pilot.json synthetic.json  the union across targets (ADR-0037)
@@ -190,6 +196,39 @@ def value_at(doc, dotted):
 
 
 RANK = {True: 2, None: 1, False: 0}
+KEPT = pathlib.Path(".migration/evidence/coverage.json")
+SIDES = {"tool": ("pass", "fail"), "workflow": ("success", "failure")}
+
+
+def workflow_runs(repo, name, limit):
+    """The latest `limit` runs of a workflow. GitHub pages at 100, so more than 100 takes several requests."""
+    size = min(100, limit)             # one page size throughout: GitHub's pages are offsets of per_page
+    runs, page = [], 1
+    while len(runs) < limit:
+        batch = (gh(f"repos/{repo}/actions/workflows/{name}/runs?per_page={size}&page={page}") or {}).get("workflow_runs", [])
+        runs += batch
+        if len(batch) < size:
+            break
+        page += 1
+    return runs[:limit]
+
+
+def load_kept(path=KEPT):
+    """Evidence earlier runs kept: {path key: {side: reference}}."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in (doc.get("paths") or {}).items() if isinstance(v, dict)}
+
+
+def save_kept(kept, path=KEPT):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"schema": "afs-coverage-evidence/1",
+           "note": "Written by harness_coverage.py --keep: the first evidence seen for each side of each tool and "
+                   "workflow, kept so it outlives GitHub's recent-runs window (ADR-0027).",
+           "paths": {k: dict(sorted(v.items())) for k, v in sorted(kept.items()) if v}}
+    path.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
 
 
 def union(files, out_path=None):
@@ -221,6 +260,7 @@ def main(argv=None):
     ap.add_argument("--out")
     ap.add_argument("--json", help="also write every path's status, by key, for --union")
     ap.add_argument("--union", nargs="+", metavar="JSON", help="combine --json reports of several targets (ADR-0037)")
+    ap.add_argument("--keep", action="store_true", help=f"record this run's evidence in {KEPT} (merged, never dropped)")
     a = ap.parse_args(argv)
     if a.union:
         return union(a.union, a.out)
@@ -261,11 +301,18 @@ def main(argv=None):
     # Tools: pass/fail from journals and workflow steps
     passed, failed, where = collections.defaultdict(int), collections.defaultdict(int), collections.defaultdict(set)
     unconfirmed = collections.defaultdict(int)
+    kept = load_kept()
+    seen = collections.defaultdict(dict)              # key -> {side: first reference this run saw}
+
+    def saw(key, side, ref):
+        seen[key].setdefault(side, ref)
+
     for gate, code, cmd in journal_rows():
         for t in u["tools"]:
             if re.search(rf"harness/tools/{re.escape(t)}\b", cmd):
                 (passed if code == 0 else failed)[t] += 1
                 where[t].add("journal")
+                saw(f"tool:{t}", "pass" if code == 0 else "fail", f"journal: {gate} (.migration/evidence/runs)")
     latest = {}                                       # one session, one record: the latest snapshot of its log
     for rec in history(".migration/costs"):
         key = rec.get("log") or rec.get("session_id")
@@ -276,24 +323,30 @@ def main(argv=None):
             if r.get("tool") in u["tools"]:
                 (passed if r.get("exit") == 0 else failed)[r["tool"]] += r.get("count", 1)
                 where[r["tool"]].add("agent session")
+                saw(f"tool:{r['tool']}", "pass" if r.get("exit") == 0 else "fail",
+                    f"agent session: {rec.get('session_id') or rec.get('log')}")
     steps = step_tools(u["workflows"], u["tools"])
     wf_conclusions = {}
     if not a.offline and a.repo:
         for name in u["workflows"]:
             try:
-                runs = (gh(f"repos/{a.repo}/actions/workflows/{name}/runs?per_page={a.runs}") or {}).get("workflow_runs", [])
+                runs = workflow_runs(a.repo, name, a.runs)
             except RuntimeError as e:
                 if "HTTP 404" not in str(e):
                     raise
                 runs = []          # not on the default branch yet (a target mid-setup): no runs, not an error
             wf_conclusions[name] = collections.Counter(r.get("conclusion") for r in runs)
             for run in runs:
+                if run.get("conclusion") in ("success", "failure"):
+                    saw(f"workflow:{name}", run["conclusion"], run.get("html_url") or f"run {run.get('id')}")
                 for job in (gh(f"repos/{a.repo}/actions/runs/{run['id']}/jobs") or {}).get("jobs", []):
                     marks = MARK.findall(gh(f"repos/{a.repo}/actions/jobs/{job['id']}/logs", raw=True))
                     for t, code in marks:          # exact: the tool said it ran, and how it ended
                         if t in u["tools"]:
                             (passed if code == "0" else failed)[t] += 1
                             where[t].add(name)
+                            saw(f"tool:{t}", "pass" if code == "0" else "fail",
+                                run.get("html_url") or f"{name} run {run.get('id')}")
                     if marks:
                         continue
                     for st in job.get("steps") or []:   # older runs, before AFS-TOOL: the step ran, unconfirmed
@@ -302,31 +355,48 @@ def main(argv=None):
                                 unconfirmed[t] += 1
                                 where[t].add(f"{name}, step only")
     out.append("\n## Harness tools (seen passing and failing)\n")
+    def merged(key):
+        both = dict(kept.get(key) or {})
+        for side, ref in seen[key].items():
+            both.setdefault(side, ref)
+        return both
+
+    def kept_note(key, sides):
+        old = [s for s in sides if s in (kept.get(key) or {}) and s not in seen[key]]
+        return "".join(f"; {s} kept: {kept[key][s]}" for s in old)
+
     for t in u["tools"]:
         p, f = passed[t], failed[t]
+        ev = merged(f"tool:{t}")
+        hp, hf = bool(p or "pass" in ev), bool(f or "fail" in ev)
         if t in u["no_verdict"]:      # reports, never blocks: seen running is the whole path
-            ok = True if p or f else (None if unconfirmed[t] else False)
+            ok = True if hp or hf else (None if unconfirmed[t] else False)
         else:
-            ok = True if p and f else (None if p or f or unconfirmed[t] else False)
+            ok = True if hp and hf else (None if hp or hf or unconfirmed[t] else False)
         extra = f", step-level only {unconfirmed[t]}" if unconfirmed[t] else ""
+        extra += kept_note(f"tool:{t}", SIDES["tool"])
         extra += " · no verdict: seen running is enough" if t in u["no_verdict"] else ""
         line(ok, f"`{t}`: passed {p}, failed {f}{extra}" + (f" ({'; '.join(sorted(where[t]))})" if where[t] else ""),
              f"tool:{t}")
     if wf_conclusions:
         out.append("\n## Generated workflows (recent runs)\n")
         for name, c in sorted(wf_conclusions.items()):
+            ev = merged(f"workflow:{name}")
+            hs, hf = bool(c.get("success") or "success" in ev), bool(c.get("failure") or "failure" in ev)
             if name in u["no_verdict"]:
-                ok = bool(c.get("success") or c.get("failure"))
+                ok = hs or hf
             else:
-                ok = True if c.get("success") and c.get("failure") else (None if c.get("success") else False)
-            line(ok, f"`{name}`: " + (", ".join(f"{k}={v}" for k, v in sorted(c.items(), key=str)) or "never ran"),
-                 f"workflow:{name}")
+                ok = True if hs and hf else (None if hs else False)
+            line(ok, f"`{name}`: " + (", ".join(f"{k}={v}" for k, v in sorted(c.items(), key=str)) or "never ran")
+                 + kept_note(f"workflow:{name}", SIDES["workflow"]), f"workflow:{name}")
         labels = [lb["name"] for lb in gh(f"repos/{a.repo}/labels?per_page=100") or []
                   if lb["name"].startswith(("afs:", "wayfinder:"))]
         out.append("\n## Labels (issues ever labelled)\n")
         for lb in sorted(labels):
             n = len(gh(f"repos/{a.repo}/issues?state=all&labels={lb}&per_page=100") or [])
             line(n > 0, f"`{lb}`: {n} issue(s)", f"label:{lb}")
+    if a.keep:
+        save_kept({k: merged(k) for k in set(kept) | set(seen)})
     covered = total - len(gaps)
     out.append(f"\n**{covered} of {total} paths exercised; {len(gaps)} to go.**")
     report = "\n".join(out) + "\n"
