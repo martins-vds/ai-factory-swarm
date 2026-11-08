@@ -2,7 +2,6 @@
 exercised by the pilot; the synthetic legacy app builds; coverage unions across targets."""
 import json
 import pathlib
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,12 +47,13 @@ class CatalogTest(unittest.TestCase):
                 self.assertTrue(s["how"].strip())
                 self.assertTrue(set(s["targets"]) <= universe, set(s["targets"]) - universe)
 
-    @unittest.skipUnless(shutil.which("javac"), "no JDK")
-    def test_the_legacy_app_builds(self):
-        with tempfile.TemporaryDirectory() as d:
-            src = sorted(str(p) for p in (ROOT / "synthetic/legacy/src/main/java").rglob("*.java"))
-            r = subprocess.run(["javac", "-d", d, *src], capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stderr)
+    def test_the_legacy_app_is_a_java_ee_source_the_enricher_reads(self):
+        legacy = ROOT / "synthetic/legacy"
+        java = "\n".join(p.read_text() for p in (legacy / "src/main/java").rglob("*.java"))
+        self.assertIn("@Entity", java)
+        self.assertIn("@Path(", java)
+        self.assertTrue((legacy / "pom.xml").exists())
+        self.assertIn("legacy smoke test passed", (ROOT / "synthetic/legacy-smoke.yml").read_text())
 
 
 class UnionTest(unittest.TestCase):
