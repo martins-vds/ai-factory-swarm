@@ -585,6 +585,18 @@
       ]
     },
     {
+      "name": "prototype",
+      "category": "design",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/prototype",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator",
+        "specialist-migrator"
+      ],
+      "notes": "Throwaway UI/logic prototypes that resolve wayfinder:prototype tickets (the wayfinder skill calls it)."
+    },
+    {
       "name": "find-skills",
       "category": "capability-gaps",
       "source": "vercel-skills",

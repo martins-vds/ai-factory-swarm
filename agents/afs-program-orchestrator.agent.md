@@ -25,6 +25,7 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 - `improve-codebase-architecture` — design tickets for CRAP hot spots, with the operator.
 - `ui-ux-pro-max` — the UI-direction prototype ticket (keep vs modernize; design system options).
 - `research` — facts a decision waits on.
+- `prototype` — resolve a `wayfinder:prototype` ticket: a throwaway artifact to react to, kept on a branch.
 
 ## Procedure
 1. **Intake (Phase 0).** Record source repo + pinned SHA, target repo, back-end and front-end stacks,
