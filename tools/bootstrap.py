@@ -50,7 +50,7 @@ import check_runtime  # noqa: E402
 import check_installed  # noqa: E402
 import validate  # noqa: E402
 
-HARNESS_TOOLS = ["afs-run", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
+HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_domain_coverage.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
@@ -598,6 +598,39 @@ def ensure_labels(target_repo):
                "-f", f"name={name}", "-f", f"color={color}", "-f", f"description={desc}")
 
 
+def check_profile_services(profile, target):
+    """The profile's test services must name a compose file the target has: every CI job and Copilot setup
+    step starts them, so a missing file fails the setup PR's every check (synthetic target, SY-01)."""
+    services = (profile or {}).get("services")
+    if not services:
+        return
+    compose = pathlib.Path(target) / services.get("compose", "")
+    if not compose.is_file():
+        raise BootstrapError(f"profile services.compose names {services.get('compose')!r}, which the target "
+                             f"doesn't have. Write the test services first (afs-bootstrapper step 4, with "
+                             f"docker-compose-orchestration); CI and Copilot setup steps start them")
+
+
+def check_release(allow_unreleased):
+    """Install only what is on the harness's main branch, committed: an installed.json naming a branch commit
+    or a dirty tree can't be reproduced, and an unmerged change reaches a target unreviewed."""
+    if allow_unreleased:
+        return
+    _, commit, dirty = harness_identity()
+    if dirty:
+        raise BootstrapError("the harness checkout has uncommitted changes; commit them (or check out main) "
+                             "before installing, or pass --allow-unreleased for a throwaway target")
+    try:
+        run(["git", "-C", str(ROOT), "fetch", "--quiet", "origin", "main"])
+        on_main = subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor", commit, "FETCH_HEAD"],
+                                 capture_output=True).returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        on_main = False
+    if not on_main:
+        raise BootstrapError(f"harness commit {commit[:7]} isn't on origin/main; check out main (an unmerged "
+                             f"branch must not reach a target), or pass --allow-unreleased for a throwaway target")
+
+
 def check_profile_graph(profile, packs):
     """ADR-0020: a stack pack's graph enrichers and required types must be in the profile, explicitly."""
     graph = profile.get("graph") or {}
@@ -649,6 +682,7 @@ def bootstrap(target, profile_path, caps_path, pack_paths=(), create_gap_issues=
 
 def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_issues, offline, skip_private):
     profile, caps = load_inputs(profile_path, caps_path)
+    check_profile_services(profile, target)
     caps_doc = yaml.safe_load(pathlib.Path(caps_path).read_text(encoding="utf-8"))
     new_gaps = [c["id"] for c in caps_doc["capabilities"] if c["status"] == "gap" and c.get("ticket") == "new"]
     if new_gaps and not create_gap_issues:
@@ -723,8 +757,11 @@ def main():
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--skip-private-sources", action="store_true",
                     help="leave out skills from sources the lock marks private (CI without access)")
+    ap.add_argument("--allow-unreleased", action="store_true",
+                    help="install from a harness commit that isn't on origin/main, or a dirty tree (tests, CI)")
     a = ap.parse_args()
     try:
+        check_release(a.allow_unreleased)
         r = bootstrap(a.target, a.profile, a.capabilities, a.stack_pack, a.create_gap_issues, a.offline,
                       a.skip_private_sources)
     except BootstrapError as e:

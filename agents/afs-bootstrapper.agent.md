@@ -48,6 +48,10 @@ install.
    patches, `graph.enrich` and `graph.require` (copy the stack pack's `graph` block; bootstrap refuses a
    profile without them), risk-map exclusions (vendored/minified/generated code), stack skills, gate commands,
    thresholds (defaults unless the operator says otherwise), concurrency, context budgets, RTK edition.
+   **With a data stack, write the test services now** (the Test services paragraph of step 6): the profile's
+   `services` is required when `target.stacks.data` is set, and it must name a `compose.yaml` that exists.
+   Every CI job and Copilot setup step starts those services, so bootstrap refuses to install a profile
+   whose compose file is missing (the setup PR would fail every check).
 5. **Install** (in a session that may write `.github/`; the Copilot coding agent may not change
    `.github/agents/`, so there you stop after steps 1–4, commit the profile and checklist, and hand off: the
    dispatcher runs this step) with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
@@ -59,7 +63,7 @@ install.
    `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
 6. **Scaffold the target** per the architecture ADRs: layout, CI running the gates, lint/format, test
    runner, coverage, CRAP and mutation tooling, containers.
-   **Test services:** write the target's `compose.yaml` with `docker-compose-orchestration` (images with
+   **Test services** (written in step 4 when there is a data stack): write the target's `compose.yaml` with `docker-compose-orchestration` (images with
    `docker-expert`, Dockerfiles with `multi-stage-dockerfile`; never by hand). It defines every real
    service the tests need — the database from `target.stacks.data`, brokers, stand-ins for external
    systems — each with a healthcheck, with credentials that match the target's default settings, and
