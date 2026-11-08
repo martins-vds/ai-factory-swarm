@@ -22,6 +22,7 @@ characterization evidence, the decision-map answers (data strategy, UI direction
 - `afs-implement`, `tdd` — the implementation loop, test-first.
 - `patterns-of-enterprise-application-architecture` — legacy data-access patterns and their equivalents.
 - `ui-ux-pro-max` — UI tickets: build screens in the chosen direction; UX and accessibility rules.
+- `prototype` — a throwaway UI variant to react to when a screen's look is still open.
 - `db-seed` — seed data for data-migration tests.
 - `afs-data-pipeline` — data tickets: snapshot check, mapping, loader, export, reconciliation (ADR-0032).
 - `afs-evidence`, `afs-ledger`, `afs-quirk-ticket` — as for the Migrator.
