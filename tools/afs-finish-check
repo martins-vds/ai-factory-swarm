@@ -63,58 +63,45 @@ def git(*args):
     return r.stdout if r.returncode == 0 else ""
 
 
-def other_branch_tips(branch):
-    """Commits at the tip of every other branch on the remote that HEAD already contains.
+def base_points(branch):
+    """The commits this session's work started from: the merge-base of HEAD with every other branch.
 
-    The cloud agent's clone may track only its own branch, so the remote-tracking refs can miss the base
-    branch of a stacked PR (pilot, 2026-11-07: a Verifier on a Migrator's branch was charged with the
-    Migrator's files). `git ls-remote` lists every branch; a tip HEAD contains is base history, not this
-    session's work."""
-    tips = set()
-    for line in git("ls-remote", "--heads", "origin").splitlines():
-        sha, _, ref = line.partition("\t")
-        if not sha or ref == f"refs/heads/{branch}":
+    Branch tips alone aren't enough. The cloud clone may not track a stacked PR's base branch, and `main`
+    moves on while a session runs (pilot, 2026-11-08: three sessions were charged with BK-05F's return,
+    merged to `main` after they started). So fetch every branch, then take the merge-base with each:
+    for `main` that is where the session branched off, for a stack's base it is that base's tip."""
+    subprocess.run(["git", "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*"],
+                   capture_output=True, timeout=90)
+    points = set()
+    for ref in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split():
+        if ref in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD"):
             continue
-        if subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True).returncode == 0:
-            tips.add(sha)
-    tips |= {r for r in git("for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
-             if r not in (f"refs/remotes/origin/{branch}", "refs/remotes/origin/HEAD")}
-    return sorted(tips)
+        mb = git("merge-base", "HEAD", ref).strip()
+        if mb:
+            points.add(mb)
+    return sorted(points)
 
 
-def base_tip():
-    """The nearest other-branch tip HEAD contains: where this session's own work starts."""
+def changed_since_bases(pathspec=()):
+    """Paths whose content differs from every base point: this session's net work. A file added and removed
+    again matches the base; work merged in from `main` or the stack's base matches that branch."""
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
-    best, best_n = None, None
-    for tip in other_branch_tips(branch):
-        n = git("rev-list", "--count", f"{tip}..HEAD").strip()
-        if n.isdigit() and (best_n is None or int(n) < best_n):
-            best, best_n = tip, int(n)
-    return best
+    paths = None
+    for point in base_points(branch):
+        diff = {p for p in git("diff", "--name-only", point, "--", *pathspec).splitlines() if p}
+        paths = diff if paths is None else paths & diff
+    return set(paths or ())
 
 
 def net_changed_returns():
-    """Return files whose content now differs from the base tip (an edit put back is not a change)."""
-    tip = base_tip()
-    if not tip:
-        return []
-    out = git("diff", "--name-only", tip, "--", ".migration/returns/")
+    """Return files this session changed (net)."""
     untracked = git("ls-files", "--others", "--exclude-standard", "--", ".migration/returns/")
-    return sorted({p for p in (out + untracked).splitlines() if p})
+    return sorted(changed_since_bases((".migration/returns/",)) | {p for p in untracked.splitlines() if p})
 
 
 def branch_changes():
-    """Paths whose content this branch changed: differing from every other branch tip it contains, plus
-    uncommitted work. Net, not every commit: a file added and removed again isn't a change (pilot BK-05G was
-    blocked for a stray handoff it had already deleted), and work merged in from a base or `main` matches
-    that branch's tip."""
-    branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
-    tips = [t for t in other_branch_tips(branch) if not t.startswith("refs/") or git("rev-parse", "--verify", "-q", t)]
-    paths = None
-    for tip in tips:
-        diff = {p for p in git("diff", "--name-only", tip).splitlines() if p}
-        paths = diff if paths is None else paths & diff
-    paths = set(paths or ())
+    """Paths this session changed (net, see changed_since_bases), plus uncommitted work."""
+    paths = changed_since_bases()
     for line in git("status", "--porcelain", "--untracked-files=all").splitlines():
         p = line[3:].split(" -> ")[-1].strip().strip('"')
         if p:

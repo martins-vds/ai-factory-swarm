@@ -212,6 +212,23 @@ class FinishCheckTest(unittest.TestCase):
         out, _ = self.run_hook(session="m1")
         self.assertNotIn("other_slice.py", (out or {}).get("reason", ""))
 
+    def test_main_moving_on_during_the_session_is_not_its_work(self):
+        # pilot 2026-11-08: BK-05F merged to main while DM-AUDIT ran; its return was charged to DM-AUDIT
+        r = self.repo
+        other = pathlib.Path(self.tmp.name) / "other"
+        git(r.parent, "clone", "-q", str(self.origin), str(other))
+        (other / ".migration/returns").mkdir(parents=True, exist_ok=True)
+        (other / ".migration/returns/BK-05F.afs-specialist-migrator.yaml").write_text("role: afs-specialist-migrator\n")
+        git(other, "add", "-A")
+        git(other, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "BK-05F lands on main")
+        git(other, "push", "-q", "origin", "main")
+        git(r, "fetch", "-q", "origin")          # the session's clone sees main's new tip, which it doesn't contain
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="mm1")
+        trace = json.loads((r / ".migration/evidence/finish-check/mm1.json").read_text())[0]
+        self.assertNotIn(".migration/returns/BK-05F.afs-specialist-migrator.yaml", trace["changed"])
+        self.assertNotIn("another role", (out or {}).get("reason", ""))
+
     def test_unknown_session_is_allowed(self):
         self.write("notes.txt")
         out, err = self.run_hook(prompt="fix a typo")
