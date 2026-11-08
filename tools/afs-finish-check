@@ -104,13 +104,17 @@ def net_changed_returns():
 
 
 def branch_changes():
-    """Paths this branch changed: commits on no other branch, plus uncommitted work."""
+    """Paths whose content this branch changed: differing from every other branch tip it contains, plus
+    uncommitted work. Net, not every commit: a file added and removed again isn't a change (pilot BK-05G was
+    blocked for a stray handoff it had already deleted), and work merged in from a base or `main` matches
+    that branch's tip."""
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
-    others = other_branch_tips(branch)
-    paths = set()
-    if others:
-        out = git("log", "--format=", "--name-only", "HEAD", "--not", *others)
-        paths |= {p for p in out.splitlines() if p}
+    tips = [t for t in other_branch_tips(branch) if not t.startswith("refs/") or git("rev-parse", "--verify", "-q", t)]
+    paths = None
+    for tip in tips:
+        diff = {p for p in git("diff", "--name-only", tip).splitlines() if p}
+        paths = diff if paths is None else paths & diff
+    paths = set(paths or ())
     for line in git("status", "--porcelain", "--untracked-files=all").splitlines():
         p = line[3:].split(" -> ")[-1].strip().strip('"')
         if p:

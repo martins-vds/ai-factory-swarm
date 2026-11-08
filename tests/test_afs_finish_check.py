@@ -187,6 +187,31 @@ class FinishCheckTest(unittest.TestCase):
         out, _ = self.run_hook(session="o2", prompt="**Role:** `afs-verifier`. Verify `BK-05D`.")
         self.assertNotIn("another role", (out or {}).get("reason", ""))
 
+    def test_a_file_added_and_removed_again_is_not_a_change(self):
+        r = self.repo
+        self.write("notes/stray.md")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "stray")
+        (r / "notes/stray.md").unlink()
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "removed")
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="n1")
+        self.assertNotIn("stray.md", (out or {}).get("reason", ""))
+
+    def test_main_merged_into_a_stacked_branch_is_not_the_sessions_work(self):
+        r = self.repo
+        git(r, "checkout", "-q", "main")
+        self.write("src/other_slice.py")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "another slice on main")
+        git(r, "push", "-q", "origin", "main")
+        git(r, "checkout", "-q", "copilot/bk-05d")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="m1")
+        self.assertNotIn("other_slice.py", (out or {}).get("reason", ""))
+
     def test_unknown_session_is_allowed(self):
         self.write("notes.txt")
         out, err = self.run_hook(prompt="fix a typo")
