@@ -62,6 +62,33 @@ class ThresholdTest(unittest.TestCase):
         self.assertEqual(errs, [])
 
 
+class TierAttemptTest(unittest.TestCase):
+    """ADR-0005 amendment: tier C only after the tier-B recipe was tried (SY-01B rated a source C from a failed
+    `mvn package` alone, though its tested code compiles from source)."""
+    def errs(self, **doc):
+        out = []
+        validate_mod.check_tier_attempt("r.yaml", {"role": "afs-bootstrapper", **doc}, out)
+        return out
+
+    def test_tier_c_without_an_attempt_is_rejected(self):
+        self.assertTrue(self.errs(characterization_tier="C"))
+        self.assertTrue(self.errs(characterization_tier="C", tier_b_attempt=None))
+        self.assertTrue(self.errs(characterization_tier="C", tier_b_attempt="mvn package failed"))
+        self.assertIn("tier-B recipe", self.errs(characterization_tier="C")[0])
+
+    def test_tier_c_with_an_attempt_or_no_code_passes(self):
+        self.assertEqual(self.errs(characterization_tier="C",
+                                   tier_b_attempt="ran: javac -sourcepath src -implicit:class T.java -> 40 errors"), [])
+        self.assertEqual(self.errs(characterization_tier="C", tier_b_attempt="no code: specs and CSV samples"), [])
+
+    def test_other_tiers_and_roles_are_not_affected(self):
+        self.assertEqual(self.errs(characterization_tier="A"), [])
+        self.assertEqual(self.errs(characterization_tier="B"), [])
+        out = []
+        validate_mod.check_tier_attempt("r.yaml", {"role": "afs-verifier", "characterization_tier": "C"}, out)
+        self.assertEqual(out, [])
+
+
 class ShallowHistoryTest(unittest.TestCase):
     """A shallow clone can't prove a pre-rule return's exemption; the error must say so (pilot BK-04 restart)."""
     def test_detects_a_shallow_clone(self):

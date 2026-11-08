@@ -253,6 +253,23 @@ def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
                           f"when this return was last committed (score={last}); report the score afs-mutation printed")
 
 
+TIER_B_ATTEMPT = re.compile(r"^(ran|no code): \S")
+
+
+def check_tier_attempt(path, doc, errors):
+    """ADR-0005: tier C only after the tier-B recipe was tried. A build that fails on a private dependency is
+    exactly the case tier B exists for, so `tier_b_attempt` must show the compile-only run and its result,
+    or say there is no code to compile."""
+    if doc.get("role") != "afs-bootstrapper" or doc.get("characterization_tier") != "C":
+        return
+    attempt = doc.get("tier_b_attempt")
+    if not isinstance(attempt, str) or not TIER_B_ATTEMPT.match(attempt.strip()):
+        errors.append(f"{path}: characterization_tier C needs `tier_b_attempt: \"ran: <compile-only command> -> "
+                      f"<result>\"` (the tier-B recipe: compile only what the source's tests reach) or "
+                      f"`\"no code: <what the source contains>\"`. A failed full build is not enough "
+                      f"(afs-migration-contract -> references/characterization.md)")
+
+
 UNCOMMITTED = (".migration/runs/",)   # gitignored: raw logs vanish with the session (ADR-0018)
 PREFIXED = re.compile(r"^(?P<kind>[a-z][a-z-]*): (?P<ref>.+)$")
 
@@ -352,6 +369,7 @@ def main():
             checked += 1
             if isinstance(doc, dict) and doc.get("ticket") and path.name not in legacy:
                 check_return_evidence(folder, path, doc, profile, pr_roles, errors)
+                check_tier_attempt(path, doc, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:
