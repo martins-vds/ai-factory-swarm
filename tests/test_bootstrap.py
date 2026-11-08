@@ -198,7 +198,7 @@ class BootstrapTest(unittest.TestCase):
             self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         lock_text = (self.target / ".migration/source.lock").read_text()
         self.assertIn("sha: c2df7607e3b6a997dd27eb2917bc33e4ec0f6692", lock_text)
-        self.assertEqual((self.target / ".gitignore").read_text(), ".source/\n.migration/runs/\n.migration/data/snapshot/\n.migration/data/target-export/\n")
+        self.assertEqual((self.target / ".gitignore").read_text(), ".source/\n.migration/runs/\n.migration/data/snapshot/\n.migration/data/target-export/\n__pycache__/\n")
 
     def test_domain_coverage_dispatch_is_optional_and_wired_to_the_graph_gate(self):
         self.run_bootstrap()
