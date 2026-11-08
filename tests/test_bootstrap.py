@@ -107,6 +107,23 @@ class BootstrapTest(unittest.TestCase):
     def run_bootstrap(self, caps=CAPS, **kw):
         return bootstrap.bootstrap(self.target, PROFILE, caps, [PACK], **kw)
 
+    def test_reinstalling_an_unchanged_checklist_keeps_its_check_time(self):
+        # synthetic SY-02/SY-03: every rollout restamped checked_at, and every open PR touching the file conflicted
+        self.run_bootstrap(offline=True)
+        caps = self.target / ".migration/capabilities.yaml"
+        doc = yaml.safe_load(caps.read_text())
+        doc["checked_at"] = "2026-01-01T00:00:00Z"
+        caps.write_text(yaml.safe_dump(doc, sort_keys=False))
+        bootstrap.bootstrap(self.target, PROFILE, caps, [PACK], offline=True)
+        self.assertEqual(yaml.safe_load(caps.read_text())["checked_at"], "2026-01-01T00:00:00Z")
+        doc = yaml.safe_load(caps.read_text())
+        doc["capabilities"][0]["notes"] = "changed"
+        changed = self.target.parent / f"{self.target.name}-changed.yaml"
+        changed.write_text(yaml.safe_dump(doc, sort_keys=False))
+        self.addCleanup(changed.unlink)
+        bootstrap.bootstrap(self.target, PROFILE, changed, [PACK], offline=True)
+        self.assertNotEqual(yaml.safe_load(caps.read_text())["checked_at"], "2026-01-01T00:00:00Z")
+
     def test_gitignore_keeps_bytecode_out(self):
         self.run_bootstrap(offline=True)
         self.assertIn("__pycache__/", (self.target / ".gitignore").read_text().splitlines())
