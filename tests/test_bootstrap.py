@@ -128,6 +128,12 @@ class BootstrapTest(unittest.TestCase):
             with self.assertRaisesRegex(bootstrap.BootstrapError, "isn't on origin/main"):
                 bootstrap.check_release(False)
 
+    def test_every_workflow_declares_its_permissions(self):
+        # ADR-0039: a target may set read-only default workflow permissions; no harness workflow relies on the default
+        for wf in sorted((ROOT / "templates/target").glob("*.yml")):
+            with self.subTest(wf.name):
+                self.assertRegex(wf.read_text(), r"(?m)^\s*permissions:", wf.name)
+
     def test_every_tool_a_workflow_calls_is_installed(self):
         # #130 shipped afs-stack-refresh.yml calling stack_refresh.py, which HARNESS_TOOLS didn't list
         called = set()

@@ -11,7 +11,7 @@ list, and the setup PR repeats it as a checklist.
 | 1 | **Actions enabled**, "Allow all actions and reusable workflows" | Settings → Actions → General | CI, Copilot setup steps and the graph workflow are GitHub Actions | No workflow runs at all |
 | 2 | Workflow permissions: **"Allow GitHub Actions to create and approve pull requests"** | Settings → Actions → General → Workflow permissions | `afs-understand.yml` opens its graph PR with `GITHUB_TOKEN` | Graph branch pushed, but no PR (`::notice::` in the run) |
 | 3 | **Copilot coding agent enabled** for the repository | Settings → Copilot → Coding agent (or org policy) | Remote workers are Copilot coding-agent sessions with the `afs-*` custom agents | Assigning an issue to Copilot does nothing |
-| 4 | **Workflow runs on Copilot PRs don't wait for approval** | Settings → Copilot → Cloud agent ("Coding agent" on some accounts) → Actions workflow approval: turn off **Require approval for workflow runs** | CI must check every agent push | Runs show "action required"; someone has to push or approve before checks run |
+| 4 | **Workflow runs on Copilot PRs wait for your approval** (ADR-0039, the default; keep it on). Turning it off is a per-repo choice, made only with ADR-0039's mitigations | Settings → Copilot → Cloud agent ("Coding agent" on some accounts) → Actions workflow approval → **Require approval for workflow runs** (on). To check one push: **Approve and run workflows** in the PR | With it on, a person sees what an agent push changes, workflows included, before that code runs with the repo's secrets | Checks show "action required" until you approve. Before approving, look at changes under `.github/` and `.migration/harness/`: there should be none |
 | 5 | **Public repo or Actions budget** | Settings → Billing (account or org) | Copilot sessions and CI consume Actions minutes on private repos | Jobs "not started because recent account payments have failed or your spending limit needs to be increased" |
 | 6 | `SOURCE_READ_TOKEN` secret, **private sources only**: a fine-grained PAT with Contents: Read-only on the source repo only | Settings → Secrets and variables → Actions, **and** Settings → Environments → `copilot` | Remote sessions and workflows check out the pinned source | `.source/` missing; `afs-setup-check` stops |
 | 7 | A user token for the **dispatcher** (L0 or you): `gh` logged in as a user with write access | Where the Program Orchestrator runs | Assigning issues to Copilot with a custom agent, opening quirk and gap issues, blocking edges, merges. Remote sessions cannot do these | Tickets are never dispatched; quirk drafts stay in PRs (CI fails on them) |
@@ -25,6 +25,15 @@ branch, while hooks in `.github/hooks/` are read from the branch a session works
 unmerged setup branch therefore gets the RTK pre-tool hook without RTK, and every tool call fails. On the
 synthetic target two Bootstrapper sessions ended with nothing done this way. Fix a setup PR from your own
 clone; dispatch sessions once it is on the default branch.
+
+**Securing a target (ADR-0039).**
+1. Give each repository its own `AFS_STACK_TOKEN`: a fine-grained token for that repository only, with an expiry.
+2. Protect `main` with a ruleset that requires a pull request.
+3. Set default workflow permissions to read-only. Harness workflows declare what they need.
+4. Add a CODEOWNERS entry for `.github/` and `.migration/harness/`.
+5. Keep `SOURCE_READ_TOKEN` and `BILLING_READ_TOKEN` read-only, and only where needed.
+
+The dispatcher never approves workflow runs for you.
 
 ## Slice completion and ticket reconciliation
 
