@@ -36,6 +36,32 @@ def path(g, anchor):
     return check_graph.data_path(anchor, g.doc["nodes"], g.doc["edges"], by_id)
 
 
+class StaticPagesTest(unittest.TestCase):
+    """A Java EE app whose UI is static HTML (the synthetic target's About page, served by a JAX-RS resource)
+    has `page` nodes: the stack pack requires them, and the graph gate failed without (synthetic SY-01)."""
+    def test_static_html_is_a_page_routed_from_the_resource_that_serves_it(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        enrich_graph.ENRICHERS["java-ee"](g, ROOT / "synthetic/legacy")
+        self.assertIn("src/main/resources/static/about.html",
+                      {n["name"] for n in g.doc["nodes"] if n["type"] == "page"})
+        self.assertIn(("GET /about", "src/main/resources/static/about.html"), edges(g, "routes"))
+
+    def test_jsp_and_test_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / "src/main/java/app").mkdir(parents=True)
+            (root / "src/main/java/app/App.java").write_text("package app;\npublic class App {}\n")
+            (root / "src/main/webapp").mkdir(parents=True)
+            (root / "src/main/webapp/list.jsp").write_text("<%@ page %><html></html>")
+            (root / "src/test/resources").mkdir(parents=True)
+            (root / "src/test/resources/fixture.html").write_text("<html></html>")
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.ENRICHERS["java-ee"](g, root)
+            pages = {n["name"]: n for n in g.doc["nodes"] if n["type"] == "page"}
+        self.assertIn("src/main/webapp/list.jsp", pages)
+        self.assertNotIn("src/test/resources/fixture.html", pages, "test fixtures aren't the app's pages")
+
+
 class JavaEETest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
