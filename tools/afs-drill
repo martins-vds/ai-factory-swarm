@@ -130,7 +130,20 @@ def op_profile_set(root, key, value):
     return f.relative_to(root)
 
 
-OPS = {"edit_installed": op_edit_installed, "replace": op_replace, "drop_healthcheck": op_drop_healthcheck,
+def op_drop_domain_flow(root, side="source"):
+    """Remove one flow (and its edges) from the committed domain graph: a regeneration that lost a flow."""
+    f = root / ".migration/graphs" / side / "full/domain-graph.json"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    flow = next((n for n in doc.get("nodes", []) if n.get("type") == "flow"), None)
+    if flow is None:
+        raise RuntimeError(f"drop_domain_flow: {f.relative_to(root)} has no flow node")
+    doc["nodes"] = [n for n in doc["nodes"] if n is not flow]
+    doc["edges"] = [e for e in doc.get("edges", []) if flow["id"] not in (e.get("source"), e.get("target"))]
+    f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return f.relative_to(root)
+
+
+OPS = {"drop_domain_flow": op_drop_domain_flow, "edit_installed": op_edit_installed, "replace": op_replace, "drop_healthcheck": op_drop_healthcheck,
        "snapshot_set": op_snapshot_set, "write": op_write, "profile_set": op_profile_set}
 
 

@@ -24,6 +24,7 @@ class TargetTest(unittest.TestCase):
         self.put(".migration/profile.yaml",
                  "target:\n  stacks:\n    backend: [python-3.13, django-5]\nthresholds:\n  crap_max_per_method: 30\n"
                  "services:\n  compose: compose.yaml\n  test: [db]\n"
+                 "data:\n  snapshot:\n    - python x.py export --jdbc-url 'jdbc:derby:/tmp/db' --out {{out}}\n"
                  "gates:\n  crap: [\"python .migration/harness/tools/crap.py runs/lizard.csv --lcov runs/crap.lcov --max 30\"]\n")
         self.put("compose.yaml", "services:\n  db:\n    image: postgres:16\n    healthcheck:\n      test: [CMD, pg_isready]\n")
         self.put(".migration/harness/installed.json", json.dumps({"entries": [
@@ -31,6 +32,9 @@ class TargetTest(unittest.TestCase):
             {"path": ".github/agents/afs-a.agent.md", "kind": "agent", "files": {".github/agents/afs-a.agent.md": "h"}}]}))
         self.put(".github/agents/afs-a.agent.md", "agent\n")
         self.put(".migration/graphs/source/full/SNAPSHOT.txt", "source_sha: abc\nscope: full\n")
+        self.put(".migration/graphs/source/full/domain-graph.json", json.dumps({
+            "nodes": [{"id": "flow:a", "type": "flow"}, {"id": "step:a1", "type": "step"}],
+            "edges": [{"source": "flow:a", "target": "step:a1", "type": "contains"}]}))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -64,6 +68,12 @@ class OperationsTest(TargetTest):
     def test_snapshot_set_rewrites_one_key(self):
         drill.op_snapshot_set(self.root, ".migration/graphs/source/*/SNAPSHOT.txt", "source_sha", "000")
         self.assertEqual(self.read(".migration/graphs/source/full/SNAPSHOT.txt"), "source_sha: 000\nscope: full\n")
+
+    def test_drop_domain_flow_removes_the_flow_and_its_edges(self):
+        drill.op_drop_domain_flow(self.root)
+        doc = json.loads(self.read(".migration/graphs/source/full/domain-graph.json"))
+        self.assertEqual([n["id"] for n in doc["nodes"]], ["step:a1"])
+        self.assertEqual(doc["edges"], [])
 
     def test_profile_set_writes_a_dotted_key(self):
         drill.op_profile_set(self.root, "self_heal.enabled", True)
