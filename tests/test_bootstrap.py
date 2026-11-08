@@ -1,5 +1,6 @@
 """Tests for tools/bootstrap.py and tools/check_installed.py. Offline: upstream fetches and `gh` are faked."""
 import json
+import re
 import multiprocessing
 import os
 import pathlib
@@ -122,6 +123,14 @@ class BootstrapTest(unittest.TestCase):
                 unittest.mock.patch.object(bootstrap, "run", return_value=""):
             with self.assertRaisesRegex(bootstrap.BootstrapError, "isn't on origin/main"):
                 bootstrap.check_release(False)
+
+    def test_every_tool_a_workflow_calls_is_installed(self):
+        # #130 shipped afs-stack-refresh.yml calling stack_refresh.py, which HARNESS_TOOLS didn't list
+        called = set()
+        for wf in (ROOT / "templates/target").glob("*.yml"):
+            called |= set(re.findall(r"\.migration/harness/tools/([A-Za-z0-9_./-]*[A-Za-z0-9_-])", wf.read_text()))
+        self.assertTrue(called)
+        self.assertEqual(sorted(called - set(bootstrap.HARNESS_TOOLS)), [])
 
     def caps_with_new_gap(self):
         doc = yaml.safe_load(CAPS.read_text())
