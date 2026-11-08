@@ -109,6 +109,33 @@ class AfsMutationTest(unittest.TestCase):
         self.assertIn("- `src/a.py:5 Mutant #3`\n\n  ```diff\n  -    return a + b\n  +    return a - b\n  ```", text)
         self.assertIn("- `src/a.py:9 Mutant #4`", text, "a survivor without a diff is still listed")
 
+    def test_any_failing_test_run_is_a_kill(self):
+        # mutmut 2.x kills a mutant only on exit 1: pytest's 2 (collection error), 3 and 4 must map to 1
+        self.assertEqual(m.pytest_exit(0), 0)
+        self.assertEqual(m.pytest_exit(1), 1)
+        self.assertEqual(m.pytest_exit(2), 1)
+        self.assertEqual(m.pytest_exit(3), 1)
+        self.assertEqual(m.pytest_exit(4), 1)
+        self.assertEqual(m.pytest_exit(5), 5, "no tests ran: the mutant was not caught")
+
+    def test_mutant_that_breaks_an_import_is_killed(self):
+        # BK-05H: `view = None` / `include('XX…XX')` in urls.py broke the import, pytest exited 2, and
+        # mutmut counted all nine mutants as survivors. The narrowed runner must exit 1 instead.
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            (root / "urls.py").write_text("def view():\n    return 1\nroutes = [view]\n")
+            (root / "test_urls.py").write_text("import urls\n\ndef test_routes():\n    assert urls.routes[0]() == 1\n")
+            runner = " ".join(m.base_cmd() + ["test_urls.py"])
+            ok = subprocess.run(runner, shell=True, cwd=t, capture_output=True, text=True)
+            self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+            (root / "urls.py").write_text("import XXmissingXX\nroutes = []\n")      # the mutant
+            broken = subprocess.run(runner, shell=True, cwd=t, capture_output=True, text=True)
+            self.assertEqual(broken.returncode, 1, broken.stdout + broken.stderr)
+            self.assertNotIn("AFS-TOOL", broken.stderr, "a mutant's test run is not a gate run")
+            plain = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_urls.py"],
+                                   cwd=t, capture_output=True, text=True)
+            self.assertEqual(plain.returncode, 2, "plain pytest exits 2 here: the case mutmut misread")
+
     def test_default_excludes(self):
         ex = m.DEFAULT_EXCLUDE
         self.assertFalse(m.keep("src/app/migrations/0001_initial.py", ex))

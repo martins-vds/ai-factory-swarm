@@ -24,6 +24,12 @@ Usage (run it through afs-run so the run lands in the journal):
 * **No silent loss:** if `mutmut run` fails fatally on any file (exit bit 1, e.g. the tests fail before
   mutating), afs-mutation reports those files and exits 2 without a score; their mutants are never just
   left out of the denominator.
+* **Every failing test run kills the mutant.** mutmut 2.x counts a mutant as killed only when the test
+  command exits 1, so a mutant that breaks an import (pytest exits 2: collection error) used to count as
+  *survived*. The narrowed test command therefore runs pytest in-process through `afs-mutation --pytest`,
+  which exits 1 for any failing run (2 collection error, 3 internal error, 4 usage error) and passes 0
+  and 5 (no tests ran) through unchanged. The same mapping makes a baseline that cannot even import
+  fail loudly instead of passing. A --runner you pass yourself is used as given.
 * Then `mutmut junitxml` per shard; score = killed / (killed + survived + untested). Untested mutants
   count as survived.
 * Threshold: --threshold, else profile.thresholds.mutation_score_min, else 0.8.
@@ -38,6 +44,7 @@ import fnmatch
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -104,8 +111,31 @@ def context_tests(path, src, tests_root="tests"):
     return None
 
 
+KILLED = 1        # the only exit code mutmut 2.x reads as "the tests caught this mutant"
+PASSED_THROUGH = (0, 5)   # pytest: all passed / no tests collected
+
+
+def pytest_exit(code):
+    """Map a pytest exit code onto mutmut's rule: any failing run is a kill."""
+    code = int(code)
+    return code if code in PASSED_THROUGH else KILLED
+
+
+def run_pytest(args):
+    """`afs-mutation --pytest ARGS`: pytest in-process (so mutmut's timeout kill stops it), cwd first on
+    sys.path as with `python -m pytest`, exit code mapped by pytest_exit."""
+    sys.path[0] = os.getcwd()
+    import pytest
+    return pytest_exit(pytest.main(list(args)))
+
+
+def pytest_prefix():
+    return [shlex.quote(sys.executable), shlex.quote(os.path.abspath(__file__)), "--pytest",
+            "-q", "-x", "-p", "no:cacheprovider"]
+
+
 def runner_for(paths, src, mode):
-    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider"]
+    cmd = pytest_prefix()
     if subprocess.run([sys.executable, "-c", "import pytest_cov"], capture_output=True).returncode == 0:
         cmd.append("--no-cov")
     if mode == "auto":
@@ -120,7 +150,7 @@ def has_pytest_cov():
 
 
 def base_cmd():
-    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider"]
+    cmd = pytest_prefix()
     if has_pytest_cov():
         cmd.append("--no-cov")
     return cmd
@@ -372,5 +402,7 @@ def write_survivors(locations, score, threshold, killed, survived, base, diffs=N
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--pytest"]:      # one mutant's test run, not a gate run: no AFS-TOOL line
+        sys.exit(run_pytest(sys.argv[2:]))
     import afs_trace
     afs_trace.run(main)
