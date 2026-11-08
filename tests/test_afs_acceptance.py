@@ -148,6 +148,10 @@ class AcceptanceTest(unittest.TestCase):
         self.assertIn("needs: acceptance", publish)
         self.assertIn("afs/acceptance/${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}", publish)
         self.assertNotIn("actions/checkout", publish, "the write job never checks out or runs target code")
+        # pilot run 42522962056: after failed gates, a step `if` without a status function carries an implicit
+        # success(), which is false, so the evidence was downloaded but never pushed
+        for cond in __import__("re").findall(r"(?m)^ {8}if: (.*)$", publish):
+            self.assertRegex(cond, r"always\(\)|!cancelled\(\)", f"step condition lacks a status function: {cond}")
         acceptance = text.split("\n  acceptance:\n", 1)[1].split("\n  publish:\n", 1)[0]
         self.assertNotIn("contents: write", acceptance, "the gate job stays read-only")
 

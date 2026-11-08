@@ -86,7 +86,7 @@ jobs:
           name: afs-acceptance-${{{{ github.sha }}}}-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
           path: evidence
       - name: Publish it to afs/acceptance/<run>-<attempt>
-        if: ${{{{ steps.download.outcome == 'success' }}}}
+        if: ${{{{ !cancelled() && steps.download.outcome == 'success' }}}}
         env:
           GH_TOKEN: ${{{{ github.token }}}}
           BRANCH: afs/acceptance/${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
