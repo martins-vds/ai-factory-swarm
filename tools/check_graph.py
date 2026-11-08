@@ -23,6 +23,7 @@ Example:
 import argparse
 import collections
 import json
+import re
 import sys
 
 # What the ledger / slice planner rely on (architecture §8, §9).
@@ -167,12 +168,23 @@ FORWARD = {"routes", "calls", "contains", "inherits", "reads_from", "writes_to",
 BACKWARD = {"implements"}   # interface → implementation
 
 
+URL_PARAM = re.compile(r"<(?:[^<>:]+:)?([^<>:]+)>|\{([^{}:]+)(?::[^{}]*)?\}")
+
+
+def same_name(a, b):
+    """Names equal, URL parameters compared by name only: Django `<str:tracking_id>`, `<tracking_id>` and
+    JAX-RS `{tracking_id}` are one parameter (pilot BK-ACCEPT: a slice spec wrote `<tracking_id>` for
+    Django's `<str:tracking_id>`, and the gate found no node)."""
+    canon = lambda x: URL_PARAM.sub(lambda m: "<" + (m.group(1) or m.group(2)) + ">", x)
+    return a == b or canon(a) == canon(b)
+
+
 def anchor_nodes(anchor, nodes):
-    """Ids of the nodes an anchor names: TYPE=NAME matches a node of that type exactly; otherwise the end of
-    a node's file path or id, or its whole name."""
+    """Ids of the nodes an anchor names: TYPE=NAME matches a node of that type exactly (URL parameters by
+    name only); otherwise the end of a node's file path or id, or its whole name."""
     ntype, sep, exact = anchor.partition("=")
     if sep and ntype.isidentifier():          # TYPE=NAME: exact name of a node of that type, e.g. endpoint=/
-        return [n["id"] for n in nodes if n.get("type") == ntype and n.get("name") == exact]
+        return [n["id"] for n in nodes if n.get("type") == ntype and same_name(str(n.get("name")), exact)]
     al = anchor.lower()
     return [n["id"] for n in nodes if n.get("type") not in DATA_TYPES and (
         str(n.get("filePath", "")).lower().endswith(al) or str(n.get("name", "")).lower() == al

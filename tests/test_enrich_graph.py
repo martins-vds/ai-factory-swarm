@@ -36,6 +36,22 @@ def path(g, anchor):
     return check_graph.data_path(anchor, g.doc["nodes"], g.doc["edges"], by_id)
 
 
+class AnchorTest(unittest.TestCase):
+    """Slice anchors name URL parameters however the spec's author wrote them (pilot BK-ACCEPT: the booking
+    slice said `<tracking_id>` for Django's `<str:tracking_id>`, and the acceptance graph gate failed)."""
+    nodes = [{"id": "e1", "type": "endpoint", "name": "/admin/cargo/<str:tracking_id>/"},
+             {"id": "e2", "type": "endpoint", "name": "/loans/{id}"},
+             {"id": "e3", "type": "endpoint", "name": "/admin/dashboard/"}]
+
+    def test_converters_and_brace_parameters_match_by_name(self):
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/cargo/<tracking_id>/", self.nodes), ["e1"])
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/loans/<int:id>", self.nodes), ["e2"])
+
+    def test_different_parameter_names_or_paths_do_not_match(self):
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/cargo/<id>/", self.nodes), [])
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/dashboard/not-routed/", self.nodes), [])
+
+
 class StaticPagesTest(unittest.TestCase):
     """A Java EE app whose UI is static HTML (the synthetic target's About page, served by a JAX-RS resource)
     has `page` nodes: the stack pack requires them, and the graph gate failed without (synthetic SY-01)."""
