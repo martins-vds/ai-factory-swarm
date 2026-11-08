@@ -710,6 +710,33 @@ handoff: none
                         ticket_guard._failed_role_return(
                             "o/r", 3, 103, path, {**pull, "body": body})
 
+    def test_a_killed_session_is_evidenced_by_its_own_cancelled_run(self):
+        # pilot DM-ACCEPT #387/#388: the cloud agent's one-hour limit killed it before it wrote a return
+        pull = {"number": 388, "state": "closed", "merged_at": None, "head": {"ref": "copilot/dm-accept"}}
+        run = {"name": "Running Copilot cloud agent", "head_branch": "copilot/dm-accept", "conclusion": "cancelled"}
+        cases = (
+            (run, [], None),
+            ({**run, "conclusion": "success"}, [], "not cancelled"),
+            ({**run, "head_branch": "other"}, [], "not the failure PR's branch"),
+            ({**run, "name": "AFS harness check"}, [], "not an agent session run"),
+            (run, [{"filename": ".migration/returns/X.afs-slice-coordinator.yaml"}], "has a return file"),
+        )
+        for value, files, problem in cases:
+            with self.subTest(problem=problem):
+                def gh(endpoint, *args, **kwargs):
+                    if endpoint == "repos/o/r/actions/runs/42":
+                        return value
+                    if endpoint.startswith("repos/o/r/pulls/388/files"):
+                        return files
+                    return {}
+
+                with mock.patch.object(ticket_guard, "gh", side_effect=gh):
+                    if problem is None:
+                        ticket_guard._killed_session("o/r", 42, pull)
+                    else:
+                        with self.assertRaisesRegex(ValueError, problem):
+                            ticket_guard._killed_session("o/r", 42, pull)
+
     def test_superseded_bootstrapper_failure_can_preserve_its_own_blocked_return(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
         base = self.commit("base")

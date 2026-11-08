@@ -475,6 +475,28 @@ def _return_in_commit(path, doc, commit):
     return _valid_return(committed, path) == doc
 
 
+KILLED = {"cancelled", "timed_out", "failure"}
+
+
+def _killed_session(repo, run_id, failed_pull):
+    """ADR-0030 amendment: a session killed before it could write a return (e.g. the cloud agent's time limit)
+    is evidenced by its own Actions run: the agent run on the failure PR's branch that ended cancelled, timed
+    out or failed. Only when that PR has no return of its own; a session that wrote one is judged by it."""
+    if not isinstance(run_id, int) or run_id <= 0:
+        raise ValueError("failure.session_run must be the agent session's Actions run id")
+    run = gh(f"repos/{repo}/actions/runs/{run_id}")
+    head = (failed_pull.get("head") or {}).get("ref")
+    if "copilot" not in str(run.get("name", "")).lower() and "agent" not in str(run.get("name", "")).lower():
+        raise ValueError(f"run {run_id} is not an agent session run ({run.get('name')!r})")
+    if run.get("head_branch") != head:
+        raise ValueError(f"run {run_id} ran on {run.get('head_branch')!r}, not the failure PR's branch {head!r}")
+    if run.get("conclusion") not in KILLED:
+        raise ValueError(f"run {run_id} ended {run.get('conclusion')!r}, not cancelled, timed out or failed")
+    files = gh(f"repos/{repo}/pulls/{failed_pull['number']}/files?per_page=100")
+    if any(str(f.get("filename", "")).startswith(".migration/returns/") for f in files):
+        raise ValueError("the failure PR has a return file: cite it as failure.return instead of session_run")
+
+
 def _failed_role_return(repo, issue_number, pull_number, path, pull):
     path = _return_path(path)
     head = (pull.get("head") or {}).get("sha")
@@ -632,7 +654,10 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                     failed_pull = _pull(repo, failure["pull_request"])
                     if failed_pull.get("state") != "closed" or failed_pull.get("merged_at"):
                         raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged")
-                    _failed_role_return(repo, number, failure["pull_request"], failure.get("return"), failed_pull)
+                    if failure.get("session_run") is not None:
+                        _killed_session(repo, failure["session_run"], failed_pull)
+                    else:
+                        _failed_role_return(repo, number, failure["pull_request"], failure.get("return"), failed_pull)
                 except (ValueError, OSError, subprocess.SubprocessError) as exc:
                     problems.append(f"#{number}: {exc}")
             elif disposition == "retained-open":
