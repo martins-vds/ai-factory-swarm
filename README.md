@@ -128,6 +128,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `ticket_guard.py`: reopen a ticket closed before its work reached the default branch
 - `check_stack_base.py`: a stacked PR's base contains the default branch
 - `stack_refresh.py`: merge the default branch into open stacked PRs bottom-up when it moves (ADR-0038)
+- `close_gap_issues.py`: on main, close capability-gap issues whose checklist entry is met, waived or not applicable
 - `fog_rewalk.py`: re-walk the decision map's fog after a slice
 
 **Costs and coverage**

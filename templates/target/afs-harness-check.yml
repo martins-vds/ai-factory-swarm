@@ -109,6 +109,23 @@ jobs:
           GITHUB_TOKEN: ${{{{ github.token }}}}      # reads a sub-issue's parent ticket
         run: python .migration/harness/tools/check_return_contract.py --base "origin/${{{{ github.event.pull_request.base.ref }}}}"
 
+  gap-issues:
+    # Capability-gap issues close when the checklist on the default branch says the gap is closed (synthetic
+    # target: six stayed open after the scaffolding met them). Runs on main only; reads no PR code.
+    name: Capability gap issues follow the checklist
+    if: ${{{{ github.event_name == 'push' }}}}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: pip install -q pyyaml
+      - name: Close gap issues whose capability is met, waived or not applicable
+        env:
+          GH_TOKEN: ${{{{ github.token }}}}
+        run: python3 .migration/harness/tools/close_gap_issues.py --repo "${{{{ github.repository }}}}"
+
   reconciliation:
     # ADR-0030 amendment: a Slice Coordinator's reconciliation file is checked in its own PR, as main will see it
     # once the PR merges (pilot #474: a wrong file merged green and the epic reopened only after it closed).

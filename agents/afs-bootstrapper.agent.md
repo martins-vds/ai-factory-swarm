@@ -57,7 +57,7 @@ install.
    dispatcher runs this step) with the harness's `tools/bootstrap.py` (from a harness checkout at the release being
    installed): `--target <clone> --profile <profile> --capabilities <checklist> --stack-pack
    stacks/<pack>.json --create-gap-issues`. Give a new gap `ticket: new` and bootstrap opens its operator
-   issue. It installs pinned role agents to `.github/agents/`, skills (built-in menu plus stack pack) to
+   issue. Keep `ticket` when the gap is later met or waived: the harness closes that issue from main. It installs pinned role agents to `.github/agents/`, skills (built-in menu plus stack pack) to
    `.github/skills/`, harness tools and schemas to `.migration/harness/` with an `installed.json`
    manifest, RTK's hook, both instruction blocks (harness first), `copilot-setup-steps.yml` and the
    `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
