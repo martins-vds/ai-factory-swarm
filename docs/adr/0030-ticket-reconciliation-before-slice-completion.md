@@ -77,3 +77,18 @@ related issue tree is stale.
   history; PR closure and green checks alone are insufficient.
 - Existing premature-closure reopening, slice return validation and fog re-walk semantics remain in force.
 - The report is a bounded slice artifact, not a general-purpose issue-management service.
+
+### Amendment (2026-11-08): the reconciliation file is checked in the coordinator's PR
+
+On the pilot, the booking Slice Coordinator's PR (#474) merged green with a reconciliation file that
+had 15 problems. The check only ran when the epic closed, after the merge, and it reopened #224. Some of
+the problems were timing: the coordinator's own ticket was still open while it wrote the file, so no
+disposition for it could pass both before and after the merge.
+
+A new harness-check job, **Ticket reconciliation holds once merged**, runs on every pull request that
+changes `.migration/evidence/ticket-reconciliation/<epic>.yaml`. It runs `ticket_guard.py
+--reconcile-epic <epic> --as-if-merged <PR>` on the PR's merge commit: the issues the PR closes count as
+closed as completed, and the PR counts as landed at HEAD. Everything else is checked exactly as at epic
+close, so a wrong disposition fails the PR, not the epic. The job only reads (issues and pull requests),
+never reopens anything, and the epic-close check stays as the backstop. A coordinator marks its own
+ticket `completed` with its own PR.

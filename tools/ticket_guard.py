@@ -10,6 +10,12 @@ comment naming the PR. Closing as "not planned", or with no such PR, is left alo
 
   ticket_guard.py --repo owner/repo --issue 129
   ticket_guard.py --repo owner/repo --reconcile-epic 9 --reopen
+  ticket_guard.py --repo owner/repo --reconcile-epic 9 --as-if-merged 42    # in PR #42's CI (ADR-0030)
+
+**As if merged.** The reconciliation file is written in a Slice Coordinator's PR, but was only checked once the
+epic closed: a wrong file merged green (pilot #474: 15 problems, epic reopened). In the PR's CI, with the
+PR's merge commit checked out, `--as-if-merged N` checks it as main will see it: the issues PR #N closes
+count as closed as completed, and PR #N counts as landed at HEAD.
 
 Uses `gh api`; reconciliation also requires PyYAML and complete Git history.
 """
@@ -363,7 +369,12 @@ def _pull(repo, number):
     return pull
 
 
+PENDING = {"pull": None, "closes": frozenset()}   # --as-if-merged: the PR under test and the issues it closes
+
+
 def _landed_pull(repo, number):
+    if PENDING["pull"] == number:   # the PR under test: its merge commit is HEAD
+        return git("rev-parse", "HEAD")
     pull = _pull(repo, number)
     if pull.get("state") != "closed":
         raise ValueError(f"PR #{number} is still open")
@@ -536,6 +547,9 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
         return None, []
 
     descendants_by_number = descendants(repo, epic_number)
+    for number in PENDING["closes"] & set(descendants_by_number):   # closed as completed when the PR merges
+        descendants_by_number[number] = dict(descendants_by_number[number], state="closed",
+                                             state_reason="completed")
     scope = set(descendants_by_number)
     path = pathlib.Path(report_path or (RECONCILIATION_DIR / f"{epic_number}.yaml"))
     load_problem = None
@@ -636,6 +650,8 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                 else:
                     try:
                         replacement_issue = gh(f"repos/{repo}/issues/{replacement}")
+                        if replacement in PENDING["closes"]:
+                            replacement_issue = dict(replacement_issue, state="closed", state_reason="completed")
                         if replacement_issue.get("pull_request"):
                             raise ValueError(f"replacement #{replacement} is not an issue")
                         if replacement_issue.get("state") != "closed" or \
@@ -671,8 +687,26 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
     return len(scope), problems
 
 
-def reconcile_epic(repo, number, reopen=False):
+def pending_merge(repo, pull_number):
+    """The open PR under test and the issues its description closes (GitHub closes them on merge)."""
+    pull = _pull(repo, pull_number)
+    if pull.get("state") != "open":
+        raise ValueError(f"--as-if-merged needs an open PR; #{pull_number} is {pull.get('state')}")
+    body = pull.get("body") or ""
+    closes = set()
+    for match in re.finditer(r"(?i)\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+"
+                             r"(?:([\w.-]+/[\w.-]+))?#([1-9][0-9]*)\b", body):
+        if match[1] in (None, repo):
+            closes.add(int(match[2]))
+    return {"pull": pull_number, "closes": frozenset(closes)}
+
+
+def reconcile_epic(repo, number, reopen=False, as_if_merged=None):
     R = f"repos/{repo}"
+    if as_if_merged is not None:
+        PENDING.update(pending_merge(repo, as_if_merged))
+        print(f"as if PR #{as_if_merged} were merged: it closes {sorted(PENDING['closes']) or 'no issues'}")
+        reopen = False
     epic = gh(f"{R}/issues/{number}")
     count, problems = reconciliation_problems(repo, number, epic)
     if count is None:
@@ -701,9 +735,17 @@ def main(argv=None):
     operation.add_argument("--issue", type=int)
     operation.add_argument("--reconcile-epic", type=int)
     ap.add_argument("--reopen", action="store_true", help="reopen a failing slice epic")
+    ap.add_argument("--as-if-merged", type=int, metavar="PR",
+                    help="with --reconcile-epic, in PR's CI: check as main will see it once PR merges (never reopens)")
     a = ap.parse_args(argv)
+    if a.as_if_merged is not None and a.reconcile_epic is None:
+        ap.error("--as-if-merged needs --reconcile-epic")
     if a.reconcile_epic is not None:
-        return reconcile_epic(a.repo, a.reconcile_epic, a.reopen)
+        try:
+            return reconcile_epic(a.repo, a.reconcile_epic, a.reopen, a.as_if_merged)
+        except ValueError as exc:
+            print(f"::error::{exc}")
+            return 2
     R = f"repos/{a.repo}"
     issue = gh(f"{R}/issues/{a.issue}")
     if issue.get("pull_request") or issue.get("state") != "closed" or issue.get("state_reason") != "completed":
