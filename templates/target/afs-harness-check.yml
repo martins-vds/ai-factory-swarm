@@ -109,6 +109,27 @@ jobs:
           GITHUB_TOKEN: ${{{{ github.token }}}}      # reads a sub-issue's parent ticket
         run: python .migration/harness/tools/check_return_contract.py --base "origin/${{{{ github.event.pull_request.base.ref }}}}"
 
+  verified-merge:
+    # ADR-0040: migrator work reaches the default branch only with a passing Verifier return, committed
+    # after the migrator return's latest change. PRs into other branches (a Verifier's PR into the
+    # migrator's branch) are out of scope.
+    name: Migrator work is verified before it merges
+    needs: stack-base
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: {{ fetch-depth: 0 }}
+      - uses: actions/setup-python@v5
+        with: {{ python-version: "{python_version}" }}
+      - run: pip install -q pyyaml jsonschema
+      - name: Every changed migrator return has a later, passing Verifier return
+        run: >-
+          python .migration/harness/tools/check_verified_merge.py
+          --base "origin/${{{{ github.event.repository.default_branch }}}}"
+          --pr-base "${{{{ github.event.pull_request.base.ref }}}}"
+          --default-branch "${{{{ github.event.repository.default_branch }}}}"
+
   gap-issues:
     # Capability-gap issues close when the checklist on the default branch says the gap is closed (synthetic
     # target: six stayed open after the scaffolding met them). Runs on main only; reads no PR code.
