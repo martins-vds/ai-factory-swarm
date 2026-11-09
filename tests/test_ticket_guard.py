@@ -136,7 +136,7 @@ quirk_tickets: []
                 for number in [99, *(i["number"] for i in issues)]}
 
     def run_reconciliation(self, issues, pulls, contents=None, *, report_exists=True, labels=None,
-                           report_issues=None, issue_details=None):
+                           report_issues=None, issue_details=None, extra=("--reopen",)):
         if report_exists:
             self.write_report(report_issues if report_issues is not None else issues)
             self.commit("reconciliation evidence")
@@ -175,7 +175,11 @@ quirk_tickets: []
         output = io.StringIO()
         with mock.patch.object(ticket_guard, "gh", side_effect=gh), \
                 contextlib.redirect_stdout(output):
-            result = ticket_guard.main(["--repo", "o/r", "--reconcile-epic", "99", "--reopen"])
+            ticket_guard.PENDING.update(pull=None, closes=frozenset())
+            try:
+                result = ticket_guard.main(["--repo", "o/r", "--reconcile-epic", "99", *extra])
+            finally:
+                ticket_guard.PENDING.update(pull=None, closes=frozenset())
         return result, output.getvalue(), calls
 
     def pull(self, number, *, head, merged=False, body=""):
@@ -1057,6 +1061,50 @@ review_only_requests: []
         result, output, _ = self.run_reconciliation([issue], {101: self.pull(101, head=unmerged_head)})
         self.assertEqual(result, 1, output)
         self.assertIn("no verified landing", output)
+
+    def own_ticket_in_open_pr(self):
+        """A coordinator's PR (#103, open) completes its own ticket #1 and commits the reconciliation file."""
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        self.commit("base")
+        returns = self.root / ".migration/returns"
+        returns.mkdir(parents=True)
+        (returns / "T1.afs-verifier.yaml").write_text(self.RETURN.replace("pr: o/r#101", "pr: o/r#103"),
+                                                      encoding="utf-8")
+        self.commit("coordinator work (the PR's merge commit in CI)")
+        issues = [{"number": 1, "disposition": "completed", "pull_requests": [103],
+                   "returns": [".migration/returns/T1.afs-verifier.yaml"]}]
+        labels = [{"number": 1, "title": "T1", "state": "open", "labels": []}]
+        pulls = {103: {"number": 103, "state": "open", "merged_at": None, "head": {"sha": "0" * 40},
+                       "body": "Reconciles the slice.\n\nFixes #1"}}
+        return issues, labels, pulls
+
+    def test_as_if_merged_counts_the_prs_own_ticket_as_completed(self):
+        # pilot #474: the coordinator's own ticket was open while it wrote the file, so it could only be checked
+        # after merge, when the epic closed (15 problems, epic reopened). In the PR, check it as main will see it.
+        issues, labels, pulls = self.own_ticket_in_open_pr()
+        plain, out, _ = self.run_reconciliation(issues, pulls, labels=labels, extra=())
+        self.assertEqual(plain, 1)
+        self.assertIn("#1: completed disposition requires an issue closed as completed", out)
+        result, out, calls = self.run_reconciliation(issues, pulls, labels=labels, report_exists=False,
+                                                     extra=("--as-if-merged", "103"))
+        self.assertEqual(result, 0, out)
+        self.assertIn("as if PR #103 were merged: it closes [1]", out)
+        self.assertFalse([c for c in calls if c[1]], "pre-merge mode never writes to GitHub")
+
+    def test_as_if_merged_still_fails_a_wrong_disposition(self):
+        issues, labels, pulls = self.own_ticket_in_open_pr()
+        wrong = [dict(issues[0], disposition="retained-open")]
+        result, out, _ = self.run_reconciliation(issues, pulls, labels=labels, report_issues=wrong,
+                                                 extra=("--as-if-merged", "103"))
+        self.assertEqual(result, 1)
+        self.assertIn("#1: retained-open disposition requires an open issue", out)
+
+    def test_as_if_merged_needs_an_open_pr(self):
+        issues, labels, pulls = self.own_ticket_in_open_pr()
+        pulls[103]["state"] = "closed"
+        result, out, _ = self.run_reconciliation(issues, pulls, labels=labels, extra=("--as-if-merged", "103"))
+        self.assertEqual(result, 2)
+        self.assertIn("--as-if-merged needs an open PR", out)
 
     def test_skipped_reconciliation_reopens_epic_and_fails(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")

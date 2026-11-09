@@ -75,7 +75,9 @@ slice.
    check or closed PR alone is not landing or acceptance evidence.
    Preserve unchanged pre-rule null-PR returns only through the validator's existing Git-history proof,
    with an exact snapshot in a cited landed PR and a passing role outcome; never rewrite inherited outputs.
-   Commit the report on `main` through human review. The AFS map-fog workflow checks it before the
+   Your own ticket, and any issue your PR closes, is `completed` with your PR: your PR's CI checks the file
+   as if it were merged (`ticket_guard.py --reconcile-epic <epic> --as-if-merged <PR>`; sessions have no
+   GitHub token to run it, so read that job's errors). Commit the report on `main` through human review. The AFS map-fog workflow checks it before the
    existing return-file gate; missing or invalid reconciliation reopens the epic and suppresses fog
    re-walk. The checker never closes work issues. A retained-open descendant remains open and continues
    to block epic closure under ADR-0024.
