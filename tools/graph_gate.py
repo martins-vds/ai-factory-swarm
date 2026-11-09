@@ -74,14 +74,16 @@ ENTRY_TYPES = ("endpoint", "command")
 
 
 def unowned(nodes, edges):
-    """Target entry points no slice owns, and listed entry points that match nothing."""
+    """Target entry points no slice owns, and listed entry points that match nothing. Like data paths, a
+    slice's entry points exist only once its code is merged: a slice still being built isn't held to them."""
     starts = [i for _, a in anchors("target") for i in check_graph.anchor_nodes(a, nodes)]
     owned = check_graph.reachable(starts, edges)
     stale = []
+    building = check_plan.unbuilt(".migration")
     for slice_name, a in anchors("target", "entry_points"):
         hits = check_graph.anchor_nodes(a, nodes)
         owned |= set(hits)
-        if not hits:
+        if not hits and not building.get(slice_name):
             stale.append(f"slice {slice_name}: entry_points.target `{a}` matches no node")
     entries = sorted((n for n in nodes if n.get("type") in ENTRY_TYPES), key=lambda n: (n["type"], n["name"]))
     return [n for n in entries if n["id"] not in owned], stale
