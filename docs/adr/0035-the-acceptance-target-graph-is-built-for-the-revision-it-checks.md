@@ -82,3 +82,12 @@ It is the only job with write access, and it checks out and runs no target code;
 read-only. `afs-acceptance fetch --run-id --attempt --dest` copies that tree out, and `afs-acceptance
 verify` checks it exactly as it checks an artifact. The artifact download remains the fallback for runs
 without a branch. The branches stay as a record of what was imported.
+
+### Amendment (2026-11-09): a re-audit cites a run already on main
+
+The pilot's booking Auditor (BK-05J) first returned `gaps-remain`; acceptance then ran, and BK-ACCEPT
+merged its verified result (#474). A re-audit returned `complete` but could not pass CI. The binding check
+only accepted a run that the same PR adds, and the run was already on `main`. An accepting Auditor return
+may now name an already committed result with `acceptance_run: .migration/evidence/acceptance-runs/<run>-<attempt>.json`.
+The check verifies it exactly like an added one: it passed, its commit is in this change's history, and
+its target graph describes that commit.
