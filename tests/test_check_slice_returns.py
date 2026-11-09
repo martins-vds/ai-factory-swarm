@@ -775,3 +775,87 @@ class HumanCheckTest(unittest.TestCase):
                     self.assertIn("tracked in o/r#418", found[0])
         other = {"role": "afs-slice-coordinator", "issue": "o/r#999", "human_check": "requested"}
         self.assertEqual(csr.human_check_problems("o/r", subs, {"y": other}), [], "another epic's coordinator")
+
+
+PLANNER = """role: afs-planner
+ticket: T1
+issue: {issue}
+plan: .migration/plan.md
+slices: []
+design_tickets: []
+data_slices: []
+unmapped_capabilities: []
+open_questions: []
+"""
+
+
+class ReconciledAttributionTest(unittest.TestCase):
+    """ADR-0024 amendment: the epic's return-file check uses the reconciliation check's own attribution rule."""
+    setUp = HistoricalAttributionTest.setUp
+    git = HistoricalAttributionTest.git
+    REPORT = ".migration/evidence/ticket-reconciliation/99.yaml"
+
+    def continuation(self, *, commit_report=True, closes=True):
+        path = self.root / ".migration/returns/T1.afs-planner.yaml"
+        path.write_text(PLANNER.format(issue="o/r#1"))
+        self.git("add", "-A")
+        self.git("commit", "-qm", "continuation #2 lands the parent's planner return")
+        landed = self.git("rev-parse", "HEAD")
+        path.write_text(PLANNER.format(issue="o/r#5"))
+        report = self.root / self.REPORT
+        report.parent.mkdir(parents=True)
+        report.write_text(yaml.safe_dump({"epic": 99, "issues": [
+            {"number": 2, "disposition": "completed", "pull_requests": [12],
+             "returns": [".migration/returns/T1.afs-planner.yaml"]}]}))
+        if commit_report:
+            self.git("add", "-A")
+        else:
+            self.git("add", ".migration/returns")
+        self.git("commit", "-qm", "sibling #5 rewrites the return; reconciliation report")
+        endpoints = {
+            "repos/o/r/issues/99": {"number": 99, "state": "closed", "labels": [{"name": "afs:slice"}]},
+            "repos/o/r/issues/99/sub_issues?per_page=100&page=1": [sub(2)],
+            "repos/o/r/issues/2/sub_issues?per_page=100&page=1": [],
+        }
+
+        def gh(endpoint, *args, **kwargs):
+            return endpoints.get(endpoint, {})
+
+        def parent_gh(endpoint, *args, **kwargs):
+            parent = {"parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+            if endpoint == "repos/o/r/issues/2":
+                return {"number": 2, **parent}
+            if endpoint == "repos/o/r/issues/5":
+                return {"number": 5, **parent}
+            if endpoint.startswith("repos/o/r/issues/") and endpoint.rsplit("/", 1)[1].isdigit():
+                return {"number": int(endpoint.rsplit("/", 1)[1])}
+            if endpoint == "repos/o/r/pulls/12":
+                return {"number": 12, "state": "closed", "merged_at": "2026-11-05T00:00:00Z",
+                        "merge_commit_sha": landed, "head": {"sha": landed},
+                        "body": "Fixes #2" if closes else "Updates #2"}
+            if endpoint.startswith("repos/o/r/pulls/12/files"):
+                return [{"filename": ".migration/returns/T1.afs-planner.yaml", "status": "modified"}]
+            return {}
+
+        output = io.StringIO()
+        with mock.patch.object(csr.fog_rewalk, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "gh", side_effect=parent_gh), \
+                mock.patch.object(csr, "rule_since", return_value="2026-11-03T00:00:00Z"), \
+                contextlib.redirect_stdout(output):
+            result = csr.main(["--repo", REPO, "--epic", "99"])
+        return result, output.getvalue()
+
+    def test_reconciled_continuation_satisfies_the_return_file_check(self):
+        result, output = self.continuation()
+        self.assertEqual(result, 0, output)
+        self.assertIn("reconciled attribution: o/r#2", output)
+
+    def test_an_uncommitted_report_attributes_nothing(self):
+        result, output = self.continuation(commit_report=False)
+        self.assertEqual(result, 1, output)
+        self.assertIn("no `.migration/returns/*.yaml` has `issue: o/r#2`", output)
+
+    def test_evidence_failing_the_shared_rule_attributes_nothing(self):
+        result, output = self.continuation(closes=False)
+        self.assertEqual(result, 1, output)
+        self.assertIn("reconciled attribution for o/r#2 blocked", output)

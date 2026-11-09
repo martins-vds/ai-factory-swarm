@@ -47,6 +47,14 @@ moment to count.
 - **Manual run.** The workflow also takes `workflow_dispatch` with an epic number, for an epic that
   closed before the workflow existed. Re-runs are safe: the re-walk ticket is not duplicated if the map
   already has it, and an open epic gets no re-walk.
+- **Amendment (2026-11-09, found when the pilot's booking epic #224 closed):** the epic's two closing
+  checks disagreed. The ADR-0030 reconciliation check passed all 39 tickets, then this check reopened the
+  epic for three of them (#262, #276, #477): continuation children whose parent ticket's return was later
+  rewritten. A ticket that the committed reconciliation report records as `completed` is now attributed
+  when its evidence passes `ticket_guard.completed_evidence_problems`, the same function the reconciliation
+  check runs. There is one rule for what counts as a completed ticket's return, so the two checks can't
+  drift. The report must be committed at HEAD; anything it claims is re-verified here, not trusted. Open
+  tickets still block, including those the report records as `retained-open`.
 
 ## Consequences
 - An accepted slice has a return file for every ticket done under the rule, whoever did the work and

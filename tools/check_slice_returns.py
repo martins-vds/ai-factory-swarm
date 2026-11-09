@@ -14,7 +14,9 @@ the date comes from git history, so no list can be edited by hand.
 If a later valid same-ticket/same-role return supersedes an issue, a schema-valid predecessor reachable
 from HEAD may establish attribution only, never a passing verdict. A parent-ticket return can also cover a
 child only when GitHub confirms the direct parent, the owning PR closes that child and contains the exact
-return, and the current role outcome passes. Required history must be complete.
+return, and the current role outcome passes. Required history must be complete. A ticket the committed
+ticket-reconciliation report records as completed is also attributed when its evidence passes the same
+rule the reconciliation check applies (ticket_guard.completed_evidence_problems, ADR-0030).
 
   check_slice_returns.py --repo owner/repo --epic 9 [--reopen]   (the AFS map fog workflow runs this)
 
@@ -186,6 +188,37 @@ def superseded_attribution(required, current, repo=None):
     return found, diagnostics
 
 
+def reconciled_attribution(repo, epic, required):
+    """ADR-0024 amendment: a ticket the committed reconciliation report records as `completed` is attributed
+    when its evidence passes ticket_guard's completed-evidence rule, the same rule the reconciliation check
+    applies (ADR-0030). One rule, so the epic's two closing checks agree. Only committed reports count."""
+    from ticket_guard import RECONCILIATION_DIR, completed_evidence_problems
+    if not required:
+        return set(), []
+    path = (RECONCILIATION_DIR / f"{epic}.yaml").as_posix()
+    shown = subprocess.run(["git", "--no-replace-objects", "show", f"HEAD:{path}"], capture_output=True, text=True)
+    if shown.returncode != 0:
+        return set(), []
+    try:
+        report = yaml.safe_load(shown.stdout) or {}
+    except yaml.YAMLError:
+        return set(), [f"{path} is not valid YAML; no reconciled attribution"]
+    found, diagnostics = set(), []
+    for item in report.get("issues") or []:
+        if not isinstance(item, dict) or item.get("disposition") != "completed" or type(item.get("number")) is not int:
+            continue
+        ref = f"{repo}#{item['number']}"
+        if ref not in required:
+            continue
+        problems = completed_evidence_problems(repo, item["number"], item, notice=diagnostics.append)
+        if problems:
+            diagnostics.append(f"reconciled attribution for {ref} blocked: {'; '.join(problems)}")
+        else:
+            found.add(ref)
+            diagnostics.append(f"reconciled attribution: {ref} by {path} (landing PRs and returns verified)")
+    return found, diagnostics
+
+
 def rule_since(path=SELF):
     """ISO time the rule entered the repo: the commit that first added this tool (None outside git)."""
     shallow = subprocess.run(["git", "--no-replace-objects", "rev-parse", "--is-shallow-repository"],
@@ -262,6 +295,13 @@ def main(argv=None):
             print(diagnostic)
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as e:
         history_errors.append(f"return history unavailable: {e}; fetch complete HEAD ancestry and retry")
+    try:
+        reconciled, diagnostics = reconciled_attribution(a.repo, a.epic, required - returned)
+        returned.update(reconciled)
+        for diagnostic in diagnostics:
+            print(diagnostic)
+    except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as e:
+        history_errors.append(f"reconciled attribution unavailable: {e}")
     found = problems(a.repo, subs, returned, since) + history_errors + human_check_problems(a.repo, subs, current)
     print(f"slice epic #{a.epic}: {len(subs)} ticket(s); rule since {since or 'unknown'}")
     for p in found:
