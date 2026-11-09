@@ -40,7 +40,8 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
   stale.
 - Merges to `main` after the run's commit don't invalidate your audit; it is "as of" that commit. CI
   accepts `verdict: complete` only with the verified result committed under
-  `.migration/evidence/acceptance-runs/`.
+  `.migration/evidence/acceptance-runs/`: added in your PR, or already on `main` and named in your return's
+  `acceptance_run:` (a re-audit after acceptance).
 
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
 exists and passes now, the flow connects end to end. A data path line shows the shortest path, then every data node the
@@ -74,4 +75,5 @@ capabilities_checked: <n>
 gaps: [{class: <missing|misplaced|broken-flow|integration|untested>, ledger_id: <id>, ticket: <link>}]
 graph_inconsistencies: [<one line>]
 verdict: <complete | gaps-remain>
+# acceptance_run: .migration/evidence/acceptance-runs/<run>-<attempt>.json   (with complete, when the run is already on main)
 ```

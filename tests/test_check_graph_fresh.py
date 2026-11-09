@@ -142,6 +142,30 @@ class FreshnessTest(unittest.TestCase):
         self.commit("failed run")
         self.assertIn("did not pass", self.run_tool("--acceptance-since", "base").stderr)
 
+    def test_a_re_audit_can_cite_a_run_already_on_main(self):
+        # pilot BK-05J: acceptance merged its run (#474); a later re-audit returned `complete` adding no run
+        self.graph("source", {"source_sha": PIN}, PIN)
+        self.commit("source graph")
+        accepted = git(self.repo, "rev-parse", "HEAD")
+        trees = {"src": git(self.repo, "rev-parse", "HEAD:src")}
+        self.run_record(accepted, trees)
+        self.commit("acceptance evidence merged earlier")
+        git(self.repo, "branch", "base")
+        (self.repo / ".migration/returns").mkdir()
+        ret = self.repo / ".migration/returns/BK-05J.afs-auditor.yaml"
+        ret.write_text("verdict: complete\n")
+        self.commit("re-audit without citing the run")
+        self.assertIn("cites no acceptance run", self.run_tool("--acceptance-since", "base").stderr)
+        ret.write_text("verdict: complete\nacceptance_run: .migration/evidence/acceptance-runs/42-1.json\n")
+        self.commit("re-audit cites the committed run")
+        r = self.run_tool("--acceptance-since", "base")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for bad in ("src/app.py", ".migration/evidence/acceptance-runs/99-1.json"):
+            ret.write_text(f"verdict: complete\nacceptance_run: {bad}\n")
+            self.commit(f"cites {bad}")
+            r = self.run_tool("--acceptance-since", "base")
+            self.assertEqual(r.returncode, 1, bad)
+
     def test_env_points_the_target_side_at_the_acceptance_build(self):
         self.graph("source", {"source_sha": PIN}, PIN)
         built = self.repo / "built"

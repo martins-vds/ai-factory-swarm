@@ -150,13 +150,38 @@ def acceptance_runs(base):
     return out
 
 
+RUNS_DIR = pathlib.PurePosixPath(".migration/evidence/acceptance-runs")
+
+
+def cited_runs(base):
+    """Acceptance results an accepting auditor return cites with `acceptance_run:`, already committed (pilot
+    BK-05J re-audit: acceptance merged its run in #474, then a later audit returned `complete`)."""
+    out = []
+    for doc in accepting_returns(base):
+        cited = doc.get("acceptance_run")
+        if not cited:
+            continue
+        p = pathlib.PurePosixPath(str(cited))
+        if p.parent != RUNS_DIR or p.suffix != ".json" or ".." in p.parts:
+            out.append((pathlib.Path(str(cited)), {"status": f"not a committed acceptance result ({cited})"}))
+            continue
+        path = pathlib.Path(p.as_posix())
+        try:
+            out.append((path, json.loads(path.read_text(encoding="utf-8"))))
+        except (OSError, ValueError):
+            out.append((path, {"status": f"missing or unreadable ({cited})"}))
+    return out
+
+
 def binding_problems(base):
     """ADR-0035: an accepting change must carry a passed acceptance run whose own target graph describes its
-    commit, and that commit must be in this change's history. Today's `main` may have moved on: fine."""
-    runs = acceptance_runs(base)
+    commit, and that commit must be in this change's history. Today's `main` may have moved on: fine. The run
+    is one this change adds, or an already committed one the accepting return cites (`acceptance_run:`)."""
+    runs = acceptance_runs(base) + cited_runs(base)
     if not runs:
         return ["acceptance (auditor verdict: complete) cites no acceptance run: commit the verified result.json "
-                "to .migration/evidence/acceptance-runs/<run-id>-<attempt>.json (afs-evidence, ADR-0035)"]
+                "to .migration/evidence/acceptance-runs/<run-id>-<attempt>.json (afs-evidence, ADR-0035), or cite "
+                "an already committed one in the auditor return's `acceptance_run:`"]
     reasons = []
     for path, doc in runs:
         commit, graph = doc.get("commit"), doc.get("target_graph") or {}
@@ -177,16 +202,22 @@ def binding_problems(base):
     return reasons
 
 
-def accepting(base):
-    """True if the change adds or updates an auditor return whose verdict is `complete`."""
+def accepting_returns(base):
+    """Auditor returns this change adds or updates with `verdict: complete`."""
     changed = git("diff", "--name-only", f"{base}...HEAD", "--", ".migration/returns/") or ""
+    docs = []
     for name in changed.splitlines():
         p = pathlib.Path(name)
         if p.name.endswith(".afs-auditor.yaml") and p.is_file():
             doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
             if doc.get("verdict") == "complete":
-                return True
-    return False
+                docs.append(doc)
+    return docs
+
+
+def accepting(base):
+    """True if the change adds or updates an auditor return whose verdict is `complete`."""
+    return bool(accepting_returns(base))
 
 
 def main(argv=None):
