@@ -28,7 +28,7 @@ clone; dispatch sessions once it is on the default branch.
 
 **Securing a target (ADR-0039).**
 1. Give each repository its own `AFS_STACK_TOKEN`: a fine-grained token for that repository only, with an expiry.
-2. Protect `main` with a ruleset that requires a pull request.
+2. Protect `main` with a ruleset that requires a pull request and the status check **Migrator work is verified before it merges** (ADR-0040). Without it as a required check, unverified migrator work shows red but can still merge.
 3. Set default workflow permissions to read-only. Harness workflows declare what they need.
 4. Add a CODEOWNERS entry for `.github/` and `.migration/harness/`.
 5. Keep `SOURCE_READ_TOKEN` and `BILLING_READ_TOKEN` read-only, and only where needed.
