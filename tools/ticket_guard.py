@@ -591,6 +591,41 @@ def _failed_role_return(repo, issue_number, pull_number, path, pull):
         raise ValueError(f"{path} does not identify failed PR #{pull_number} as its owning PR")
 
 
+def completed_evidence_problems(repo, number, item, notice=print):
+    """Problems with one `completed` disposition's evidence: its landing PRs and the role returns they landed.
+    The single attribution rule for a completed ticket, shared by the reconciliation check (ADR-0030) and the
+    epic's return-file check (ADR-0024), so the two can't disagree about what counts as a ticket's return."""
+    prs = item.get("pull_requests")
+    returns = item.get("returns")
+    if not isinstance(prs, list) or not prs:
+        return ["completed disposition needs verified landing PR(s)"]
+    if not isinstance(returns, list) or not returns:
+        return ["completed disposition needs relevant role return(s)"]
+    problems, landed = [], {}
+    for pr_number in prs:
+        try:
+            landed[pr_number] = _landed_pull(repo, pr_number)
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            problems.append(str(exc))
+    for return_path in returns:
+        try:
+            doc, diagnostics = _return_at_head(return_path, repo, number, set(landed))
+            for diagnostic in diagnostics:
+                notice(f"::notice::{diagnostic}")
+            outcome_problem = _role_outcome_problem(doc)
+            if outcome_problem:
+                raise ValueError(outcome_problem)
+            owner_pr = _return_pr_number(doc, repo, return_path=return_path)
+            if owner_pr is not None and owner_pr not in landed:
+                raise ValueError(f"owning PR #{owner_pr} is missing from completed evidence")
+            candidates = [landed[owner_pr]] if owner_pr is not None else list(landed.values())
+            if not any(_return_in_commit(_return_path(return_path), doc, commit) for commit in candidates):
+                raise ValueError("no cited landed PR contains this role return")
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            problems.append(str(exc))
+    return problems
+
+
 def reconciliation_problems(repo, epic_number, epic, report_path=None):
     """Validate a committed, explicit disposition for every non-decision descendant of a slice epic."""
     from fog_rewalk import is_slice_epic
@@ -662,37 +697,7 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                 if issue.get("state") != "closed" or issue.get("state_reason") != "completed":
                     problems.append(f"#{number}: completed disposition requires an issue closed as completed")
                     continue
-                prs = item.get("pull_requests")
-                returns = item.get("returns")
-                if not isinstance(prs, list) or not prs:
-                    problems.append(f"#{number}: completed disposition needs verified landing PR(s)")
-                    continue
-                if not isinstance(returns, list) or not returns:
-                    problems.append(f"#{number}: completed disposition needs relevant role return(s)")
-                    continue
-                landed = {}
-                for pr_number in prs:
-                    try:
-                        landed[pr_number] = _landed_pull(repo, pr_number)
-                    except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                        problems.append(f"#{number}: {exc}")
-                for return_path in returns:
-                    try:
-                        doc, diagnostics = _return_at_head(return_path, repo, number, set(landed))
-                        for diagnostic in diagnostics:
-                            print(f"::notice::{diagnostic}")
-                        outcome_problem = _role_outcome_problem(doc)
-                        if outcome_problem:
-                            raise ValueError(outcome_problem)
-                        owner_pr = _return_pr_number(doc, repo, return_path=return_path)
-                        if owner_pr is not None and owner_pr not in landed:
-                            raise ValueError(f"owning PR #{owner_pr} is missing from completed evidence")
-                        candidates = [landed[owner_pr]] if owner_pr is not None else list(landed.values())
-                        if not any(_return_in_commit(_return_path(return_path), doc, commit)
-                                   for commit in candidates):
-                            raise ValueError(f"no cited landed PR contains this role return")
-                    except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                        problems.append(f"#{number}: {exc}")
+                problems.extend(f"#{number}: {problem}" for problem in completed_evidence_problems(repo, number, item))
             elif disposition == "superseded":
                 if issue.get("state") != "closed" or issue.get("state_reason") != "not_planned":
                     problems.append(f"#{number}: superseded disposition requires closure as not planned")
