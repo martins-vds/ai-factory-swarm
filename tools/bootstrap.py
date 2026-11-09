@@ -50,7 +50,7 @@ import check_runtime  # noqa: E402
 import check_installed  # noqa: E402
 import validate  # noqa: E402
 
-HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
+HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "close_gap_issues.py", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_domain_coverage.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
