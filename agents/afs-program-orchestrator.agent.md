@@ -26,6 +26,9 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 - `ui-ux-pro-max` — the UI-direction prototype ticket (keep vs modernize; design system options).
 - `research` — facts a decision waits on.
 - `prototype` — resolve a `wayfinder:prototype` ticket: a throwaway artifact to react to, kept on a branch.
+  In a Copilot session that branch is **your own PR branch** (sessions can push no other): a draft PR titled
+  `Prototype (do not merge): …`, run command and variants at the top. Never merged; after the operator's
+  verdict the dispatcher closes it unmerged and the branch stays as the record.
 
 ## Procedure
 1. **Intake (Phase 0).** Record source repo + pinned SHA, target repo, back-end and front-end stacks,
