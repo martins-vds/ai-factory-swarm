@@ -419,6 +419,57 @@ handoff: none
         )
         self.assertEqual(result, 0, output)
 
+    PLANNER_RETURN = """role: afs-planner
+ticket: T1
+issue: o/r#1
+plan: .migration/plan.md
+slices: []
+design_tickets: []
+data_slices: []
+unmapped_capabilities: []
+open_questions: []
+"""
+
+    def continuation_fixture(self, *, closes=True, changes=True, snapshot_issue="o/r#1"):
+        # Planner/Auditor/Coordinator returns carry no `pr:`; a later sibling (#5) rewrote the same file.
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        path = ".migration/returns/T1.afs-planner.yaml"
+        (self.root / path).parent.mkdir(parents=True)
+        (self.root / path).write_text(self.PLANNER_RETURN.replace("issue: o/r#1", f"issue: {snapshot_issue}"),
+                                      encoding="utf-8")
+        landed = self.commit("continuation lands the parent's return")
+        (self.root / path).write_text(self.PLANNER_RETURN.replace("issue: o/r#1", "issue: o/r#5"),
+                                      encoding="utf-8")
+        self.commit("a later sibling rewrites the same return")
+        issue = {"number": 2, "disposition": "completed", "pull_requests": [102], "returns": [path]}
+        pull = self.pull(102, head=landed, merged=True, body="Fixes #2" if closes else "Updates #2")
+        pull["files"] = [{"filename": path, "status": "modified"}] if changes else []
+        parent = {"parent_issue_url": "https://api.github.com/repos/o/r/issues/1"}
+        return self.run_reconciliation(
+            [issue], {102: pull},
+            labels=[{"number": 2, "title": "child", "state": "closed", "state_reason": "completed",
+                     "labels": []}],
+            issue_details={2: {"number": 2, **parent}, 5: {"number": 5, "state": "closed", **parent}},
+        )
+
+    def test_continuation_is_attributed_by_its_landed_snapshot_of_the_parent_return(self):
+        result, output, _ = self.continuation_fixture()
+        self.assertEqual(result, 0, output)
+
+    def assert_continuation_rejected(self, **kwargs):
+        result, output, _ = self.continuation_fixture(**kwargs)
+        self.assertEqual(result, 1, output)
+        self.assertIn("does not attribute to issue #2", output)
+
+    def test_continuation_snapshot_needs_a_pr_that_closes_the_child(self):
+        self.assert_continuation_rejected(closes=False)
+
+    def test_continuation_snapshot_needs_a_pr_that_changed_the_return(self):
+        self.assert_continuation_rejected(changes=False)
+
+    def test_continuation_snapshot_must_name_the_parent_ticket(self):
+        self.assert_continuation_rejected(snapshot_issue="o/r#3")
+
     def test_parent_ticket_return_cannot_borrow_a_parent_or_unrelated_pr(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
         returns = self.root / ".migration/returns"
@@ -740,6 +791,63 @@ handoff: none
                     else:
                         with self.assertRaisesRegex(ValueError, problem):
                             ticket_guard._killed_session("o/r", 42, pull)
+
+    HANDOFF = "# T3\n\n## Handoff\n\n### Blockers\n\n- Copilot's firewall blocks the artifact host.\n"
+
+    def handoff_fixture(self, *, handoff=".migration/handoffs/T3.md", text=HANDOFF, changed=True):
+        (self.root / "base.txt").write_text("base\n", encoding="utf-8")
+        base = self.commit("base")
+        self.git("checkout", "-qb", "handed-off")
+        (self.root / ".migration/handoffs").mkdir(parents=True)
+        (self.root / ".migration/handoffs/T3.md").write_text(text, encoding="utf-8")
+        failed_head = self.commit("session hands off")
+        self.git("checkout", "-q", "--detach", base)
+        replacement_path = ".migration/returns/T4.afs-verifier.yaml"
+        (self.root / replacement_path).parent.mkdir(parents=True)
+        (self.root / replacement_path).write_text(
+            self.RETURN.replace("ticket: T1", "ticket: T4").replace("issue: o/r#1", "issue: o/r#4")
+            .replace("pr: o/r#101", "pr: o/r#104"), encoding="utf-8")
+        replacement_head = self.commit("replacement passes")
+        failed_pull = self.pull(103, head=failed_head, body="Fixes #3")
+        failed_pull["files"] = [{"filename": ".migration/handoffs/T3.md", "status": "added"}] if changed else []
+        return self.run_reconciliation(
+            [{"number": 3, "disposition": "superseded"}, {"number": 4, "disposition": "completed"}], {
+                103: failed_pull, 104: self.pull(104, head=replacement_head, merged=True),
+            }, contents={
+                f"repos/o/r/contents/.migration/handoffs/T3.md?ref={failed_head}": {
+                    "encoding": "base64", "content": base64.b64encode(text.encode()).decode()},
+            },
+            report_issues=[
+                {"number": 3, "disposition": "superseded", "replacement": 4,
+                 "failure": {"pull_request": 103, "handoff": handoff}},
+                {"number": 4, "disposition": "completed", "pull_requests": [104], "returns": [replacement_path]},
+            ],
+            labels=[
+                {"number": 3, "title": "handed off", "state": "closed", "state_reason": "not_planned",
+                 "labels": []},
+                {"number": 4, "title": "replacement", "state": "closed", "state_reason": "completed",
+                 "labels": []},
+            ],
+        )
+
+    def test_superseded_failure_can_be_evidenced_by_a_committed_handoff(self):
+        result, output, _ = self.handoff_fixture()
+        self.assertEqual(result, 0, output)
+
+    def test_handoff_failure_must_be_a_handoff_file_the_failed_pr_changed(self):
+        result, output, _ = self.handoff_fixture(handoff=".migration/returns/T3.afs-verifier.yaml")
+        self.assertEqual(result, 1, output)
+        self.assertIn("failure.handoff must name", output)
+
+    def test_handoff_failure_needs_the_failed_pr_to_change_it(self):
+        result, output, _ = self.handoff_fixture(changed=False)
+        self.assertEqual(result, 1, output)
+        self.assertIn("doesn't change .migration/handoffs/T3.md", output)
+
+    def test_handoff_failure_needs_recorded_blockers(self):
+        result, output, _ = self.handoff_fixture(text="# T3\n\n## Handoff\n\nNothing blocked.\n")
+        self.assertEqual(result, 1, output)
+        self.assertIn("is not a handoff with blockers", output)
 
     def test_superseded_bootstrapper_failure_can_preserve_its_own_blocked_return(self):
         (self.root / "base.txt").write_text("base\n", encoding="utf-8")
