@@ -143,6 +143,10 @@ def _return_at_head(path, repo, issue_number, cited_prs=None):
         if relevant:
             detail = f": {'; '.join(continuation_problems)}" if continuation_problems else ""
             raise ValueError(f"parent-ticket continuation for issue #{issue_number} is not verified{detail}")
+    snapshot = _continuation_snapshot(repo, issue_number, path, cited_prs) if cited_prs else None
+    if snapshot is not None:
+        # The continuation's evidence is the return it landed; later same-path rewrites don't erase it.
+        return snapshot, [f"{path}: attributed to issue #{issue_number} by its landed snapshot of the parent return"]
     try:
         from check_slice_returns import superseded_attribution
         attributed, diagnostics = superseded_attribution(
@@ -153,6 +157,54 @@ def _return_at_head(path, repo, issue_number, cited_prs=None):
         raise ValueError(f"return evidence {path} does not attribute to issue #{issue_number} "
                          "directly or through same-path ticket/role history")
     return doc, diagnostics
+
+
+def _continuation_snapshot(repo, issue_number, path, cited_prs):
+    """A continuation (child issue C of ticket P) is evidenced by one of C's own cited landing PRs that closes C,
+    changed the return file, where the return in that PR's landed commit names P and passes. Planner, Auditor and
+    Coordinator returns carry no `pr:` field, so the parent-ticket rule could not find their owning PR (pilot
+    BK-RECON: restarts #262 and #276 of the Planner's BK-04, re-audit #477 of the Auditor's BK-05J)."""
+    try:
+        parent = _parent_issue_number(repo, issue_number)
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+        return None
+    if parent is None:
+        return None
+    for number in cited_prs:
+        if type(number) is not int:
+            continue
+        try:
+            if not _pull_closes_issue(_pull(repo, number), repo, issue_number):
+                continue
+            commit = _landed_pull(repo, number)
+            if not _pull_changes_return_file(repo, number, path):
+                continue
+            snapshot = _valid_return(git("show", f"{commit}:{path}"), path)
+        except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+            continue
+        if not snapshot or _role_outcome_problem(snapshot):
+            continue
+        if str(snapshot.get("issue", "")).strip() == _issue_ref(repo, parent):
+            return snapshot
+    return None
+
+
+def _handed_off(repo, path, failed_pull):
+    """ADR-0030 amendment: a session that stopped and handed off is evidenced by the handoff its closed,
+    unmerged PR committed (pilot BK-ACCEPT #470/#471: blocked by Copilot's firewall, restarted as #473)."""
+    path = str(path or "")
+    if not re.fullmatch(r"\.migration/handoffs/[A-Za-z0-9][A-Za-z0-9_.-]*\.md", path):
+        raise ValueError(f"failure.handoff must name a `.migration/handoffs/<ticket>.md` file, not {path!r}")
+    if not _pull_changes_return_file(repo, failed_pull["number"], path):
+        raise ValueError(f"failure PR #{failed_pull['number']} doesn't change {path}")
+    head = (failed_pull.get("head") or {}).get("sha")
+    content = gh(f"repos/{repo}/contents/{quote(path, safe='/')}?ref={head}")
+    try:
+        text = base64.b64decode(content["content"], validate=False).decode("utf-8")
+    except (KeyError, TypeError, ValueError, UnicodeError) as exc:
+        raise ValueError(f"handoff {path} at PR #{failed_pull['number']} is unreadable: {exc}") from exc
+    if not re.search(r"(?m)^## Handoff\b", text) or not re.search(r"(?mi)^### Blockers", text):
+        raise ValueError(f"{path} at PR #{failed_pull['number']} is not a handoff with blockers")
 
 
 def _parent_issue_number(repo, issue_number):
@@ -672,6 +724,8 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                         raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged")
                     if failure.get("session_run") is not None:
                         _killed_session(repo, failure["session_run"], failed_pull)
+                    elif failure.get("handoff") is not None:
+                        _handed_off(repo, failure["handoff"], failed_pull)
                     else:
                         _failed_role_return(repo, number, failure["pull_request"], failure.get("return"), failed_pull)
                 except (ValueError, OSError, subprocess.SubprocessError) as exc:
