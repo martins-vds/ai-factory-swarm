@@ -307,6 +307,33 @@ class DjangoHttpMethodsTest(unittest.TestCase):
             self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "enrichment stays idempotent")
             return g
 
+    def test_get_object_or_404_reads_the_model_table(self):
+        """Synthetic LL-ACCEPT: the catalog's detail page read its loan with get_object_or_404, and the graph
+        showed no data path. The shortcut reads its model's table, like Model.objects.get."""
+        views = ("from django.shortcuts import get_object_or_404, render\n"
+                 "from shop.orders.application import OrderLookup\n"
+                 "from shop.orders.infrastructure.models import OrderModel\n\n"
+                 "def create_order_view(lookup: OrderLookup):\n"
+                 "    def view(request):\n"
+                 "        return render(request, 'orders/list.html', {'order': lookup.find(request.GET.get('id'))})\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return render(request, 'orders/health.html', {'o': get_object_or_404(OrderModel, pk=1)})\n")
+        g = self.graph(views)
+        self.assertIn(("health", "shop_orders"), edges(g, "reads_from"))
+        self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
+
+    def test_get_object_or_404_of_an_unknown_name_adds_no_edge(self):
+        views = ("from django.shortcuts import get_object_or_404\n"
+                 "def create_order_view(lookup):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return get_object_or_404(NotAModel, pk=1)\n")
+        self.assertNotIn("health", {s for s, _ in edges(self.graph(views), "reads_from")})
+
+
     def factory(self, decorators, imports="", extra=""):
         return (
             "from django.views.decorators.http import require_POST, require_GET, require_safe, require_http_methods\n"
@@ -675,6 +702,30 @@ class GraphGateTest(unittest.TestCase):
             r2 = self.gate(d, "--side", "target")
             self.assertEqual(r2.returncode, 0, "outside acceptance, ownership problems are warnings")
             self.assertIn("matches no node", r2.stderr)
+
+    def test_a_slice_still_being_built_is_not_held_to_its_entry_points(self):
+        """Synthetic LL-ACCEPT: accepting the catalog slice failed on the about and circulation slices' entry
+        points, which exist only once those slices are built (their data paths were already exempt)."""
+        import graph_gate
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/api/board/"], {})
+            (r / ".migration/slices/orders.yaml").write_text(json.dumps({
+                "data_paths": {"target": ["endpoint=/api/board/"]},
+                "entry_points": {"target": ["endpoint=/", "command=import_orders", "endpoint=/later/"]}}))
+            (r / ".migration/plan").mkdir(parents=True, exist_ok=True)
+            (r / ".migration/plan/orders.md").write_text("# orders\n")
+            (r / ".migration/plan/orders.tickets.yaml").write_text(json.dumps({"slice": "orders", "tickets": [
+                {"id": "OR-01", "role": "afs-migrator", "files": ["src/a.py"], "blocked_by": []}]}))
+            cwd = os.getcwd()
+            try:
+                os.chdir(r)
+                self.assertEqual(graph_gate.unowned(*graph_gate.load_graph("target"))[1], [], "OR-01 is open")
+                (r / ".migration/returns").mkdir()
+                (r / ".migration/returns/OR-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+                self.assertEqual(graph_gate.unowned(*graph_gate.load_graph("target"))[1],
+                                 ["slice orders: entry_points.target `endpoint=/later/` matches no node"], "built")
+            finally:
+                os.chdir(cwd)
 
     def test_unowned_entry_point_fails_when_ownership_is_enforced(self):
         import graph_gate

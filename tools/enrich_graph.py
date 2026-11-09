@@ -23,7 +23,7 @@ Framework enrichers (the stack pack names which ones a migration uses):
             JobOperator.start("J") → calls → `batch-job J` → calls → the job XML's ref="" beans
   django    urls.py path()/include() → endpoint, routes to the view; HTTP method decorators (including
             returned factory views) → verb-qualified endpoints; models.Model → table; ORM
-            Model.objects.* / .save() / .delete() → reads_from / writes_to; render(template) →
+            Model.objects.* / get_object_or_404(Model) / .save() / .delete() → reads_from / writes_to; render(template) →
             page; management/commands/<name>.py → `command`
             routes Command; @app.task/@shared_task → `task` triggers it, f.defer()/.delay() → publishes;
             {% include/extends %} → contains
@@ -738,6 +738,16 @@ def enrich_django(g, root):
                         if meths & WRITE_METHODS:
                             g.edge(owner, models[mt], "writes_to", "django-orm")
                     continue
+                # get_object_or_404(Model, ...) / get_list_or_404(Model, ...) read Model's table (synthetic
+                # LL-ACCEPT: the catalog's detail page had no data path). A queryset first argument
+                # (Model.objects.filter(...)) is matched by the `objects` rule as its own call.
+                shortcut = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+                if shortcut in ("get_object_or_404", "get_list_or_404") and node.args \
+                        and isinstance(node.args[0], ast.Name):
+                    mt = model_of(node.args[0], m)
+                    if mt:
+                        g.edge(owner, models[mt], "reads_from", "django-orm")
+                        continue
                 if isinstance(f, ast.Attribute) and f.attr in ("save", "delete") and isinstance(f.value, ast.Name) \
                         and f.value.id in local_types:
                     g.edge(owner, models[local_types[f.value.id]], "writes_to", "django-orm")
