@@ -266,7 +266,9 @@ class DjangoTest(unittest.TestCase):
 
     def test_directed_paths_to_data(self):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/"))
-        self.assertIn("←implements `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
+        # The injected `OrderRepository` Protocol call reaches its implementation directly (ADR-0028 amendment,
+        # synthetic LF-ACCEPT), no longer through `←implements`.
+        self.assertIn("→calls `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
         self.assertTrue(path(self.g, "endpoint=/api/health/").startswith("**NO PATH**"))
 
     def test_management_command_and_task(self):
