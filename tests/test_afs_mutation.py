@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -239,3 +240,49 @@ class AfsMutationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImportTimeSelectionTest(unittest.TestCase):
+    """Synthetic LL-04: 5 of 8 mutants "survived": removed `@require_GET` decorators and mutated `urlpatterns`.
+    Code that runs at import is under no test's coverage context, so coverage selection never ran the tests
+    that request those routes."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        import os
+        self.cwd = os.getcwd()
+        os.chdir(self.tmp.name)
+        self.addCleanup(os.chdir, self.cwd)
+        files = {
+            "src/library_info/views.py": ("from django.views.decorators.http import require_GET\n\n"
+                                          "@require_GET\ndef about(request):\n    return 1\n"),
+            "src/library_info/urls.py": "from . import views\n\nurlpatterns = [views.about]\n",
+            "src/library_info/services.py": '"""Docstring."""\nimport os\n\n\ndef text():\n    return os.sep\n',
+            "tests/library_info/test_about.py": "def test_x():\n    pass\n",
+        }
+        for name, text in files.items():
+            pathlib.Path(name).parent.mkdir(parents=True, exist_ok=True)
+            pathlib.Path(name).write_text(text)
+
+    def test_import_time_code_is_detected(self):
+        self.assertTrue(m.has_import_time_code("src/library_info/views.py"), "decorator")
+        self.assertTrue(m.has_import_time_code("src/library_info/urls.py"), "URL table")
+        self.assertFalse(m.has_import_time_code("src/library_info/services.py"), "imports, docstring, defs")
+
+    def test_a_context_folder_for_the_flat_src_layout(self):
+        self.assertEqual(m.context_tests("src/library_info/urls.py", "src"), "tests/library_info")
+
+    def test_files_with_import_time_code_also_run_their_context_tests(self):
+        mapping = {"src/library_info/views.py": ["tests/library_info/test_about.py::test_x"],
+                   "src/library_info/urls.py": [],
+                   "src/library_info/services.py": ["tests/library_info/test_about.py::test_x"]}
+        paths = sorted(mapping)
+        with mock.patch.object(m, "has_pytest_cov", return_value=True), \
+                mock.patch.object(m, "covering_tests", return_value=mapping):
+            runners, selection = m.runners_for(paths, "src", "coverage")
+        self.assertEqual(selection, "coverage")
+        self.assertIn("tests/library_info", runners["src/library_info/urls.py"], "nothing covers it at import")
+        self.assertIn("tests/library_info", runners["src/library_info/views.py"])
+        self.assertNotIn("::test_x", runners["src/library_info/views.py"], "the folder already includes it")
+        self.assertNotIn(" tests/library_info ", runners["src/library_info/services.py"] + " ")
+        self.assertIn("'tests/library_info/test_about.py::test_x'", runners["src/library_info/services.py"])

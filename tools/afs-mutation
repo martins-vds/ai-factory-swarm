@@ -11,8 +11,10 @@ Usage (run it through afs-run so the run lands in the journal):
 * Only the files themselves are mutated (never whole packages). Each mutant runs a **narrowed test
   command**, fail-fast, without coverage collection or the pytest cache. --tests picks the tests:
   - `coverage` (default): one coverage run with per-test contexts finds, for each mutated file, the
-    tests that execute it; each file's mutants run only those tests. Falls back to `auto` if
-    pytest-cov is missing or the coverage run fails.
+    tests that execute it; each file's mutants run only those tests. A file with import-time code
+    (decorators, URL tables, module constants) also runs its bounded context's test folder, because no
+    test's context covers code that runs at import. Falls back to `auto` if pytest-cov is missing or
+    the coverage run fails.
   - `auto`: the tests of the file's bounded context (`tests/<context>/` for `src/<pkg>/<context>/…`,
     else the whole suite).
   - `all`: the whole suite. --runner overrides all of these.
@@ -100,15 +102,34 @@ COPY_IGNORE = shutil.ignore_patterns(".git", ".mutmut-cache", "__pycache__", ".p
 
 
 def context_tests(path, src, tests_root="tests"):
-    """tests/<context>/ for src/<pkg>/<context>/..., if it exists."""
+    """tests/<context>/ for src/<pkg>/<context>/... or src/<context>/..., if it exists."""
     parts = pathlib.PurePath(path).parts
     srcparts = pathlib.PurePath(src).parts
     rest = parts[len(srcparts):] if parts[:len(srcparts)] == srcparts else parts
-    if len(rest) >= 3:
-        cand = pathlib.Path(tests_root, rest[1])
+    for i in ((1, 0) if len(rest) >= 3 else (0,) if len(rest) >= 2 else ()):
+        cand = pathlib.Path(tests_root, rest[i])
         if cand.is_dir():
             return str(cand)
     return None
+
+
+def has_import_time_code(path):
+    """True when mutants can change code that runs at import, outside any test's coverage context: decorators,
+    and module-level statements other than imports, definitions and the docstring (URL tables, constants)."""
+    import ast
+    try:
+        tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return True
+    for i, node in enumerate(tree.body):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.decorator_list or any(getattr(n, "decorator_list", None) for n in ast.walk(node)
+                                          if n is not node):
+                return True
+        elif not isinstance(node, (ast.Import, ast.ImportFrom)) and not (
+                i == 0 and isinstance(node, ast.Expr) and isinstance(getattr(node, "value", None), ast.Constant)):
+            return True
+    return False
 
 
 KILLED = 1        # the only exit code mutmut 2.x reads as "the tests caught this mutant"
@@ -192,11 +213,24 @@ def runners_for(paths, src, mode):
         return {p: fallback for p in paths}, "auto (coverage run failed)"
     runners = {}
     for p, tests in mapping.items():
-        if not tests:
+        # Import-time code (decorators, URL tables) runs under no test's context, so coverage never selects the
+        # tests that exercise it: a wrong-method request rejected by `@require_GET` never enters the view, and
+        # `urlpatterns` is read at import. Those mutants then "survived" untested (synthetic LL-04: 5 of 8).
+        # Such a file also runs its bounded context's whole test folder (the full suite when it has none).
+        if has_import_time_code(p):
+            ctx = context_tests(p, src)
+            extra = [ctx] if ctx else []
+            tests = [t for t in tests if not (ctx and t.startswith(ctx.rstrip("/") + "/"))]
+            if not ctx:
+                runners[p] = " ".join(base_cmd())
+                continue
+        else:
+            extra = []
+        if not tests and not extra:
             runners[p] = fallback          # nothing executes this file: its mutants will survive honestly
             continue
         ids = tests if len(tests) <= 150 else sorted({t.split("::")[0] for t in tests})
-        runners[p] = " ".join(base_cmd() + [f"'{t}'" for t in ids])
+        runners[p] = " ".join(base_cmd() + extra + [f"'{t}'" for t in ids])
     return runners, "coverage"
 
 
