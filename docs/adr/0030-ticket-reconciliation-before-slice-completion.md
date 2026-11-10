@@ -103,3 +103,11 @@ closed as completed, and the PR counts as landed at HEAD. Everything else is che
 close, so a wrong disposition fails the PR, not the epic. The job only reads (issues and pull requests),
 never reopens anything, and the epic-close check stays as the backstop. A coordinator marks its own
 ticket `completed` with its own PR.
+
+## Amendment (2026-11-10, found by the synthetic target's LC-ACCEPT)
+Under ADR-0040, a Verifier's PR merges into the migrator's branch, and that branch reaches the default branch
+as one squash commit. The Verifier PR's own merge commit never enters the default branch, so reconciliation
+reported "no verified landing" for every Verifier ticket. A PR merged into another PR's branch now lands
+with that PR: the PR whose head was its base, merged after it, with a verified landing (recursively, for
+deeper stacks). Containment and outcome checks then run against that landing commit, so content the later
+squash didn't carry still fails.

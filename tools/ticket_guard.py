@@ -431,9 +431,39 @@ def _landed_pull(repo, number):
     if pull.get("state") != "closed":
         raise ValueError(f"PR #{number} is still open")
     commit = pull.get("merge_commit_sha") if pull.get("merged_at") else (pull.get("head") or {}).get("sha")
-    if not commit or not integrated(commit):
-        raise ValueError(f"PR #{number} has no verified landing in default-branch history")
-    return commit
+    if commit and integrated(commit):
+        return commit
+    via = _stacked_landing(repo, pull) if pull.get("merged_at") else None
+    if via is not None:
+        return via
+    raise ValueError(f"PR #{number} has no verified landing in default-branch history")
+
+
+def _stacked_landing(repo, pull, depth=3):
+    """The landing of a PR merged into another PR's branch (ADR-0040's Verifier PR into the migrator's branch).
+
+    Its own merge commit is gone from the default branch when the branch below it was squash-merged; its content
+    landed with that PR. So: the PR whose head was this PR's base, merged after it, whose landing is verified
+    (recursively, for deeper stacks). Returns that landing commit, or None."""
+    base = (pull.get("base") or {}).get("ref")
+    default = ((pull.get("base") or {}).get("repo") or {}).get("default_branch")
+    if not base or base == default or depth <= 0:
+        return None
+    owner = repo.split("/")[0]
+    try:
+        below = gh(f"repos/{repo}/pulls?state=closed&head={owner}:{base}&per_page=20")
+    except (OSError, ValueError, subprocess.SubprocessError, SystemExit):
+        return None
+    for candidate in below if isinstance(below, list) else []:
+        if not candidate.get("merged_at") or candidate["merged_at"] < pull["merged_at"]:
+            continue
+        commit = candidate.get("merge_commit_sha")
+        if commit and integrated(commit):
+            return commit
+        deeper = _stacked_landing(repo, candidate, depth - 1)
+        if deeper is not None:
+            return deeper
+    return None
 
 
 def _return_pr_number(doc, repo, *, return_path=None):
