@@ -44,6 +44,11 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    skills; never transliterate.
 4. **Gates** through `afs-run`: build, behavior, idiom & architecture, CRAP, mutation on changed code,
    full suite. Add tests until mutation reaches the threshold; never weaken anything.
+   **Tests leave shared state as they found it.** A test that commits for real (a browser test against a
+   live server, a transactional test) restores the database afterwards, so seed rows from data migrations
+   survive for the tests after it. Prefer one project-wide setting to per-test marks (Django + pytest-django:
+   a `django_db_serialized_rollback` fixture returning `True` in `tests/conftest.py`). Run the full suite in
+   its default order before finishing: a test that passes alone can still break another one.
 5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR.
 6. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
 
