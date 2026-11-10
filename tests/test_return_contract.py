@@ -117,7 +117,30 @@ class ReturnFileTest(unittest.TestCase):
                                          capture_output=True, text=True)
             self.assertEqual(self.errors(run()), [], "checked against the journal as of the return's commit")
             ret.write_text(RETURN + "\n")                    # edited now: checked against the journal now
-            self.assertIn("does not match the last mutation gate run", run().stderr)
+            self.assertIn("does not match the last mutation gate run of any session", run().stderr)
+
+    def sessions(self, *per_session):
+        """Journal rows for consecutive sessions, each starting with afs-setup-check's probe row."""
+        rows = []
+        for scores in per_session:
+            rows.append(("setup-probe", "true", ""))
+            rows += [("mutation", self.MUT, f"gate=mutation score={s} threshold=0.8") for s in scores]
+        return {"TC-02": rows}
+
+    def test_a_squash_merge_keeps_each_sessions_final_score(self):
+        """Synthetic LL-03 (#88): the squash merge landed the migrator's return (0.800) and the re-verification
+        session's rows (last 0.914) in one commit, and main's Migration state check went red."""
+        text = RETURN.replace("mutation_changed: 1.0", "mutation_changed: 0.8")
+        r = self.validate({"TC-02.afs-migrator.yaml": text}, self.sessions(["0.700", "0.800"], ["0.810", "0.914"]),
+                          self.GATES)
+        self.assertEqual(self.errors(r), [])
+
+    def test_a_score_from_the_middle_of_a_session_still_fails(self):
+        text = RETURN.replace("mutation_changed: 1.0", "mutation_changed: 0.7")
+        r = self.validate({"TC-02.afs-migrator.yaml": text}, self.sessions(["0.700", "0.800"], ["0.914"]),
+                          self.GATES)
+        self.assertIn("does not match the last mutation gate run of any session", r.stderr)
+
 
     def test_scores_must_match_the_last_trusted_mutation_run(self):
         r = self.validate({"TC-02.afs-migrator.yaml": RETURN}, self.mutation_run("0.912"), self.GATES)
