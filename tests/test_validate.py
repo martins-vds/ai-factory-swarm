@@ -104,3 +104,49 @@ class ShallowHistoryTest(unittest.TestCase):
             run("clone", "-q", "--depth", "1", src.as_uri(), str(dst), cwd=d)
             self.assertTrue(validate_mod.shallow_history(dst))
             self.assertFalse(validate_mod.shallow_history(src))
+
+
+class ComponentReferenceTest(unittest.TestCase):
+    """ADR-0018 amendment: a migrated ledger entry's target components name code that exists. Synthetic LL-02
+    moved its use cases behind ports and left `src.loans.services.lend_loan` in the ledger; the circulation
+    audit (LC-AUDIT) found it as `misplaced`, and nothing failed on the PR that caused it."""
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        files = {
+            "src/loans/__init__.py": "",
+            "src/loans/services.py": "class LoanApplication:\n    def lend(self):\n        pass\n\nVALUE = 1\n",
+            "src/shop/views.py": "def create_dialog_views(x):\n    return x\n",
+            "templates/tracking/result.html": "<p/>\n",
+            "Makefile": "run:\n\tpython manage.py runserver\n",
+        }
+        for name, text in files.items():
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text(text)
+
+    def problems(self, *components, status="migrated"):
+        errors = []
+        validate_mod.check_components(self.root, "ledger/x.yaml",
+                                      {"status": status, "target": {"components": list(components)}}, errors)
+        return errors
+
+    def test_existing_references_in_every_form_pass(self):
+        self.assertEqual(self.problems(
+            "src.loans.services.LoanApplication.lend", "loans.services.LoanApplication", "loans.services.VALUE",
+            "loans", "templates.tracking.result", "templates/tracking/", "src/shop/views.py:create_dialog_views",
+            "src/shop/views.py::create_dialog_views", "Makefile.run", "Leaflet 1.7.1 with OpenStreetMap tiles"), [])
+
+    def test_a_function_moved_behind_a_port_is_stale(self):
+        errors = self.problems("src.loans.services.lend_loan")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("no 'lend_loan' in src/loans/services.py (stale reference)", errors[0])
+
+    def test_a_missing_method_module_or_file_is_stale(self):
+        errors = self.problems("src.loans.services.LoanApplication.return_loan", "src.loans.repository.Repo",
+                               "templates/missing.html", "src/shop/views.py:gone", "Makefile.deploy")
+        self.assertEqual(len(errors), 5, errors)
+
+    def test_entries_not_yet_migrated_are_not_held_to_their_components(self):
+        self.assertEqual(self.problems("src.loans.services.future_thing", status="in-progress"), [])

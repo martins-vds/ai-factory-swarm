@@ -53,3 +53,12 @@ source SHA, workflow source, attempt and successful GitHub conclusion before imp
 No cancellation produces a successful completion row. There is no new cache/resume mechanism or
 automatic verdict, evidence commit, PR creation or merge; independent coverage review, human flow
 sign-off and explicit merge approval still apply.
+
+## Amendment (2026-11-10, found by the synthetic target's circulation audit)
+`validate.py` also resolves a `migrated` entry's `target.components`, the code the entry says implements it:
+a repo path (a file or folder, optionally `file:symbol` or `file::symbol`), a dotted Python name with or
+without the `src.` folder (module, then top-level name, then class member), a dotted template name, or a
+file's target (`Makefile.run`). Text containing whitespace is prose (a library or service) and isn't
+resolved. Synthetic LL-02 moved its use cases behind ports and left nine stale names; the circulation audit
+caught two as `misplaced`, the catalog audit none, and no check failed on the PR that caused them. The pilot
+had two more. Now the PR that moves code fails until the ledger follows.
