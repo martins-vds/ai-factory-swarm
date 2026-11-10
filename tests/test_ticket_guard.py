@@ -1309,3 +1309,44 @@ review_only_requests: []
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StackedLandingTest(unittest.TestCase):
+    """Synthetic LC-ACCEPT: the Verifier PRs #79 and #85 merged into LL-02's branch (ADR-0040), which reached
+    main as one squash commit (#75). Their own merge commits never entered main, so reconciliation said they
+    had "no verified landing"."""
+    MAIN = "c" * 40
+
+    def landed(self, pulls, listing):
+        def gh(endpoint, *args, **kwargs):
+            if endpoint.startswith("repos/o/r/pulls?"):
+                return listing.get(endpoint, [])
+            return pulls[int(endpoint.rsplit("/", 1)[1])]
+        with mock.patch.object(ticket_guard, "gh", side_effect=gh), \
+                mock.patch.object(ticket_guard, "integrated", side_effect=lambda c: c == self.MAIN):
+            ticket_guard.PENDING.update(pull=None, closes=frozenset())
+            return ticket_guard._landed_pull("o/r", 85)
+
+    def verifier(self, base="copilot/ll-02", merged="2026-11-09T19:50:00Z"):
+        return {"number": 85, "state": "closed", "merged_at": merged, "merge_commit_sha": "v" * 40,
+                "base": {"ref": base, "repo": {"default_branch": "main"}}}
+
+    def migrator(self, merged="2026-11-09T19:55:00Z", sha=MAIN):
+        return {"number": 75, "merged_at": merged, "merge_commit_sha": sha, "head": {"ref": "copilot/ll-02"}}
+
+    LIST = "repos/o/r/pulls?state=closed&head=o:copilot/ll-02&per_page=20"
+
+    def test_a_pr_merged_into_a_branch_that_landed_lands_with_it(self):
+        self.assertEqual(self.landed({85: self.verifier()}, {self.LIST: [self.migrator()]}), self.MAIN)
+
+    def test_the_branch_must_have_landed_after_the_pr_merged_into_it(self):
+        with self.assertRaisesRegex(ValueError, "no verified landing"):
+            self.landed({85: self.verifier()}, {self.LIST: [self.migrator(merged="2026-11-09T19:00:00Z")]})
+
+    def test_a_branch_that_never_reached_main_lands_nothing(self):
+        with self.assertRaisesRegex(ValueError, "no verified landing"):
+            self.landed({85: self.verifier()}, {self.LIST: [self.migrator(sha="d" * 40)]})
+
+    def test_a_pr_into_main_is_never_rescued(self):
+        with self.assertRaisesRegex(ValueError, "no verified landing"):
+            self.landed({85: self.verifier(base="main")}, {})
