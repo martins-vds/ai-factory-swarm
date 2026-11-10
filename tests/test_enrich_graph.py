@@ -334,6 +334,36 @@ class DjangoHttpMethodsTest(unittest.TestCase):
         self.assertNotIn("health", {s for s, _ in edges(self.graph(views), "reads_from")})
 
 
+    def test_calls_on_an_imported_module_level_instance_reach_its_class(self):
+        """Synthetic LC-ACCEPT: views called `loan_application.lend(...)` on an instance built in a composition
+        module, and every API route lost its path to data."""
+        views = ("from django.shortcuts import render\n"
+                 "from shop.orders.wiring import lookup\n\n"
+                 "def create_order_view(lookup_):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return render(request, 'orders/health.html', {'o': lookup.find(1)})\n")
+        wiring = ("from shop.orders.application import OrderLookup\n"
+                  "from shop.orders.infrastructure.repository import DjangoOrderRepository\n\n"
+                  "lookup = OrderLookup(DjangoOrderRepository())\n")
+        g = self.graph(views, pages={"src/shop/orders/wiring.py": wiring})
+        self.assertIn(("health", "OrderLookup.find"), edges(g, "calls"), "the method itself, not the whole class")
+        self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
+
+    def test_an_unknown_module_level_name_adds_no_call(self):
+        views = ("from shop.orders.wiring import thing\n"
+                 "def create_order_view(lookup):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return thing.find(1)\n")
+        g = self.graph(views, pages={"src/shop/orders/wiring.py": "thing = make_thing()\n"})
+        self.assertNotIn("health", {s for s, _ in edges(g, "calls")})
+
+
     def factory(self, decorators, imports="", extra=""):
         return (
             "from django.views.decorators.http import require_POST, require_GET, require_safe, require_http_methods\n"
@@ -782,3 +812,34 @@ class BootstrapGraphTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MethodDispatchTest(unittest.TestCase):
+    """Synthetic LC-ACCEPT: a class satisfying a Python Protocol without inheriting it had only a type-level
+    `implements` edge from the base graph, so calls to the protocol's methods never reached it."""
+    def graph(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        repo = g.node("class", "repo.py", "Repo", "t")
+        proto = g.node("class", "ports.py", "Port", "t")
+        for owner, path_ in ((repo, "repo.py"), (proto, "ports.py")):
+            for name in ("find", "save"):
+                cls = g.nodes[owner]["name"]
+                g.edge(owner, g.node("method", path_, f"{cls}.{name}", "t"), "contains", "t", description="method")
+        g.edge(g.node("method", "repo.py", "Repo.only_here", "t"), repo, "calls", "t")
+        g.edge(repo, proto, "implements", "base-graph")
+        return g
+
+    def test_same_named_methods_implement_the_protocol_methods(self):
+        g = self.graph()
+        enrich_graph.dispatch_methods(g)
+        pairs = edges(g, "implements")
+        self.assertIn(("Repo.find", "Port.find"), pairs)
+        self.assertIn(("Repo.save", "Port.save"), pairs)
+        self.assertNotIn("Repo.only_here", {s for s, _ in pairs})
+
+    def test_dispatch_is_idempotent(self):
+        g = self.graph()
+        enrich_graph.dispatch_methods(g)
+        before = len(g.doc["edges"])
+        enrich_graph.dispatch_methods(g)
+        self.assertEqual(len(g.doc["edges"]), before)

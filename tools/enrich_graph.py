@@ -702,6 +702,18 @@ def enrich_django(g, root):
     # A class's methods get their own node when the graph knows them (Graphify, ADR-0028); the class body
     # outside methods stays the class's.
     known = {(n.get("filePath"), n.get("name")): n["id"] for n in g.nodes.values() if n.get("type") == "method"}
+    # Module-level instances (`loan_application = LoanApplication(DjangoLoanRepository(), SystemClock())`, a
+    # composition root): a call `loan_application.lend(...)` anywhere that imports it calls LoanApplication.lend.
+    # Graphify links calls through types it sees; an imported instance has none (synthetic LC-ACCEPT).
+    instances = {}
+    for im in mods.values():
+        for st in im.tree.body:
+            target = st.targets[0] if isinstance(st, ast.Assign) and len(st.targets) == 1 else \
+                st.target if isinstance(st, ast.AnnAssign) else None
+            if isinstance(target, ast.Name) and isinstance(st.value, ast.Call):
+                cls = dotted_of(st.value.func, im)
+                if cls in defs and isinstance(defs[cls][1], ast.ClassDef):
+                    instances[f"{im.dotted}.{target.id}"] = cls
     for name, (m, top) in defs.items():
         top_id = py_node(g, m, top, "django-code")
         if isinstance(top, ast.ClassDef):
@@ -721,6 +733,12 @@ def enrich_django(g, root):
                 if not isinstance(node, ast.Call):
                     continue
                 f = node.func
+                if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) \
+                        and dotted_of(f.value, m) in instances:
+                    cm, cnode = defs[instances[dotted_of(f.value, m)]]
+                    callee = known.get((cm.path, f"{cnode.name}.{f.attr}")) or py_node(g, cm, cnode, "python-instance")
+                    g.edge(owner, callee, "calls", "python-instance")
+                    continue
                 # Model.objects.<method>(...) (also chained: Model.objects.filter(...).first())
                 chain, base = [], f
                 while isinstance(base, ast.Attribute):
@@ -949,6 +967,27 @@ def merge_graphify(g, doc):
                 g.edge(im, methods[iface][name], "implements", "graphify", description="method of an implemented type")
 
 
+def dispatch_methods(g):
+    """Method-level dispatch for every type-level `implements` edge, whoever added it: an implementing type's
+    method `implements` the same-named method of the interface, so a call to an interface method reaches
+    its implementations. The Graphify merge already did this for the links it brought; a structural match
+    from the base graph (a Python Protocol a class satisfies without inheriting it) didn't get it
+    (synthetic LC-ACCEPT: calls through `LoanRepository` stopped at the protocol)."""
+    by_id = g.nodes
+    methods = collections.defaultdict(dict)       # type node id → {method name: method node id}
+    for e in g.doc["edges"]:
+        child = by_id.get(e["target"], {})
+        if e["type"] == "contains" and child.get("type") == "method":
+            methods[e["source"]][child["name"].rsplit(".", 1)[-1]] = e["target"]
+    for e in list(g.doc["edges"]):
+        if e["type"] != "implements" or by_id.get(e["source"], {}).get("type") == "method":
+            continue
+        for name, im in methods.get(e["source"], {}).items():
+            if name in methods.get(e["target"], {}):
+                g.edge(im, methods[e["target"]][name], "implements", "method-dispatch",
+                       description="method of an implemented type")
+
+
 ENRICHERS = {"java-ee": enrich_java_ee, "django": enrich_django}
 
 MANAGE_CMD = re.compile(r"\bmanage\.py\s+([A-Za-z_][\w-]*)")
@@ -1025,6 +1064,9 @@ def main(argv=None):
         before = sum(g.added.values())
         ENRICHERS[name](g, root)
         print(f"{name}: +{sum(g.added.values()) - before}")
+    before = sum(g.added.values())
+    dispatch_methods(g)
+    print(f"method-dispatch: +{sum(g.added.values()) - before}")
     if a.profile:
         before = sum(g.added.values())
         enrich_data_mapping(g, a.profile)
