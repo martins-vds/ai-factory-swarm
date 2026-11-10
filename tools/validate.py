@@ -237,6 +237,19 @@ def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
                               f"'n/a: <reason>' if the gate does not apply (null only with a handoff)")
     trusted = gate_commands(profile or {})
     runs = [r for r in rows if r["command"] in trusted and r["result"].get("gate") == "mutation"]
+    # A ticket's journal is shared by its sessions (migrator, Verifier, fixes, re-verification); each session's
+    # afs-setup-check writes a `setup-probe` row first. A return's score is the last mutation run of one
+    # session. When a squash merge lands a migrator's return and a later Verifier session's rows in one
+    # commit (synthetic LL-03, #88), the file's last run is the Verifier's, not the migrator's.
+    finals, session_last = [], None
+    for r in rows:
+        if r["gate"] == "setup-probe" and session_last is not None:
+            finals.append(session_last)
+            session_last = None
+        if r in runs:
+            session_last = r
+    if session_last is not None:
+        finals.append(session_last)
     for key, value in scores_in(doc):
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             continue
@@ -244,14 +257,17 @@ def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
             errors.append(f"{path}: {key}={value} but {journal} has no mutation gate run with a result; run the "
                           f"profile's mutation gate through afs-run")
             continue
-        last = runs[-1]["result"].get("score", "")
-        try:
-            ok = abs(float(last) - float(value)) < 0.0005
-        except ValueError:
-            ok = False
-        if not ok:
-            errors.append(f"{path}: {key}={value} does not match the last mutation gate run in {journal} "
-                          f"when this return was last committed (score={last}); report the score afs-mutation printed")
+
+        def same(run):
+            try:
+                return abs(float(run["result"].get("score", "")) - float(value)) < 0.0005
+            except ValueError:
+                return False
+        if not any(same(run) for run in finals):
+            last = runs[-1]["result"].get("score", "")
+            errors.append(f"{path}: {key}={value} does not match the last mutation gate run of any session in "
+                          f"{journal} when this return was last committed (latest score={last}); report the score "
+                          f"afs-mutation printed")
 
 
 TIER_B_ATTEMPT = re.compile(r"^(ran|no code): \S")

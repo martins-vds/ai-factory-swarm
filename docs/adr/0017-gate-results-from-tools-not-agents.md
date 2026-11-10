@@ -77,3 +77,12 @@ tests' result.
 exits 1 for any failing run (pytest 2, 3, 4) and passes 0 and 5 through. A baseline that can't import
 now fails as a mutmut error instead of passing silently. Scores recorded before this change may be
 too low, never too high. A `--runner` the operator passes is still used as given.
+
+## Amendment (2026-11-10, found when synthetic LL-03 merged)
+A ticket's run journal is shared by every session that works the ticket: migrator, Verifier, fix, and
+re-verification. A return's score must equal the **last mutation run of one session** in the journal as of
+the return's last commit. Sessions are delimited by the `setup-probe` row that `afs-setup-check` writes
+first. Before this, the score had to equal the journal's last mutation run. That held on the PR branch,
+where the migrator's return was committed before the Verifier's rows, but a squash merge lands both in one
+commit. LL-03's return (0.800) was then compared with the re-verification's last run (0.914), and `main`'s
+Migration state check went red. A score from the middle of a session still fails.
