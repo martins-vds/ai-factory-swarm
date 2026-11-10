@@ -705,6 +705,63 @@ def enrich_django(g, root):
     # Module-level instances (`loan_application = LoanApplication(DjangoLoanRepository(), SystemClock())`, a
     # composition root): a call `loan_application.lend(...)` anywhere that imports it calls LoanApplication.lend.
     # Graphify links calls through types it sees; an imported instance has none (synthetic LC-ACCEPT).
+    # Structural Protocols: `class LoanRepository(Protocol)` is implemented by any project class defining all its
+    # methods, without inheriting it. The base graph's AI step sometimes infers that `implements` edge and
+    # sometimes doesn't (synthetic LF-ACCEPT lost every path through a port); make it deterministic.
+    protocols, classes = {}, []
+    for cname, (cm, cnode) in defs.items():
+        if not isinstance(cnode, ast.ClassDef):
+            continue
+        methods = {n.name for n in cnode.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and not n.name.startswith("__")}
+        classes.append((cname, cm, cnode, methods))
+        if any((dotted_of(b, cm) or "").rsplit(".", 1)[-1] == "Protocol" for b in cnode.bases) and methods:
+            protocols[cname] = (cm, cnode, methods)
+    for pname, (pm, pnode, wanted) in protocols.items():
+        for cname, cm, cnode, have in classes:
+            if cname != pname and cname not in protocols and wanted <= have:
+                g.edge(py_node(g, cm, cnode, "python-protocol"), py_node(g, pm, pnode, "python-protocol"),
+                       "implements", "python-protocol", description="satisfies the Protocol structurally")
+    # Calls through injected dependencies: `self.repository.all()`, where `__init__(self, repository: LoanRepository)`
+    # stores `self.repository = repository`. Calls on a Protocol go to its method and straight to every
+    # structural implementation's method, so the path doesn't depend on the Protocol's `...` methods having
+    # nodes. The base graph resolves these only sometimes (synthetic LF-ACCEPT).
+    implementers = collections.defaultdict(list)
+    for pname, (pm, pnode, wanted) in protocols.items():
+        for cname, cm, cnode, have in classes:
+            if cname != pname and cname not in protocols and wanted <= have:
+                implementers[pname].append((cm, cnode))
+    for cname, cm, cnode, _ in classes:
+        attr_types = {}
+        for fn in cnode.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name == "__init__":
+                params = {a.arg: dotted_of(a.annotation, cm) for a in fn.args.args if a.annotation is not None}
+                for st in ast.walk(fn):
+                    if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.value, ast.Name):
+                        t = st.targets[0]
+                        if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self" \
+                                and params.get(st.value.id) in defs:
+                            attr_types[t.attr] = params[st.value.id]
+        if not attr_types:
+            continue
+        for fn in cnode.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            caller = known.get((cm.path, f"{cnode.name}.{fn.name}"))
+            if caller is None:
+                continue
+            for call in ast.walk(fn):
+                f = getattr(call, "func", None) if isinstance(call, ast.Call) else None
+                if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Attribute)
+                        and isinstance(f.value.value, ast.Name) and f.value.value.id == "self"
+                        and f.value.attr in attr_types):
+                    continue
+                tname = attr_types[f.value.attr]
+                targets = [defs[tname]] + implementers.get(tname, [])
+                for tm, tnode in targets:
+                    callee = known.get((tm.path, f"{tnode.name}.{f.attr}"))
+                    if callee is not None:
+                        g.edge(caller, callee, "calls", "python-injected")
     instances = {}
     for im in mods.values():
         for st in im.tree.body:

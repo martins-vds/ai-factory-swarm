@@ -266,7 +266,9 @@ class DjangoTest(unittest.TestCase):
 
     def test_directed_paths_to_data(self):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/"))
-        self.assertIn("←implements `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
+        # The injected `OrderRepository` Protocol call reaches its implementation directly (ADR-0028 amendment,
+        # synthetic LF-ACCEPT), no longer through `←implements`.
+        self.assertIn("→calls `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
         self.assertTrue(path(self.g, "endpoint=/api/health/").startswith("**NO PATH**"))
 
     def test_management_command_and_task(self):
@@ -843,3 +845,51 @@ class MethodDispatchTest(unittest.TestCase):
         before = len(g.doc["edges"])
         enrich_graph.dispatch_methods(g)
         self.assertEqual(len(g.doc["edges"]), before)
+
+
+class InjectedProtocolTest(unittest.TestCase):
+    """Synthetic LF-ACCEPT: the base graph's AI step left out the Protocol `implements` edges and the calls
+    through `self.repository`, which a previous run had; every path through the ports was lost. Both are now
+    derived from the code."""
+    FILES = {
+        "src/loans/__init__.py": "",
+        "src/loans/apps.py": "from django.apps import AppConfig\n\nclass LoansConfig(AppConfig):\n    name = 'loans'\n",
+        "src/loans/models.py": "from django.db import models\n\nclass Loan(models.Model):\n    member = models.TextField()\n",
+        "src/loans/services.py": (
+            "from typing import Protocol\n\n"
+            "class LoanRepository(Protocol):\n    def all(self): ...\n\n"
+            "class LoanApplication:\n"
+            "    def __init__(self, repository: LoanRepository):\n        self.repository = repository\n\n"
+            "    def list_loans(self):\n        return list(self.repository.all())\n"),
+        "src/loans/repository.py": (
+            "from .models import Loan\n\n"
+            "class DjangoLoanRepository:\n    def all(self):\n        return Loan.objects.all()\n\n"
+            "class Unrelated:\n    def other(self):\n        return 1\n"),
+    }
+
+    def graph(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for name, text in self.FILES.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text)
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            for path, cls, methods in (("src/loans/services.py", "LoanApplication", ["list_loans"]),
+                                       ("src/loans/repository.py", "DjangoLoanRepository", ["all"]),
+                                       ("src/loans/repository.py", "Unrelated", ["other"])):
+                c = g.node("class", path, cls, "t")
+                for m in methods:
+                    g.edge(c, g.node("method", path, f"{cls}.{m}", "t"), "contains", "t")
+            enrich_graph.enrich_django(g, root)
+            enrich_graph.dispatch_methods(g)
+            return g
+
+    def test_a_class_satisfying_a_protocol_implements_it(self):
+        pairs = edges(self.graph(), "implements")
+        self.assertIn(("DjangoLoanRepository", "LoanRepository"), pairs)
+        self.assertNotIn("Unrelated", {s for s, _ in pairs})
+
+    def test_calls_through_an_injected_protocol_reach_its_implementation(self):
+        g = self.graph()
+        self.assertIn(("LoanApplication.list_loans", "DjangoLoanRepository.all"), edges(g, "calls"))
+        self.assertIn(("DjangoLoanRepository.all", "loans_loan"), edges(g, "reads_from"))
