@@ -176,7 +176,40 @@ def superseded_attribution(base, current, accepted, pr_url, root, head="HEAD"):
     return None, rejected
 
 
-def check(body, files, root=".", parent_of=lambda n: None, *, base=None, head="HEAD", pr_url=None):
+def github_pull(number):
+    """A pull request in this repository, via the REST API in CI; else None."""
+    import urllib.request
+    repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not repo or not token:
+        return None
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/pulls/{number}",
+                                 headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.load(r)
+    except (OSError, ValueError):
+        return None
+
+
+def stacked_into(identity, expected, head_ref, pull_of, root=".", head="HEAD", path=None):
+    """ADR-0040: a Verifier's PR merges into the migrator's branch, so the migrator's PR carries a return that
+    names the Verifier's PR. It counts when that PR is in this repository, merged, based on this PR's head
+    branch, and the return at this PR's head is the one it merged (its head commit's blob)."""
+    if not identity or not head_ref or identity[:1] != expected[:1]:
+        return False
+    other = pull_of(identity[1])
+    if not other or not other.get("merged_at") or (other.get("base") or {}).get("ref") != head_ref:
+        return False
+    sha = (other.get("head") or {}).get("sha")
+    def blob(rev):
+        r = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", f"{rev}:{path}"],
+                           capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else None
+    return bool(sha and path and blob(sha) and blob(sha) == blob(head))
+
+
+def check(body, files, root=".", parent_of=lambda n: None, *, base=None, head="HEAD", pr_url=None,
+          head_ref=None, pull_of=lambda n: None):
     if not files:
         return False, ("no return file in this PR: commit .migration/returns/<ticket>.<role>.yaml "
                        "(your agent's return contract plus role, ticket, issue)")
@@ -221,7 +254,8 @@ def check(body, files, root=".", parent_of=lambda n: None, *, base=None, head="H
                     proof, rejected = superseded_attribution(base, {path: doc}, accepted, pr_url, root, head)
                     rejected_identity.extend(rejected)
                 inherited = bool(base and inherited_from_merge(base, path, root, head))
-                if proof or inherited:
+                stacked = stacked_into(pr_identity(doc.get("pr")), expected, head_ref, pull_of, root, head, path)
+                if proof or inherited or stacked:
                     continue
                 mismatches.append(f"{path} has pr: {doc.get('pr')!r}")
     if issues and not accepted & found:
@@ -309,7 +343,8 @@ def main():
               f"identity are checked on the PR into {default}")
         return 0
     ok, msg = check(pr.get("body") or "", files, parent_of=github_parent,
-                    base=base, head=head, pr_url=pr.get("html_url"))
+                    base=base, head=head, pr_url=pr.get("html_url"),
+                    head_ref=(pr.get("head") or {}).get("ref"), pull_of=github_pull)
     if pasted_contract(pr.get("body") or ""):
         # A warning, not a failure: a follow-up session cannot edit the description to fix it.
         print("::warning title=Return contract pasted into the PR description::Link to "

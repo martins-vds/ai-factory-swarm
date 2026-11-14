@@ -43,3 +43,12 @@ a block; the operator checklist says so.
   check passes it.
 - The rule keys on the migrator return. A PR that changes production code without touching a migrator
   return isn't a migrator PR, and other checks cover it (return contract, gates).
+
+## Amendment (2026-11-14, found by synthetic LL-05)
+The migrator's PR carries the Verifier's return, which names the Verifier's PR. The return check accepted it
+only when the history showed it arriving through a merge into this branch's first-parent line. After a stack
+refresh merged the migrator's branch into the Verifier's branch, and the migrator's branch was then
+fast-forwarded to that merge, the Verifier's commits were first-parent work, and LL-05's PR (#120) failed
+"Agent PR commits its return file". A return now also counts when its `pr:` names a merged PR in this
+repository, based on this PR's head branch, whose head commit has the same return as this PR's head. A return
+edited after the Verifier merged still fails.

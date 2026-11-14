@@ -806,3 +806,55 @@ quirk_tickets: []
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StackedReturnTest(unittest.TestCase):
+    """ADR-0040: a Verifier's PR merges into the migrator's branch, so the migrator's PR carries a return naming
+    the Verifier's PR. Synthetic LL-05 (#120) failed "Agent PR commits its return file" after the stack refresh
+    put the Verifier's branch on the first-parent line, where `inherited_from_merge` no longer saw it."""
+    VERIFIER = ("role: afs-verifier\nticket: LL-05\nissue: o/r#121\npr: o/r#123\nverdict: pass\ngates: null\n"
+                "evidence_logs: []\nfindings: []\ntests_added: []\nledger_issues: []\nquirk_tickets: []\n")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        self.git("init", "-q", "--initial-branch=main")
+        self.git("config", "user.email", "t@example.invalid")
+        self.git("config", "user.name", "t")
+        (self.root / "README").write_text("x\n")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "base")
+        self.path = ".migration/returns/LL-05.afs-verifier.yaml"
+        (self.root / ".migration/returns").mkdir(parents=True)
+        (self.root / self.path).write_text(self.VERIFIER)
+        self.git("add", "-A")
+        self.git("commit", "-qm", "verifier return")
+        self.verifier_head = self.git("rev-parse", "HEAD")
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.root), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def stacked(self, pull, head="HEAD"):
+        doc_pr = crc.pr_identity("o/r#123")
+        expected = crc.pr_identity("https://github.com/o/r/pull/120")
+        return crc.stacked_into(doc_pr, expected, "copilot/ll-05", lambda n: pull if n == 123 else None,
+                                self.root, head, self.path)
+
+    def pull(self, **over):
+        p = {"merged_at": "2026-11-14T20:00:00Z", "base": {"ref": "copilot/ll-05"}, "head": {"sha": self.verifier_head}}
+        p.update(over)
+        return p
+
+    def test_a_merged_verifier_pr_into_this_branch_counts(self):
+        self.assertTrue(self.stacked(self.pull()))
+
+    def test_an_unmerged_or_elsewhere_based_pr_does_not(self):
+        self.assertFalse(self.stacked(self.pull(merged_at=None)))
+        self.assertFalse(self.stacked(self.pull(base={"ref": "main"})))
+
+    def test_a_return_changed_after_the_verifier_merged_does_not(self):
+        (self.root / self.path).write_text("role: afs-verifier\nverdict: pass\n")
+        self.git("commit", "-qam", "migrator edits the verifier's return")
+        self.assertFalse(self.stacked(self.pull()))
