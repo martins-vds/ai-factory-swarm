@@ -449,7 +449,11 @@ def grade_fields(files, expect):
 def grade_migrator(ret, gates_conclusion, threshold):
     checks = [("Gates check passed", gates_conclusion == "success", f"Gates: {gates_conclusion}")]
     score = ((ret or {}).get("gates") or {}).get("mutation_changed")
-    ok = isinstance(score, (int, float)) and threshold is not None and score >= threshold
+    # "n/a: no mutable code changed" is a valid answer under the return contract (nine live returns use it);
+    # CI's Gates re-checks the claim, so it counts only alongside a green Gates.
+    not_applicable = (isinstance(score, str) and score.startswith("n/a: no ") and "changed" in score
+                      and gates_conclusion == "success")
+    ok = not_applicable or (isinstance(score, (int, float)) and threshold is not None and score >= threshold)
     checks.append((f"mutation_changed ≥ {threshold}", ok, f"reported {score!r}"))
     return checks
 
