@@ -504,9 +504,13 @@ def grade(a, cases):
             added = new_errors(validate_errors(trees["base"]), validate_errors(trees["head"]))
             checks.append(("no new validation errors", not added, "; ".join(added)[:400] or "none"))
             runs = gh_api(f"repos/{a.eval_repo}/commits/{pr['head']['sha']}/check-runs?per_page=100")["check_runs"]
+            runs = sorted(runs, key=lambda r: r.get("id", 0))      # later reruns override earlier ones
             row["ci"] = {r["name"]: r["conclusion"] for r in runs}
             if case["kind"] == "migrator":
-                gates = next((r["conclusion"] for r in runs if r["name"].startswith("Gates")), None)
+                latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
+                gates = latest[0]["conclusion"] if latest else None
+                if latest and latest[0]["status"] != "completed":
+                    row["ci_pending"] = True
                 profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
                 threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
                 checks += grade_migrator(ret, gates, threshold)
@@ -522,7 +526,8 @@ def grade(a, cases):
             for wt in trees.values():
                 git(src, "worktree", "remove", "--force", str(wt), check=False)
         row["checks"] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
-        row.update(status="graded", passed=verdict(checks), skills=session_skills(src, "refs/afs-eval/head"))
+        row.update(status="ci-pending" if row.pop("ci_pending", False) else "graded", passed=verdict(checks),
+                   skills=session_skills(src, "refs/afs-eval/head"))
     out = pathlib.Path(a.results_dir) / f"{a.run}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
