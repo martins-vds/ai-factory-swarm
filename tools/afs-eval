@@ -16,9 +16,9 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
 
 **prepare** builds, for each case, the branch `eval/<run>/<case>` in the eval repo:
   1. the case's `source.base` commit of the source target (its history included);
-  2. the harness under test installed with `tools/bootstrap.py` (the target's own profile and capabilities);
-  3. the case's `normalize` edits: historical states made valid under today's rules (stale references the
-     live run fixed later), never a change to behavior;
+  2. the case's `normalize` edits: historical states made valid under today's rules (stale references the
+     live run fixed later, profile keys today's bootstrap writes), never a change to behavior;
+  3. the harness under test installed with `tools/bootstrap.py`, reading the normalized profile;
   4. an `-s ours` merge of the eval repo's `main`. The tree stays the case's; only the ancestry changes, so
      `check_stack_base.py` sees the default branch below the case branch, as on a real target.
 A verifier case also gets `eval/<run>/<case>-work`: `source.work` (the Migrator's head at the moment the
@@ -245,9 +245,12 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
     git(src, "fetch", "-q", "origin", sha, check=False)
     git(src, "worktree", "add", "-q", "--detach", str(wt), sha)
     try:
+        # Normalize first: bootstrap reads the profile, so a key the normalization adds (target.shared_test_files)
+        # must be there when it installs. Run the other way round, bootstrap never created the shared test fixture
+        # (b3-r1, cancelled before any session ran).
+        notes = apply_normalize(wt, case.get("normalize"), src, label)
         if case.get("install", True):      # a bootstrap case starts before any harness is installed
             install(wt, harness, case.get("stack_pack", "java-to-django"), allow_unreleased)
-        notes = apply_normalize(wt, case.get("normalize"), src, label)
         harness_sha = git(harness, "rev-parse", "--short", "HEAD").stdout.strip()
         git(wt, "add", "-A")
         msg = (f"Eval case {case['id']}: {label} at {sha[:12]} with harness {harness_sha}\n\n"
