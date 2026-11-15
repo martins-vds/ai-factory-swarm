@@ -670,6 +670,27 @@ def check_profile_graph(profile, packs):
                                          f"{pack.get('stack')}, ADR-0020)")
 
 
+def scaffold_shared_test_setup(target, profile, packs):
+    """Create each `target.shared_test_files` file that doesn't exist yet, from the stack pack's
+    `shared_test_setup`. An existing file is never touched: the project owns it once it exists.
+
+    The migrator rule asks for project-wide test isolation, but in the eval (base-r1, b2-r1) agents kept
+    hitting the shared-state failure and stopping without creating the fixture. Present from the start, it
+    can't be forgotten."""
+    templates = {}
+    for pack in packs:
+        templates.update(pack.get("shared_test_setup") or {})
+    notes = []
+    for rel in (profile.get("target") or {}).get("shared_test_files") or []:
+        path = pathlib.Path(target) / rel
+        if path.exists() or rel not in templates:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(templates[rel], encoding="utf-8")
+        notes.append(f"created {rel} (project-wide test isolation from the stack pack; commit it)")
+    return notes
+
+
 def check_profile_skills(profile, installed, offline):
     refs = []
 
@@ -761,6 +782,7 @@ def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_is
         for d in cache.values():
             if isinstance(d, pathlib.Path) and d.name.startswith("afs-src-"):
                 shutil.rmtree(d, ignore_errors=True)
+    notes += scaffold_shared_test_setup(target, profile, packs)
     gaps = [f"{c['id']} → {c.get('ticket')}" for c in caps_doc["capabilities"] if c["status"] == "gap"]
     return {"skills": len(plan), "agents": len(list((target / ".github/agents").glob("afs-*.agent.md"))),
             "gaps": gaps, "issues_created": created, "notes": notes, "harness": f"{version} ({commit[:7]})"}
