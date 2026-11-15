@@ -1,0 +1,610 @@
+#!/usr/bin/env python3
+"""afs-eval — the end-to-end eval for the role agents (agent-topology plan, phase 1; ADR-0041).
+
+A case is one real ticket whose correct outcome is already known from the pilot or the synthetic run. A run
+re-dispatches each case to a fresh Copilot session in the eval repository, against the harness under test,
+and grades what comes back. Comparing two runs shows which cases *flipped*, not only the total.
+
+  afs-eval list    --cases evals/cases                          # the cases and what each expects
+  afs-eval prepare --cases evals/cases --run R --eval-repo O/R  # build and push one branch per case
+                   [--case ID ...] [--harness DIR] [--sources DIR] [--dry-run]
+  afs-eval dispatch --cases evals/cases --run R --eval-repo O/R [--case ID ...]
+  afs-eval grade   --cases evals/cases --run R --eval-repo O/R [--case ID ...]   # writes evals/results/R.json
+  afs-eval report  --results evals/results/R.json [--baseline evals/results/B.json] [--out R.md]
+  afs-eval skills  --repo DIR [--repo DIR ...]                  # skill loads per agent, from cost records
+
+**prepare** builds, for each case, the branch `eval/<run>/<case>` in the eval repo:
+  1. the case's `source.base` commit of the source target (its history included);
+  2. the harness under test installed with `tools/bootstrap.py` (the target's own profile and capabilities);
+  3. the case's `normalize` edits: historical states made valid under today's rules (stale references the
+     live run fixed later), never a change to behavior;
+  4. an `-s ours` merge of the eval repo's `main`. The tree stays the case's; only the ancestry changes, so
+     `check_stack_base.py` sees the default branch below the case branch, as on a real target.
+A verifier case also gets `eval/<run>/<case>/work`: `source.work` (the Migrator's head at the moment the
+Verifier judged it, in the live run) prepared the same way, with the case branch merged in (`-s ours`). The
+work PR, work → case branch, is what the Verifier verifies.
+
+**dispatch** opens the case's issue in the eval repo and assigns it to the Copilot coding agent with the
+case's custom agent and `base_branch`, as live tickets are dispatched (agents/README.md). Issue bodies keep
+references to the source repo's issues: bare `#N` becomes `<source repo>#N`, and `{work_pr}` becomes the
+eval repo's work PR.
+
+**grade** reads the agent's PR (the one that `Fixes` the case issue) and scores it against the case's rubric:
+  every case   the PR exists and is finished; its return file is committed and valid; `validate.py` reports
+               no error on the PR head that it did not report on the case branch (differential: historical
+               states may carry errors the agent didn't make)
+  migrator     the Gates check passed; the return's `mutation_changed` is at least the profile's threshold
+  verifier     the verdict matches; for a defect case, at least one finding at or above `severity_min`
+               matches the expected defect (a keyword, or a path prefix in `where`); for a clean case, no
+               blocker or major finding
+  bootstrap    every expected field of the committed profile or capabilities file has the expected value
+A case passes only if every check passes. `must_pass` cases are the ones a topology change may never flip.
+
+Grading never trusts the agent's own claims where CI or a re-run can decide: Gates comes from the eval repo's
+CI, validation is re-run here.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+import yaml
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent
+KINDS = ("migrator", "verifier", "bootstrap")
+SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
+COPILOT = "copilot-swe-agent[bot]"
+# Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
+# agent's work. The eval repo has no such tracker, so they are reported but never graded.
+UNGRADED_CHECKS = ("Human sign-off", "Ticket reconciliation", "Capability gap issues", "Migrator work is verified")
+
+
+# ---------------------------------------------------------------- cases
+
+class CaseError(ValueError):
+    pass
+
+
+def load_case(path):
+    doc = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8")) or {}
+    problems = case_problems(doc)
+    if problems:
+        raise CaseError(f"{path}: " + "; ".join(problems))
+    return doc
+
+
+def case_problems(doc):
+    out = []
+    for key in ("id", "kind", "agent", "ticket", "role", "source", "issue", "expect"):
+        if not doc.get(key):
+            out.append(f"missing {key}")
+    if out:
+        return out
+    if doc["kind"] not in KINDS:
+        out.append(f"kind must be one of {', '.join(KINDS)}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(doc["id"])):
+        out.append("id: lowercase letters, digits and dashes only (it names a branch)")
+    src = doc["source"]
+    if not (src.get("repo") and re.fullmatch(r"[0-9a-f]{40}", str(src.get("base", "")))):
+        out.append("source needs repo and a full 40-character base sha")
+    if doc["kind"] == "verifier" and not re.fullmatch(r"[0-9a-f]{40}", str(src.get("work", ""))):
+        out.append("a verifier case needs source.work (the Migrator head the Verifier judged)")
+    if not (doc["issue"].get("title") and doc["issue"].get("body")):
+        out.append("issue needs title and body")
+    exp = doc["expect"]
+    if doc["kind"] == "verifier":
+        if exp.get("verdict") not in ("pass", "changes-required", "blocked"):
+            out.append("expect.verdict: pass, changes-required or blocked")
+        for f in exp.get("findings") or []:
+            if f.get("severity_min") not in SEVERITY:
+                out.append("expect.findings[].severity_min: minor, major or blocker")
+            if not (f.get("any_of") or f.get("where")):
+                out.append("expect.findings[] needs any_of keywords or a where path prefix")
+    if doc["kind"] == "bootstrap" and not exp.get("fields"):
+        out.append("a bootstrap case needs expect.fields")
+    for op in doc.get("normalize") or []:
+        if not (set(op) & {"replace", "copy_from"}):
+            out.append("normalize ops are replace or copy_from")
+    return out
+
+
+def load_cases(directory, only=None):
+    cases = [load_case(p) for p in sorted(pathlib.Path(directory).glob("*.yaml"))]
+    ids = [c["id"] for c in cases]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        raise CaseError(f"duplicate case ids: {', '.join(dupes)}")
+    if only:
+        missing = sorted(set(only) - set(ids))
+        if missing:
+            raise CaseError(f"no such case: {', '.join(missing)}")
+        cases = [c for c in cases if c["id"] in only]
+    return cases
+
+
+def branch(run, case, part=None):
+    return f"eval/{run}/{case['id']}" + (f"/{part}" if part else "")
+
+
+# ---------------------------------------------------------------- issue text
+
+def rewrite_body(body, source_repo, work_pr=None):
+    """Bare `#N` references point at the source repo's issues; `{work_pr}` is the eval work PR."""
+    text = re.sub(r"(?<![\w/#\[])#(\d+)\b", lambda m: f"{source_repo}#{m.group(1)}", body)
+    if work_pr is not None:
+        text = text.replace("{work_pr}", f"#{work_pr}")
+    return text
+
+
+def eval_note(run, case):
+    return (f"\n\n---\nEval case `{case['id']}` (run `{run}`). Work this exactly as a live ticket: same agent, "
+            f"same rules, same checks. References to `{case['source']['repo']}` issues are the live run's "
+            "tracker; read them, never write to it.")
+
+
+# ---------------------------------------------------------------- shell helpers
+
+def sh(args, cwd=None, check=True, input=None):
+    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, input=input)
+    if check and r.returncode:
+        raise RuntimeError(f"{' '.join(map(str, args))} → {r.returncode}\n{r.stderr.strip()[-2000:]}")
+    return r
+
+
+def git(cwd, *args, check=True):
+    return sh(["git", "-C", str(cwd), *args], check=check)
+
+
+def gh_api(path, method="GET", body=None, check=True):
+    args = ["gh", "api", "-X", method, path]
+    if body is not None:
+        args += ["--input", "-"]
+    r = sh(args, check=check, input=json.dumps(body) if body is not None else None)
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+# ---------------------------------------------------------------- prepare
+
+def apply_normalize(tree, ops, source_dir, part="base"):
+    """Apply the case's normalization ops for one branch (`on: base|work`, default both); return one line per op."""
+    done = []
+    for op in ops or []:
+        if op.get("on", part) != part:
+            continue
+        if "replace" in op:
+            r = op["replace"]
+            path = pathlib.Path(tree) / r["file"]
+            text = path.read_text(encoding="utf-8")
+            if r["old"] not in text:
+                if r.get("optional"):          # verifier cases normalize two commits; one may predate the text
+                    continue
+                raise CaseError(f"normalize: {r['file']} has no {r['old']!r}")
+            path.write_text(text.replace(r["old"], r["new"]), encoding="utf-8")
+            done.append(f"replace in {r['file']}: {r['old']} → {r['new']}")
+        if "copy_from" in op:
+            c = op["copy_from"]
+            for rel in c["paths"]:
+                if c.get("only_missing") and (pathlib.Path(tree) / rel).exists():
+                    continue
+                content = git(source_dir, "show", f"{c['ref']}:{rel}").stdout
+                dest = pathlib.Path(tree) / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content, encoding="utf-8")
+                done.append(f"copy {rel} from {c['ref'][:12]}")
+    return done
+
+
+def install(tree, harness, pack, allow_unreleased=False):
+    args = [sys.executable, str(pathlib.Path(harness) / "tools/bootstrap.py"), "--target", str(tree),
+            "--profile", str(pathlib.Path(tree) / ".migration/profile.yaml"),
+            "--capabilities", str(pathlib.Path(tree) / ".migration/capabilities.yaml"),
+            "--stack-pack", str(pathlib.Path(harness) / "stacks" / f"{pack}.json")]
+    if allow_unreleased:
+        args.append("--allow-unreleased")
+    sh(args)
+    for cache in pathlib.Path(tree).rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
+
+
+def source_clone(sources, repo):
+    """A local clone of the source target, fetched fresh; full history (prepare pushes it)."""
+    path = pathlib.Path(sources) / repo.replace("/", "__")
+    if not (path / ".git").exists():
+        sh(["git", "clone", "-q", f"https://github.com/{repo}", str(path)])
+    git(path, "fetch", "-q", "origin")
+    return path
+
+
+def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unreleased, label):
+    """Check out `sha` from the source clone into a worktree, install, normalize, commit, merge -s ours."""
+    wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-eval-")) / "tree"
+    git(src, "fetch", "-q", "origin", sha, check=False)
+    git(src, "worktree", "add", "-q", "--detach", str(wt), sha)
+    try:
+        if case.get("install", True):      # a bootstrap case starts before any harness is installed
+            install(wt, harness, case.get("stack_pack", "java-to-django"), allow_unreleased)
+        notes = apply_normalize(wt, case.get("normalize"), src, label)
+        harness_sha = git(harness, "rev-parse", "--short", "HEAD").stdout.strip()
+        git(wt, "add", "-A")
+        msg = (f"Eval case {case['id']}: {label} at {sha[:12]} with harness {harness_sha}\n\n"
+               + ("Normalized to today's rules (no behavior change):\n" + "\n".join(f"- {n}" for n in notes)
+                  if notes else "No normalization.") + "\n")
+        git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
+            "commit", "-q", "--allow-empty", "-m", msg)
+        for ref in [eval_main, *merge_also]:
+            git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
+                "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", ref)
+        return wt, git(wt, "rev-parse", "HEAD").stdout.strip()
+    except Exception:
+        git(src, "worktree", "remove", "--force", str(wt), check=False)
+        raise
+
+
+def prepare(a, cases):
+    harness = pathlib.Path(a.harness).resolve()
+    if not a.allow_unreleased:
+        head = git(harness, "rev-parse", "HEAD").stdout.strip()
+        if git(harness, "merge-base", "--is-ancestor", head, "origin/main", check=False).returncode:
+            raise SystemExit("afs-eval: the harness checkout isn't on origin/main; pass --allow-unreleased to "
+                             "evaluate an unmerged harness (a topology experiment)")
+    sources = pathlib.Path(a.sources)
+    sources.mkdir(parents=True, exist_ok=True)
+    out = []
+    for case in cases:
+        src = source_clone(sources, case["source"]["repo"])
+        remote = f"https://github.com/{a.eval_repo}"
+        git(src, "fetch", "-q", remote, "+refs/heads/main:refs/remotes/afs-eval/main")
+        eval_main = "refs/remotes/afs-eval/main"
+        wt, head = build_branch(src, case["source"]["base"], case, harness, eval_main, [], a.allow_unreleased, "base")
+        pushes = [(wt, head, branch(a.run, case))]
+        if case["kind"] == "verifier":
+            wt2, head2 = build_branch(src, case["source"]["work"], case, harness, eval_main, [head],
+                                      a.allow_unreleased, "work")
+            pushes.append((wt2, head2, branch(a.run, case, "work")))
+        for tree, sha, name in pushes:
+            errors = validate_errors(tree)
+            print(f"{case['id']}: {name}: {len(errors)} validation error(s) before the agent starts"
+                  + "".join(f"\n    {e[:200]}" for e in errors[:5]))
+            if a.dry_run:
+                print(f"{case['id']}: would push {sha[:12]} to {name}")
+            else:
+                git(tree, "-c", "push.negotiate=true", "push", "-q", "--force", remote, f"{sha}:refs/heads/{name}")
+                print(f"{case['id']}: pushed {sha[:12]} to {name}")
+        out.append({"case": case["id"], "branches": [p[2] for p in pushes]})
+        for tree, _, _ in pushes:
+            git(src, "worktree", "remove", "--force", str(tree), check=False)
+    return out
+
+
+# ---------------------------------------------------------------- dispatch
+
+def find_pr(eval_repo, head, base):
+    owner = eval_repo.split("/")[0]
+    prs = gh_api(f"repos/{eval_repo}/pulls?state=all&head={owner}:{head}&base={base}&per_page=10") or []
+    return prs[0]["number"] if prs else None
+
+
+def dispatch(a, cases):
+    state = load_state(a)
+    for case in cases:
+        name = branch(a.run, case)
+        base_branch = name
+        work_pr = None
+        if case["kind"] == "verifier":
+            work = branch(a.run, case, "work")
+            work_pr = find_pr(a.eval_repo, work, name)
+            if work_pr is None:
+                work_pr = gh_api(f"repos/{a.eval_repo}/pulls", "POST", {
+                    "title": f"[eval {a.run}] {case['ticket']}: the work under verification",
+                    "head": work, "base": name, "draft": True,
+                    "body": f"The Migrator's head that the Verifier judged in the live run "
+                            f"({case['source']['repo']}@{case['source']['work'][:12]}). Never merged."})["number"]
+            base_branch = work
+        body = rewrite_body(case["issue"]["body"], case["source"]["repo"], work_pr) + eval_note(a.run, case)
+        issue = gh_api(f"repos/{a.eval_repo}/issues", "POST",
+                       {"title": f"[eval {a.run}] {case['issue']['title']}", "body": body})["number"]
+        gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
+            "assignees": [COPILOT],
+            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
+                                 "custom_agent": case["agent"], "custom_instructions": ""}})
+        state[case["id"]] = {"issue": issue, "work_pr": work_pr, "base_branch": base_branch,
+                             "dispatched_at": now()}
+        save_state(a, state)
+        print(f"{case['id']}: issue #{issue} assigned to Copilot ({case['agent']}, base {base_branch})")
+
+
+def state_path(a):
+    return pathlib.Path(a.results_dir) / f"{a.run}.state.json"
+
+
+def load_state(a):
+    p = state_path(a)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def save_state(a, state):
+    p = state_path(a)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+# ---------------------------------------------------------------- grading (pure parts are unit-tested)
+
+def grade_verifier(ret, expect):
+    checks = []
+    verdict = (ret or {}).get("verdict")
+    checks.append(("verdict", verdict == expect["verdict"], f"{verdict} (expected {expect['verdict']})"))
+    findings = (ret or {}).get("findings") or []
+    for want in expect.get("findings") or []:
+        floor = SEVERITY[want["severity_min"]]
+        words = [w.lower() for w in want.get("any_of") or []]
+        hit = next((f for f in findings if SEVERITY.get(str(f.get("severity")), 0) >= floor and (
+            any(w in str(f.get("what", "")).lower() for w in words)
+            or (want.get("where") and str(f.get("where", "")).startswith(want["where"])))), None)
+        label = want.get("label") or ", ".join(words) or want.get("where")
+        checks.append((f"finds: {label}", hit is not None,
+                       f"{hit.get('severity')}: {str(hit.get('what'))[:120]}" if hit else
+                       f"no finding ≥ {want['severity_min']} matches"))
+    if expect["verdict"] == "pass":
+        serious = [f for f in findings if SEVERITY.get(str(f.get("severity")), 0) >= SEVERITY["major"]]
+        checks.append(("no blocker or major finding", not serious, f"{len(serious)} serious finding(s)"))
+    return checks
+
+
+def dig(doc, dotted):
+    cur = doc
+    for part in str(dotted).split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def grade_fields(files, expect):
+    """files: {path: parsed yaml}; expect.fields: {"<path>:<dotted.key>": value}."""
+    checks = []
+    for key, want in sorted(expect["fields"].items()):
+        path, _, dotted = key.partition(":")
+        got = dig(files.get(path) or {}, dotted)
+        checks.append((f"{key} = {want!r}", got == want, f"got {got!r}"))
+    return checks
+
+
+def grade_migrator(ret, gates_conclusion, threshold):
+    checks = [("Gates check passed", gates_conclusion == "success", f"Gates: {gates_conclusion}")]
+    score = ((ret or {}).get("gates") or {}).get("mutation_changed")
+    ok = isinstance(score, (int, float)) and threshold is not None and score >= threshold
+    checks.append((f"mutation_changed ≥ {threshold}", ok, f"reported {score!r}"))
+    return checks
+
+
+def new_errors(base_errors, head_errors):
+    return sorted(set(head_errors) - set(base_errors))
+
+
+def validate_errors(tree):
+    if not (pathlib.Path(tree) / ".migration/harness/tools/validate.py").exists():
+        return []                      # a bootstrap case's branch before the harness is installed
+    r = sh([sys.executable, str(pathlib.Path(tree) / ".migration/harness/tools/validate.py"),
+            str(pathlib.Path(tree) / ".migration")], check=False)
+    lines = (r.stdout + r.stderr).splitlines()
+    return [ln.strip() for ln in lines if ln.strip() and not ln.startswith("AFS-TOOL")
+            and not re.search(r"file\(s\) checked", ln)]
+
+
+def verdict(checks):
+    return all(ok for _, ok, _ in checks)
+
+
+def grade(a, cases):
+    state = load_state(a)
+    results = {"run": a.run, "eval_repo": a.eval_repo, "graded_at": now(), "cases": {}}
+    sources = pathlib.Path(a.sources)
+    for case in cases:
+        st = state.get(case["id"])
+        row = {"kind": case["kind"], "must_pass": bool(case.get("must_pass", True)), "checks": []}
+        results["cases"][case["id"]] = row
+        if not st:
+            row.update(status="not-dispatched", passed=False)
+            continue
+        pr = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if not pr:
+            row.update(status="no-pr", passed=False)
+            continue
+        row["pr"] = pr["number"]
+        if pr["draft"] or pr["title"].startswith("[WIP]"):
+            row.update(status="running", passed=False)
+            continue
+        src = source_clone(sources, case["source"]["repo"])
+        git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
+            f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
+        checks = []
+        ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
+        shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
+        ret = yaml.safe_load(shown.stdout) if shown.returncode == 0 else None
+        checks.append(("return file committed", ret is not None, ret_path))
+        trees = {}
+        for ref in ("base", "head"):
+            wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-grade-")) / ref
+            git(src, "worktree", "add", "-q", "--detach", str(wt), f"refs/afs-eval/{ref}")
+            trees[ref] = wt
+        try:
+            added = new_errors(validate_errors(trees["base"]), validate_errors(trees["head"]))
+            checks.append(("no new validation errors", not added, "; ".join(added)[:400] or "none"))
+            runs = gh_api(f"repos/{a.eval_repo}/commits/{pr['head']['sha']}/check-runs?per_page=100")["check_runs"]
+            row["ci"] = {r["name"]: r["conclusion"] for r in runs}
+            if case["kind"] == "migrator":
+                gates = next((r["conclusion"] for r in runs if r["name"].startswith("Gates")), None)
+                profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
+                threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
+                checks += grade_migrator(ret, gates, threshold)
+            elif case["kind"] == "verifier":
+                checks += grade_verifier(ret, case["expect"])
+            else:
+                files = {}
+                for path in {k.partition(":")[0] for k in case["expect"]["fields"]}:
+                    p = trees["head"] / path
+                    files[path] = yaml.safe_load(p.read_text()) if p.exists() else None
+                checks += grade_fields(files, case["expect"])
+        finally:
+            for wt in trees.values():
+                git(src, "worktree", "remove", "--force", str(wt), check=False)
+        row["checks"] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
+        row.update(status="graded", passed=verdict(checks), skills=session_skills(src, "refs/afs-eval/head"))
+    out = pathlib.Path(a.results_dir) / f"{a.run}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
+    print(f"wrote {out}")
+    return results
+
+
+def agent_pr(eval_repo, issue, base):
+    owner = eval_repo.split("/")[0]
+    for pr in gh_api(f"repos/{eval_repo}/pulls?state=all&base={base}&per_page=50") or []:
+        if re.search(rf"(?i)\b(fixes|closes|resolves)\s+(?:{re.escape(eval_repo)})?#{issue}\b", pr.get("body") or ""):
+            return pr
+    return None
+
+
+def session_skills(src, ref):
+    names = git(src, "ls-tree", "-r", "--name-only", ref, ".migration/costs", check=False).stdout.split()
+    skills = {}
+    for name in names:
+        try:
+            rec = json.loads(git(src, "show", f"{ref}:{name}").stdout)
+        except ValueError:
+            continue
+        for s in rec.get("skills_invoked") or []:
+            skills[s["skill"]] = skills.get(s["skill"], 0) + s["count"]
+    return dict(sorted(skills.items()))
+
+
+# ---------------------------------------------------------------- report
+
+def flips(results, baseline):
+    out = []
+    for cid, row in sorted(results["cases"].items()):
+        before = (baseline or {}).get("cases", {}).get(cid)
+        if before is not None and bool(before.get("passed")) != bool(row.get("passed")):
+            out.append((cid, "pass → fail" if before.get("passed") else "fail → pass", row.get("must_pass")))
+    return out
+
+
+def report(results, baseline=None):
+    rows = results["cases"]
+    passed = sum(1 for r in rows.values() if r.get("passed"))
+    lines = [f"# Eval run `{results['run']}`", "",
+             f"{passed}/{len(rows)} cases pass (graded {results.get('graded_at')}, eval repo "
+             f"`{results.get('eval_repo')}`).", "", "| Case | Kind | Must pass | Result | Failed checks |",
+             "|---|---|---|---|---|"]
+    for cid, r in sorted(rows.items()):
+        failed = "; ".join(f"{c['check']} ({c['detail']})" for c in r.get("checks", []) if not c["ok"])
+        result = "pass" if r.get("passed") else r.get("status") if r.get("status") != "graded" else "fail"
+        lines.append(f"| `{cid}` | {r['kind']} | {'yes' if r.get('must_pass') else 'no'} | {result} | "
+                     f"{failed.replace('|', '/') or '—'} |")
+    if baseline is not None:
+        f = flips(results, baseline)
+        lines += ["", f"## Flips against `{baseline['run']}`", ""]
+        lines += [f"- `{c}`: {d}{' **(must pass)**' if m and d == 'pass → fail' else ''}" for c, d, m in f] or ["None."]
+    skills = {}
+    for r in rows.values():
+        for s, n in (r.get("skills") or {}).items():
+            skills[s] = skills.get(s, 0) + n
+    if skills:
+        lines += ["", "## Skills loaded across the run", ""]
+        lines += [f"- `{s}`: {n}" for s, n in sorted(skills.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return "\n".join(lines) + "\n"
+
+
+def must_pass_regressions(results, baseline):
+    return [c for c, d, m in flips(results, baseline) if m and d == "pass → fail"]
+
+
+def skills_by_agent(records):
+    """{agent: {skill: loads}} from cost records."""
+    out = {}
+    for rec in records:
+        agent = rec.get("agent") or "unknown"
+        bucket = out.setdefault(agent, {})
+        for s in rec.get("skills_invoked") or []:
+            bucket[s["skill"]] = bucket.get(s["skill"], 0) + s["count"]
+    return out
+
+
+# ---------------------------------------------------------------- main
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("list", "prepare", "dispatch", "grade"):
+        p = sub.add_parser(name)
+        p.add_argument("--cases", default=str(ROOT / "evals/cases"))
+        p.add_argument("--case", action="append", help="limit to these case ids")
+        if name != "list":
+            p.add_argument("--run", required=True)
+            p.add_argument("--eval-repo", required=True)
+            p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+            p.add_argument("--sources", default=os.path.expanduser("~/.cache/afs-eval/sources"))
+        if name == "prepare":
+            p.add_argument("--harness", default=str(ROOT))
+            p.add_argument("--allow-unreleased", action="store_true")
+            p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("report")
+    p.add_argument("--results", required=True)
+    p.add_argument("--baseline")
+    p.add_argument("--out")
+    p = sub.add_parser("skills")
+    p.add_argument("--repo", action="append", required=True, help="a target checkout with .migration/costs")
+    a = ap.parse_args(argv)
+
+    if a.cmd == "report":
+        results = json.loads(pathlib.Path(a.results).read_text())
+        baseline = json.loads(pathlib.Path(a.baseline).read_text()) if a.baseline else None
+        text = report(results, baseline)
+        (pathlib.Path(a.out).write_text(text) if a.out else sys.stdout.write(text))
+        regressions = must_pass_regressions(results, baseline) if baseline else []
+        if regressions:
+            print(f"afs-eval: must-pass case(s) flipped to fail: {', '.join(regressions)}", file=sys.stderr)
+        print(f"AFS-TOOL afs-eval exit={1 if regressions else 0}")
+        return 1 if regressions else 0
+    if a.cmd == "skills":
+        records = []
+        for repo in a.repo:
+            for f in sorted(pathlib.Path(repo, ".migration/costs").glob("*.json")):
+                try:
+                    records.append(json.loads(f.read_text()))
+                except ValueError:
+                    continue
+        for agent, skills in sorted(skills_by_agent(records).items()):
+            print(f"{agent}: " + (", ".join(f"{s} ×{n}" for s, n in sorted(skills.items(), key=lambda kv: -kv[1]))
+                                  or "no skill loads recorded"))
+        return 0
+    try:
+        cases = load_cases(a.cases, a.case)
+    except CaseError as exc:
+        print(f"afs-eval: {exc}", file=sys.stderr)
+        print("AFS-TOOL afs-eval exit=2")
+        return 2
+    if a.cmd == "list":
+        for c in cases:
+            print(f"{c['id']}\t{c['kind']}\t{c['agent']}\t{c['source']['repo']}@{c['source']['base'][:12]}"
+                  f"\t{'must-pass' if c.get('must_pass', True) else 'tracked'}")
+        return 0
+    {"prepare": prepare, "dispatch": dispatch, "grade": grade}[a.cmd](a, cases)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

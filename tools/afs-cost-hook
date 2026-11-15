@@ -147,9 +147,22 @@ def summarize(log):
     stamps = [e.get("timestamp") for e in events if isinstance(e.get("timestamp"), str)]
     window = {"started_at": min(stamps) if stamps else None, "ended_at": max(stamps) if stamps else None}
     tools = [{"tool": t, "exit": c, "count": n} for (t, c), n in sorted(ran.items())]
-    return ({m: dict(c) for m, c in models.items()}, source, {**extra, **window, "harness_tools": tools},
+    return ({m: dict(c) for m, c in models.items()}, source,
+            {**extra, **window, "harness_tools": tools, **skill_use(events)},
             {"event_types": dict(kinds.most_common()), "usage_fields": fields, "events": len(events),
              "data_keys": {k: sorted(v) for k, v in sorted(data_keys.items(), key=lambda kv: str(kv[0]))}})
+
+
+def skill_use(events):
+    """Which custom agent ran, and which skills it loaded (agent-topology plan, finding 9).
+
+    `subagent.selected` names the custom agent; each `skill.invoked` names one skill load. Names and counts
+    only: a skill's `content` is never copied into the record."""
+    agents = [(e.get("data") or {}).get("agentName") for e in events if e.get("type") == "subagent.selected"]
+    loads = collections.Counter((e.get("data") or {}).get("name") for e in events if e.get("type") == "skill.invoked")
+    return {"agent": next((a for a in agents if a), None),
+            "skills_invoked": [{"skill": s, "count": n} for s, n in sorted(loads.items(), key=lambda kv: str(kv[0]))
+                               if s]}
 
 
 def ticket_hint():

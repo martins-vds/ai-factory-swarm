@@ -1,6 +1,6 @@
 # ADR-0039: Workflow runs on Copilot PRs wait for a person's approval by default
 
-- Status: Accepted (martins-vds, 2026-11-08: "I'd like to keep the approval on (secure defaults)")
+- Status: Accepted (martins-vds, 2026-11-08: "I'd like to keep the approval on (secure defaults)"); amended by ADR-0041 (the eval repository runs without approval)
 - Date: 2026-11-08
 - Amends: operator checklist item 4 (`docs/operator-setup.md`, `bootstrap.py`)
 
@@ -53,6 +53,11 @@ Per repository: **Settings → Copilot → Cloud agent** ("Coding agent" on some
 workflow approval** → **Require approval for workflow runs**. On is this ADR's default; off lets workflows
 run without a person. For a single push, use **Approve and run workflows** in the PR's merge box. Record a
 repository that runs with approval off, and why, in its operator notes.
+
+## Exception: the eval repository (ADR-0041)
+`martins-vds/ai-factory-eval` runs Copilot workflows without approval, so an eval run doesn't need dozens of
+clicks. It holds no secrets, its default workflow permissions are read-only, a ruleset protects `main`, and
+CODEOWNERS covers `.github/` and `.migration/harness/`. No target repository is affected.
 
 ## Mitigations (always, and required before turning approval off)
 1. **One `AFS_STACK_TOKEN` per repository.** A fine-grained token for that repository only, with Contents
