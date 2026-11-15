@@ -20,7 +20,7 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
      live run fixed later), never a change to behavior;
   4. an `-s ours` merge of the eval repo's `main`. The tree stays the case's; only the ancestry changes, so
      `check_stack_base.py` sees the default branch below the case branch, as on a real target.
-A verifier case also gets `eval/<run>/<case>/work`: `source.work` (the Migrator's head at the moment the
+A verifier case also gets `eval/<run>/<case>-work`: `source.work` (the Migrator's head at the moment the
 Verifier judged it, in the live run) prepared the same way, with the case branch merged in (`-s ours`). The
 work PR, work → case branch, is what the Verifier verifies.
 
@@ -131,7 +131,8 @@ def load_cases(directory, only=None):
 
 
 def branch(run, case, part=None):
-    return f"eval/{run}/{case['id']}" + (f"/{part}" if part else "")
+    # `<case>-work`, never `<case>/work`: git can't hold a branch and another branch nested under it.
+    return f"eval/{run}/{case['id']}" + (f"-{part}" if part else "")
 
 
 # ---------------------------------------------------------------- issue text

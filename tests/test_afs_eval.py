@@ -64,6 +64,14 @@ class CaseTest(unittest.TestCase):
                         "clean Verifier cases keep a folded topology from passing by rejecting everything")
 
 
+class BranchTest(unittest.TestCase):
+    def test_a_work_branch_is_a_sibling_never_nested_under_the_case_branch(self):
+        c = case()
+        base, work = ev.branch("r1", c), ev.branch("r1", c, "work")
+        self.assertFalse(work.startswith(base + "/"), "git can't hold refs X and X/Y together")
+        self.assertEqual(work, "eval/r1/x-01-work")
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."
