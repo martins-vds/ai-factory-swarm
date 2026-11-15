@@ -75,6 +75,19 @@ class CostHookTest(unittest.TestCase):
             {"tool": "check_inputs.py", "exit": 1, "count": 1}, {"tool": "validate.py", "exit": 0, "count": 2},
             {"tool": "afs-cost-hook", "exit": 0, "count": 1}])
 
+    def test_record_names_the_agent_and_the_skills_it_loaded_without_their_content(self):
+        t = log(self.dir / "t/events.jsonl", [
+            {"type": "subagent.selected", "data": {"agentName": "afs-migrator", "tools": ["*"]}},
+            {"type": "skill.invoked", "data": {"name": "afs-migration-contract", "content": "SECRET BODY"}},
+            {"type": "skill.invoked", "data": {"name": "tdd", "content": "x"}},
+            {"type": "skill.invoked", "data": {"name": "afs-migration-contract", "content": "y"}}])
+        run(self.dir, {"sessionId": "s1", "transcriptPath": str(t)})
+        rec = self.record("s1")
+        self.assertEqual(rec["agent"], "afs-migrator")
+        self.assertEqual(rec["skills_invoked"], [{"skill": "afs-migration-contract", "count": 2},
+                                                 {"skill": "tdd", "count": 1}])
+        self.assertNotIn("SECRET BODY", json.dumps(rec))
+
     def test_partial_record_names_the_model_and_coding_agent_does_not_wait(self):
         t = log(self.dir / "t/events.jsonl", [
             {"type": "session.start", "data": {"selectedModel": "claude-x"}},

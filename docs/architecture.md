@@ -103,6 +103,7 @@ humans, and approved for cutover.
 | 38 | When the default branch moves, open stacked PRs are refreshed bottom-up by a workflow with a push token that starts CI; agent sessions in progress and conflicts are skipped and reported | [0038](adr/0038-stacked-prs-are-refreshed-when-the-default-branch-moves.md) |
 | 39 | Workflow runs on Copilot PRs wait for a person's approval by default; the dispatcher never approves them; turning approval off is a per-repo choice that needs the listed mitigations | [0039](adr/0039-copilot-workflow-runs-wait-for-approval-by-default.md) |
 | 40 | Migrator work reaches the default branch only with a passing Verifier return committed after the migrator return's latest change; rework needs a fresh verification | [0040](adr/0040-migrator-work-merges-only-after-its-verifier-passes.md) |
+| 41 | Changes to agents, skills or their rules are measured against an end-to-end eval of real tickets (`afs-eval`), each affected case run at least twice; no must-pass case may flip; the eval repository runs Copilot workflows without approval | [0041](adr/0041-agent-changes-are-measured-against-an-end-to-end-eval.md) |
 
 ---
 
