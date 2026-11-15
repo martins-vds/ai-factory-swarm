@@ -148,6 +148,11 @@ class GradeTest(unittest.TestCase):
         self.assertFalse(ev.verdict(ev.grade_migrator(ok, "failure", 0.8)))
         self.assertFalse(ev.verdict(ev.grade_migrator({"gates": {"mutation_changed": 0.7}}, "success", 0.8)))
         self.assertFalse(ev.verdict(ev.grade_migrator({"gates": {}}, "success", 0.8)))
+        na = {"gates": {"mutation_changed": "n/a: no mutable code changed"}}
+        self.assertTrue(ev.verdict(ev.grade_migrator(na, "success", 0.8)))
+        self.assertFalse(ev.verdict(ev.grade_migrator(na, "failure", 0.8)), "only with a green Gates")
+        self.assertFalse(ev.verdict(ev.grade_migrator({"gates": {"mutation_changed": "n/a: runner failed"}},
+                                                      "success", 0.8)))
 
     def test_bootstrap_fields_are_compared_by_file_and_key(self):
         files = {"p.yaml": {"source": {"path": "legacy"}}, "c.yaml": {"characterization": {"tier": "B"}}}
