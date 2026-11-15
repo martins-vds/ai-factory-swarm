@@ -45,3 +45,6 @@ normalize:
 notes: 'Normalization: the stale ledger references the live run fixed later (pilot #490). The plan ticket files
   are left missing: copying later ones adds plan errors at this commit. Graded on verdict and findings, which those
   pre-existing errors do not affect.'
+disabled: 'the case branch carries plan-validation errors (missing or later plan ticket files) that afs-setup-check
+  rightly refuses to start on, so the Verifier stops at setup (baseline r1, eval #10, #13, #17). Re-enable once
+  the plan files can be normalized without changing the plan''s meaning.'
