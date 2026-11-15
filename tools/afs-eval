@@ -10,6 +10,7 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
                    [--case ID ...] [--harness DIR] [--sources DIR] [--dry-run]
   afs-eval dispatch --cases evals/cases --run R --eval-repo O/R [--case ID ...]
   afs-eval grade   --cases evals/cases --run R --eval-repo O/R [--case ID ...]   # writes evals/results/R.json
+  afs-eval refresh --cases evals/cases --run R --eval-repo O/R  # after the eval repo's main moved mid-run
   afs-eval report  --results evals/results/R.json [--baseline evals/results/B.json] [--out R.md]
   afs-eval skills  --repo DIR [--repo DIR ...]                  # skill loads per agent, from cost records
 
@@ -344,6 +345,52 @@ def now():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
+# ---------------------------------------------------------------- refresh
+
+def refresh(a, cases):
+    """Bring a run's branches up to date after the eval repo's `main` moved (the ADR-0038 refresh, for evals).
+
+    `check_stack_base.py` needs `main` below each case branch, and each base below its PR's head; when `main`
+    moves mid-run, every check is skipped. Order: case ← main (`-s ours`), work ← case (`-s ours`), then each
+    finished agent PR's head ← its base (a normal merge: the base change carries no tree change). Running PRs
+    are left alone; refresh them once they finish."""
+    state = load_state(a)
+    remote = f"https://github.com/{a.eval_repo}"
+    ident = ["-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com"]
+    for case in cases:
+        st = state.get(case["id"])
+        if not st:
+            continue
+        src = source_clone(pathlib.Path(a.sources), case["source"]["repo"])
+        git(src, "fetch", "-q", remote, "+refs/heads/main:refs/afs-eval/main")
+        chain = [(branch(a.run, case), "refs/afs-eval/main", True)]
+        if case["kind"] == "verifier":
+            chain.append((branch(a.run, case, "work"), branch(a.run, case), True))
+        pr = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if pr and not pr["title"].startswith("[WIP]"):
+            chain.append((pr["head"]["ref"], st["base_branch"], False))
+        wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-refresh-")) / "tree"
+        try:
+            for name, onto, ours in chain:
+                git(src, "fetch", "-q", remote, f"+refs/heads/{name}:refs/afs-eval/x")
+                if onto != "refs/afs-eval/main":
+                    git(src, "fetch", "-q", remote, f"+refs/heads/{onto}:refs/afs-eval/onto")
+                    onto = "refs/afs-eval/onto"
+                if git(src, "merge-base", "--is-ancestor", onto, "refs/afs-eval/x", check=False).returncode == 0:
+                    print(f"{case['id']}: {name} already contains its base")
+                    continue
+                git(src, "worktree", "add", "-q", "--detach", str(wt), "refs/afs-eval/x")
+                try:
+                    git(wt, *ident, "merge", "-q", "--no-edit", *(["-s", "ours"] if ours else []),
+                        "--allow-unrelated-histories", onto)
+                    git(wt, "-c", "push.negotiate=true", "push", "-q", remote, f"HEAD:refs/heads/{name}")
+                    print(f"{case['id']}: refreshed {name}")
+                finally:
+                    git(src, "worktree", "remove", "--force", str(wt), check=False)
+        except RuntimeError as exc:
+            print(f"{case['id']}: refresh failed: {str(exc).splitlines()[0][:200]}", file=sys.stderr)
+
+
 # ---------------------------------------------------------------- grading (pure parts are unit-tested)
 
 def grade_verifier(ret, expect):
@@ -430,7 +477,9 @@ def grade(a, cases):
             continue
         row["pr"] = pr["number"]
         if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
-            row.update(status="running", passed=False)
+            ended = session_end(a.eval_repo, pr["head"]["ref"])
+            # A session the platform cancelled (the one-hour limit) never retitles its PR: it ended unfinished.
+            row.update(status=f"session-{ended}" if ended else "running", passed=False)
             continue
         src = source_clone(sources, case["source"]["repo"])
         git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
@@ -473,6 +522,15 @@ def grade(a, cases):
     out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     print(f"wrote {out}")
     return results
+
+
+def session_end(eval_repo, head_ref):
+    """The conclusion of the Copilot session's run on this branch, once it has ended (cancelled = time limit)."""
+    runs = gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=5") or {}
+    for run in runs.get("workflow_runs") or []:
+        if run.get("status") == "completed" and run.get("conclusion") != "success":
+            return {"cancelled": "timed-out"}.get(run["conclusion"], run["conclusion"])
+    return None
 
 
 def agent_pr(eval_repo, issue, base):
@@ -553,7 +611,7 @@ def skills_by_agent(records):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("list", "prepare", "dispatch", "grade"):
+    for name in ("list", "prepare", "dispatch", "grade", "refresh"):
         p = sub.add_parser(name)
         p.add_argument("--cases", default=str(ROOT / "evals/cases"))
         p.add_argument("--case", action="append", help="limit to these case ids")
@@ -608,7 +666,7 @@ def main(argv=None):
                 "must-pass" if c.get("must_pass", True) else "tracked")
             print(f"{c['id']}\t{c['kind']}\t{c['agent']}\t{c['source']['repo']}@{c['source']['base'][:12]}\t{state}")
         return 0
-    {"prepare": prepare, "dispatch": dispatch, "grade": grade}[a.cmd](a, cases)
+    {"prepare": prepare, "dispatch": dispatch, "grade": grade, "refresh": refresh}[a.cmd](a, cases)
     return 0
 
 
