@@ -63,6 +63,13 @@ work → each finished agent PR, as ADR-0038's stack refresh does. Run it again 
 The platform cancels a Copilot session after about an hour. Its PR keeps `[WIP]` and has no return file.
 `grade` reads the session's run and reports `session-timed-out`, which counts as a fail.
 
+## Changed code is measured from the case base
+
+`afs-mutation` diffs against `$AFS_BASE`, falling back to `origin/main`. The eval repo's `main` is unrelated
+to every case, so its Copilot setup steps set `AFS_BASE` to the case's prepared base commit (the
+`Eval case <id>: base at …` commit), and only the agent's changes count as changed code. Baselines r1 and r2
+ran without this and are confounded.
+
 ## Data cases
 
 Data tickets (`specialty: data`) start from the newest **AFS data snapshot** artifact. Run that workflow once
