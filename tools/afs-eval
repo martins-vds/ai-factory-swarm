@@ -424,7 +424,7 @@ def grade(a, cases):
             row.update(status="no-pr", passed=False)
             continue
         row["pr"] = pr["number"]
-        if pr["draft"] or pr["title"].startswith("[WIP]"):
+        if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
             row.update(status="running", passed=False)
             continue
         src = source_clone(sources, case["source"]["repo"])
