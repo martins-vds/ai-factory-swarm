@@ -487,8 +487,14 @@ def grade(a, cases):
         checks = []
         ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
         shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
-        ret = yaml.safe_load(shown.stdout) if shown.returncode == 0 else None
-        checks.append(("return file committed", ret is not None, ret_path))
+        ret, why = None, ret_path
+        if shown.returncode == 0:
+            try:
+                ret = yaml.safe_load(shown.stdout)
+            except yaml.YAMLError as exc:         # an agent can commit a return that isn't YAML; that's a fail
+                why = f"{ret_path} is not valid YAML: {str(exc).splitlines()[0]}"
+        checks.append(("return file committed", isinstance(ret, dict), why))
+        ret = ret if isinstance(ret, dict) else None
         trees = {}
         for ref in ("base", "head"):
             wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-grade-")) / ref
