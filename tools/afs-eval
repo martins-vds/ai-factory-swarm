@@ -478,17 +478,25 @@ def grade(a, cases):
         row["pr"] = pr["number"]
         if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
             ended = session_end(a.eval_repo, pr["head"]["ref"])
-            # A session the platform cancelled (the one-hour limit) never retitles its PR: it ended unfinished.
-            row.update(status=f"session-{ended}" if ended else "running", passed=False)
-            continue
+            # A cancelled session (the one-hour limit) never retitles its PR: it ended unfinished. A session that
+            # completed without retitling is graded on what it committed.
+            if ended != "completed":
+                row.update(status=f"session-{ended}" if ended else "running", passed=False)
+                continue
         src = source_clone(sources, case["source"]["repo"])
         git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
             f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
         checks = []
         ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
         shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
-        ret = yaml.safe_load(shown.stdout) if shown.returncode == 0 else None
-        checks.append(("return file committed", ret is not None, ret_path))
+        ret, why = None, ret_path
+        if shown.returncode == 0:
+            try:
+                ret = yaml.safe_load(shown.stdout)
+            except yaml.YAMLError as exc:         # an agent can commit a return that isn't YAML; that's a fail
+                why = f"{ret_path} is not valid YAML: {str(exc).splitlines()[0]}"
+        checks.append(("return file committed", isinstance(ret, dict), why))
+        ret = ret if isinstance(ret, dict) else None
         trees = {}
         for ref in ("base", "head"):
             wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-grade-")) / ref
@@ -498,9 +506,13 @@ def grade(a, cases):
             added = new_errors(validate_errors(trees["base"]), validate_errors(trees["head"]))
             checks.append(("no new validation errors", not added, "; ".join(added)[:400] or "none"))
             runs = gh_api(f"repos/{a.eval_repo}/commits/{pr['head']['sha']}/check-runs?per_page=100")["check_runs"]
+            runs = sorted(runs, key=lambda r: r.get("id", 0))      # later reruns override earlier ones
             row["ci"] = {r["name"]: r["conclusion"] for r in runs}
             if case["kind"] == "migrator":
-                gates = next((r["conclusion"] for r in runs if r["name"].startswith("Gates")), None)
+                latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
+                gates = latest[0]["conclusion"] if latest else None
+                if latest and latest[0]["status"] != "completed":
+                    row["ci_pending"] = True
                 profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
                 threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
                 checks += grade_migrator(ret, gates, threshold)
@@ -516,7 +528,8 @@ def grade(a, cases):
             for wt in trees.values():
                 git(src, "worktree", "remove", "--force", str(wt), check=False)
         row["checks"] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
-        row.update(status="graded", passed=verdict(checks), skills=session_skills(src, "refs/afs-eval/head"))
+        row.update(status="ci-pending" if row.pop("ci_pending", False) else "graded", passed=verdict(checks),
+                   skills=session_skills(src, "refs/afs-eval/head"))
     out = pathlib.Path(a.results_dir) / f"{a.run}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
@@ -528,7 +541,9 @@ def session_end(eval_repo, head_ref):
     """The conclusion of the Copilot session's run on this branch, once it has ended (cancelled = time limit)."""
     runs = gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=5") or {}
     for run in runs.get("workflow_runs") or []:
-        if run.get("status") == "completed" and run.get("conclusion") != "success":
+        if run.get("status") == "completed":
+            if run.get("conclusion") == "success":
+                return "completed"
             return {"cancelled": "timed-out"}.get(run["conclusion"], run["conclusion"])
     return None
 
