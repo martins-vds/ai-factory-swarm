@@ -527,8 +527,9 @@ def grade(a, cases):
             if case["kind"] == "migrator":
                 latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
                 gates = latest[0]["conclusion"] if latest else None
-                if latest and latest[0]["status"] != "completed":
-                    row["ci_pending"] = True
+                if (latest and latest[0]["status"] != "completed") or (
+                        not latest and any(r["status"] != "completed" for r in runs)):
+                    row["ci_pending"] = True          # Gates still running, or not created yet behind other jobs
                 profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
                 threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
                 checks += grade_migrator(ret, gates, threshold)
