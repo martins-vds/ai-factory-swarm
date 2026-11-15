@@ -2,7 +2,7 @@
   "lockVersion": 1,
   "pinnedOn": "2026-10-30",
   "stack": "java-ee-to-python-django",
-  "notes": "Stack pack: stack-specific skills for Java EE (JSF/EJB/JPA, Oracle) → Python/Django (PostgreSQL), from code-migration-hackathon PR #6. Installed by bootstrap in addition to the built-in menu, and referenced from profile.skills.*.",
+  "notes": "Stack pack: stack-specific skills for Java EE (JSF/EJB/JPA, Oracle) \u2192 Python/Django (PostgreSQL), from code-migration-hackathon PR #6. Installed by bootstrap in addition to the built-in menu, and referenced from profile.skills.*.",
   "graph": {
     "notes": "ADR-0020: what the graph needs beyond Understand Anything for this stack. Copy into profile.graph (enrich, require); bootstrap fails if the profile omits them.",
     "enrich": {
@@ -246,5 +246,8 @@
       ],
       "profile": "specialists.data"
     }
-  ]
+  ],
+  "shared_test_setup": {
+    "tests/conftest.py": "\"\"\"Project-wide test isolation (AFS harness, target.shared_test_files).\n\nEvery database test restores the rows that migrations seeded, so a test that flushes the database (live-server\nand browser tests do) can't leave the next test without its seed data.\n\"\"\"\nimport pytest\n\n\n@pytest.fixture(autouse=True)\ndef django_db_serialized_rollback():\n    return True\n"
+  }
 }

@@ -603,3 +603,31 @@ class BootstrapTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedTestSetupTest(unittest.TestCase):
+    """Bootstrap creates each listed shared test file that doesn't exist, from the stack pack; never overwrites."""
+
+    PACK = {"stack": "x", "shared_test_setup": {"tests/conftest.py": "import pytest\n# isolation\n"}}
+
+    def test_a_missing_listed_file_is_created_and_an_existing_one_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as d:
+            profile = {"target": {"shared_test_files": ["tests/conftest.py"]}}
+            notes = bootstrap.scaffold_shared_test_setup(d, profile, [self.PACK])
+            created = pathlib.Path(d, "tests/conftest.py")
+            self.assertEqual(created.read_text(), "import pytest\n# isolation\n")
+            self.assertEqual(len(notes), 1)
+            created.write_text("# the project's own\n")
+            self.assertEqual(bootstrap.scaffold_shared_test_setup(d, profile, [self.PACK]), [])
+            self.assertEqual(created.read_text(), "# the project's own\n")
+
+    def test_nothing_is_created_unless_the_profile_lists_it_and_the_pack_has_a_template(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(bootstrap.scaffold_shared_test_setup(d, {"target": {}}, [self.PACK]), [])
+            self.assertEqual(bootstrap.scaffold_shared_test_setup(
+                d, {"target": {"shared_test_files": ["tests/other.py"]}}, [self.PACK]), [])
+            self.assertFalse(pathlib.Path(d, "tests").exists())
+
+    def test_the_django_pack_ships_the_isolation_fixture(self):
+        pack = json.loads((ROOT / "stacks/java-to-django.json").read_text())
+        self.assertIn("django_db_serialized_rollback", pack["shared_test_setup"]["tests/conftest.py"])
