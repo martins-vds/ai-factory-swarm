@@ -51,6 +51,25 @@ Copilot reads custom agents and `copilot-setup-steps.yml` from the default branc
 Each case branch merges `main` with `-s ours`, which leaves its own tree intact. So `main`'s content never
 leaks into a case.
 
+## When `main` moves during a run
+
+Don't change `main` while a run is in progress. If it does move, every case branch loses `main` as an
+ancestor, `check_stack_base.py` fails, and CI skips every other job. Baseline r1 hit this when the snapshot
+workflow merged mid-run. To recover, run `afs-eval refresh --run R --eval-repo E`. It re-chains main → case →
+work → each finished agent PR, as ADR-0038's stack refresh does. Run it again for PRs that finish later.
+
+## Sessions that hit the time limit
+
+The platform cancels a Copilot session after about an hour. Its PR keeps `[WIP]` and has no return file.
+`grade` reads the session's run and reports `session-timed-out`, which counts as a fail.
+
+## Changed code is measured from the case base
+
+`afs-mutation` diffs against `$AFS_BASE`, falling back to `origin/main`. The eval repo's `main` is unrelated
+to every case, so its Copilot setup steps set `AFS_BASE` to the case's prepared base commit (the
+`Eval case <id>: base at …` commit), and only the agent's changes count as changed code. Baselines r1 and r2
+ran without this and are confounded.
+
 ## Data cases
 
 Data tickets (`specialty: data`) start from the newest **AFS data snapshot** artifact. Run that workflow once
