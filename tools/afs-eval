@@ -478,9 +478,11 @@ def grade(a, cases):
         row["pr"] = pr["number"]
         if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
             ended = session_end(a.eval_repo, pr["head"]["ref"])
-            # A session the platform cancelled (the one-hour limit) never retitles its PR: it ended unfinished.
-            row.update(status=f"session-{ended}" if ended else "running", passed=False)
-            continue
+            # A cancelled session (the one-hour limit) never retitles its PR: it ended unfinished. A session that
+            # completed without retitling is graded on what it committed.
+            if ended != "completed":
+                row.update(status=f"session-{ended}" if ended else "running", passed=False)
+                continue
         src = source_clone(sources, case["source"]["repo"])
         git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
             f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
@@ -539,7 +541,9 @@ def session_end(eval_repo, head_ref):
     """The conclusion of the Copilot session's run on this branch, once it has ended (cancelled = time limit)."""
     runs = gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=5") or {}
     for run in runs.get("workflow_runs") or []:
-        if run.get("status") == "completed" and run.get("conclusion") != "success":
+        if run.get("status") == "completed":
+            if run.get("conclusion") == "success":
+                return "completed"
             return {"cancelled": "timed-out"}.get(run["conclusion"], run["conclusion"])
     return None
 
