@@ -57,3 +57,9 @@ expect:
 notes: 'A real defect: the work''s live-server tests flushed the seed rows, so a loan-catalog browser test timed
   out in the full suite. The live Verifier blocked on it before the cause was known (fixed project-wide by harness
   #155).'
+normalize:
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py

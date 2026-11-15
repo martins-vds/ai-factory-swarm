@@ -116,6 +116,15 @@
               }
             }
           }
+        },
+        "shared_test_files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^/].*[^/]$"
+          },
+          "uniqueItems": true,
+          "description": "Project-wide test setup any Migrator ticket may change without a plan entry, to keep tests isolated (Django + pytest-django: tests/conftest.py with an autouse django_db_serialized_rollback fixture). Files only, never folders."
         }
       }
     },

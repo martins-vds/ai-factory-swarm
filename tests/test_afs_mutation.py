@@ -286,3 +286,26 @@ class ImportTimeSelectionTest(unittest.TestCase):
         self.assertNotIn("::test_x", runners["src/library_info/views.py"], "the folder already includes it")
         self.assertNotIn(" tests/library_info ", runners["src/library_info/services.py"] + " ")
         self.assertIn("'tests/library_info/test_about.py::test_x'", runners["src/library_info/services.py"])
+
+
+class ShardWorkspaceTest(unittest.TestCase):
+    """A shard's workspace keeps the migration data tests read, not the migration machinery (eval base-r1, DM-05D)."""
+
+    def test_the_copy_keeps_characterization_data_and_leaves_machinery_and_caches_behind(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = pathlib.Path(d, "src")
+            for rel in (".migration/characterization/booking/observations.json", ".migration/profile.yaml",
+                        ".migration/data/snapshot.json", ".migration/harness/tools/validate.py",
+                        ".migration/runs/T/x.log", ".migration/evidence/runs/T.md", ".migration/costs/s.json",
+                        ".git/HEAD", "src/app/__pycache__/m.pyc", "src/app/m.py", ".source/README"):
+                p = src / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("x")
+            dst = pathlib.Path(d, "w0")
+            shutil.copytree(src, dst, ignore=m.COPY_IGNORE, symlinks=True)
+            for kept in (".migration/characterization/booking/observations.json", ".migration/profile.yaml",
+                         ".migration/data/snapshot.json", "src/app/m.py"):
+                self.assertTrue((dst / kept).exists(), kept)
+            for gone in (".migration/harness", ".migration/runs", ".migration/evidence", ".migration/costs",
+                         ".git", "src/app/__pycache__", ".source"):
+                self.assertFalse((dst / gone).exists(), gone)

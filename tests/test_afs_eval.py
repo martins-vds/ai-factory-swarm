@@ -79,6 +79,20 @@ class BranchTest(unittest.TestCase):
         self.assertEqual(work, "eval/r1/x-01-work")
 
 
+class NormalizeTest(unittest.TestCase):
+    def test_yaml_set_adds_a_nested_key_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            prof = pathlib.Path(d, ".migration/profile.yaml")
+            prof.parent.mkdir()
+            prof.write_text(yaml.safe_dump({"target": {"repo": "o/r"}}))
+            op = {"yaml_set": {"file": ".migration/profile.yaml", "key": "target.shared_test_files",
+                               "value": ["tests/conftest.py"]}}
+            self.assertEqual(len(ev.apply_normalize(d, [op], None)), 1)
+            self.assertEqual(yaml.safe_load(prof.read_text())["target"],
+                             {"repo": "o/r", "shared_test_files": ["tests/conftest.py"]})
+            self.assertEqual(ev.apply_normalize(d, [op], None), [], "already set: no change")
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."

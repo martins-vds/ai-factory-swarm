@@ -62,7 +62,8 @@ install.
    manifest, RTK's hook, both instruction blocks (harness first), `copilot-setup-steps.yml` and the
    `afs-harness-check.yml` CI. Never hand-edit those files; re-run bootstrap.
 6. **Scaffold the target** per the architecture ADRs: layout, CI running the gates, lint/format, test
-   runner, coverage, CRAP and mutation tooling, containers.
+   runner with project-wide test isolation (listed in `target.shared_test_files`), coverage, CRAP and
+   mutation tooling, containers.
    **Test services** (written in step 4 when there is a data stack): write the target's `compose.yaml` with `docker-compose-orchestration` (images with
    `docker-expert`, Dockerfiles with `multi-stage-dockerfile`; never by hand). It defines every real
    service the tests need — the database from `target.stacks.data`, brokers, stand-ins for external

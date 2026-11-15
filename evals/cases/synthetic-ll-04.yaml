@@ -23,3 +23,9 @@ issue:
 expect:
   gates: success
   mutation_changed: profile threshold
+normalize:
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py

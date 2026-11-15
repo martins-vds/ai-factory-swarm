@@ -44,5 +44,10 @@ normalize:
     - .migration/plan/data-migration.tickets.yaml
     - .migration/plan/handling-registration.tickets.yaml
     - .migration/plan/track-cargo.tickets.yaml
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py
 notes: 'A clean case: the live Verifier passed it first time. The live Verifier checked #394 and #406 together;
   here the work PR is #406''s change on top of #394.'

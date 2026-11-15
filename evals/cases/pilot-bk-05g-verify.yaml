@@ -46,6 +46,11 @@ normalize:
     - .migration/plan/data-migration.tickets.yaml
     - .migration/plan/handling-registration.tickets.yaml
     - .migration/plan/track-cargo.tickets.yaml
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py
 notes: 'The live Verifier checked #395 and #402 together; here the work PR is #402''s change on top of #395. Normalization:
   the two stale ledger references and the plan ticket lists the live run added later (pilot #490, b6852cd), each
   only where this commit lacks them.'

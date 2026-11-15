@@ -29,4 +29,9 @@ normalize:
     old: src.loans.migrations.seed_loans
     new: src/loans/migrations/0001_initial.py:seed_loans
     optional: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py
 notes: 'Normalization: stale ledger references the live run fixed later (synthetic #98), as they apply to this commit.'
