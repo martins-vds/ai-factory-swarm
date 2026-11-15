@@ -55,6 +55,13 @@ class CaseTest(unittest.TestCase):
             with self.assertRaisesRegex(ev.CaseError, "no such case"):
                 ev.load_cases(d, ["nope"])
 
+    def test_a_disabled_case_is_listed_but_never_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            pathlib.Path(d, "a.yaml").write_text(yaml.safe_dump(case()))
+            pathlib.Path(d, "b.yaml").write_text(yaml.safe_dump(case(id="x-02", disabled="base invalid")))
+            self.assertEqual([c["id"] for c in ev.load_cases(d)], ["x-01"])
+            self.assertEqual(len(ev.load_cases(d, include_disabled=True)), 2)
+
     def test_the_shipped_cases_are_valid(self):
         cases = ev.load_cases(ROOT / "evals/cases")
         self.assertGreaterEqual(len(cases), 10, "the guidance's minimum is ten golden cases")
@@ -62,6 +69,14 @@ class CaseTest(unittest.TestCase):
         self.assertTrue({"migrator", "verifier"} <= kinds)
         self.assertTrue(any(c["kind"] == "verifier" and c["expect"]["verdict"] == "pass" for c in cases),
                         "clean Verifier cases keep a folded topology from passing by rejecting everything")
+
+
+class BranchTest(unittest.TestCase):
+    def test_a_work_branch_is_a_sibling_never_nested_under_the_case_branch(self):
+        c = case()
+        base, work = ev.branch("r1", c), ev.branch("r1", c, "work")
+        self.assertFalse(work.startswith(base + "/"), "git can't hold refs X and X/Y together")
+        self.assertEqual(work, "eval/r1/x-01-work")
 
 
 class IssueTest(unittest.TestCase):
@@ -100,6 +115,15 @@ class GradeTest(unittest.TestCase):
             {"severity": "minor", "what": "nit"}]}, expect)))
         self.assertFalse(ev.verdict(ev.grade_verifier({"verdict": "pass", "findings": [
             {"severity": "major", "what": "invented"}]}, expect)))
+
+    def test_a_case_may_accept_several_verdicts(self):
+        expect = {"verdict": ["blocked", "changes-required"],
+                  "findings": [{"severity_min": "major", "any_of": ["timed out"]}]}
+        for v in ("blocked", "changes-required"):
+            ret = {"verdict": v, "findings": [{"severity": "blocker", "what": "Full suite timed out"}]}
+            self.assertTrue(ev.verdict(ev.grade_verifier(ret, expect)))
+        self.assertFalse(ev.verdict(ev.grade_verifier({"verdict": "pass", "findings": [
+            {"severity": "major", "what": "timed out"}]}, expect)))
 
     def test_a_missing_return_fails_every_verifier_check(self):
         self.assertFalse(ev.verdict(ev.grade_verifier(None, {"verdict": "pass"})))

@@ -20,7 +20,7 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
      live run fixed later), never a change to behavior;
   4. an `-s ours` merge of the eval repo's `main`. The tree stays the case's; only the ancestry changes, so
      `check_stack_base.py` sees the default branch below the case branch, as on a real target.
-A verifier case also gets `eval/<run>/<case>/work`: `source.work` (the Migrator's head at the moment the
+A verifier case also gets `eval/<run>/<case>-work`: `source.work` (the Migrator's head at the moment the
 Verifier judged it, in the live run) prepared the same way, with the case branch merged in (`-s ours`). The
 work PR, work → case branch, is what the Verifier verifies.
 
@@ -101,8 +101,9 @@ def case_problems(doc):
         out.append("issue needs title and body")
     exp = doc["expect"]
     if doc["kind"] == "verifier":
-        if exp.get("verdict") not in ("pass", "changes-required", "blocked"):
-            out.append("expect.verdict: pass, changes-required or blocked")
+        verdicts = exp.get("verdict") if isinstance(exp.get("verdict"), list) else [exp.get("verdict")]
+        if not verdicts or any(v not in ("pass", "changes-required", "blocked") for v in verdicts):
+            out.append("expect.verdict: pass, changes-required or blocked (or a list of them)")
         for f in exp.get("findings") or []:
             if f.get("severity_min") not in SEVERITY:
                 out.append("expect.findings[].severity_min: minor, major or blocker")
@@ -116,7 +117,8 @@ def case_problems(doc):
     return out
 
 
-def load_cases(directory, only=None):
+def load_cases(directory, only=None, include_disabled=False):
+    """The cases; a case with `disabled: <reason>` is listed but never prepared, dispatched or graded."""
     cases = [load_case(p) for p in sorted(pathlib.Path(directory).glob("*.yaml"))]
     ids = [c["id"] for c in cases]
     dupes = sorted({i for i in ids if ids.count(i) > 1})
@@ -127,11 +129,12 @@ def load_cases(directory, only=None):
         if missing:
             raise CaseError(f"no such case: {', '.join(missing)}")
         cases = [c for c in cases if c["id"] in only]
-    return cases
+    return cases if include_disabled else [c for c in cases if not c.get("disabled")]
 
 
 def branch(run, case, part=None):
-    return f"eval/{run}/{case['id']}" + (f"/{part}" if part else "")
+    # `<case>-work`, never `<case>/work`: git can't hold a branch and another branch nested under it.
+    return f"eval/{run}/{case['id']}" + (f"-{part}" if part else "")
 
 
 # ---------------------------------------------------------------- issue text
@@ -310,7 +313,8 @@ def dispatch(a, cases):
             base_branch = work
         body = rewrite_body(case["issue"]["body"], case["source"]["repo"], work_pr) + eval_note(a.run, case)
         issue = gh_api(f"repos/{a.eval_repo}/issues", "POST",
-                       {"title": f"[eval {a.run}] {case['issue']['title']}", "body": body})["number"]
+                       {"title": f"[eval {a.run}] {rewrite_body(case['issue']['title'], case['source']['repo'], work_pr)}",
+                        "body": body})["number"]
         gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
             "assignees": [COPILOT],
             "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
@@ -345,7 +349,8 @@ def now():
 def grade_verifier(ret, expect):
     checks = []
     verdict = (ret or {}).get("verdict")
-    checks.append(("verdict", verdict == expect["verdict"], f"{verdict} (expected {expect['verdict']})"))
+    allowed = expect["verdict"] if isinstance(expect["verdict"], list) else [expect["verdict"]]
+    checks.append(("verdict", verdict in allowed, f"{verdict} (expected {' or '.join(allowed)})"))
     findings = (ret or {}).get("findings") or []
     for want in expect.get("findings") or []:
         floor = SEVERITY[want["severity_min"]]
@@ -357,7 +362,7 @@ def grade_verifier(ret, expect):
         checks.append((f"finds: {label}", hit is not None,
                        f"{hit.get('severity')}: {str(hit.get('what'))[:120]}" if hit else
                        f"no finding ≥ {want['severity_min']} matches"))
-    if expect["verdict"] == "pass":
+    if allowed == ["pass"]:
         serious = [f for f in findings if SEVERITY.get(str(f.get("severity")), 0) >= SEVERITY["major"]]
         checks.append(("no blocker or major finding", not serious, f"{len(serious)} serious finding(s)"))
     return checks
@@ -424,7 +429,7 @@ def grade(a, cases):
             row.update(status="no-pr", passed=False)
             continue
         row["pr"] = pr["number"]
-        if pr["draft"] or pr["title"].startswith("[WIP]"):
+        if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
             row.update(status="running", passed=False)
             continue
         src = source_clone(sources, case["source"]["repo"])
@@ -592,15 +597,16 @@ def main(argv=None):
                                   or "no skill loads recorded"))
         return 0
     try:
-        cases = load_cases(a.cases, a.case)
+        cases = load_cases(a.cases, a.case, include_disabled=a.cmd == "list")
     except CaseError as exc:
         print(f"afs-eval: {exc}", file=sys.stderr)
         print("AFS-TOOL afs-eval exit=2")
         return 2
     if a.cmd == "list":
         for c in cases:
-            print(f"{c['id']}\t{c['kind']}\t{c['agent']}\t{c['source']['repo']}@{c['source']['base'][:12]}"
-                  f"\t{'must-pass' if c.get('must_pass', True) else 'tracked'}")
+            state = f"disabled: {c['disabled']}" if c.get("disabled") else (
+                "must-pass" if c.get("must_pass", True) else "tracked")
+            print(f"{c['id']}\t{c['kind']}\t{c['agent']}\t{c['source']['repo']}@{c['source']['base'][:12]}\t{state}")
         return 0
     {"prepare": prepare, "dispatch": dispatch, "grade": grade}[a.cmd](a, cases)
     return 0
