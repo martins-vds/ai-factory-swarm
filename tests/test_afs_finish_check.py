@@ -95,6 +95,18 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("`src/settings.py`", out["reason"])
         self.assertIn("Don't widen your own scope", out["reason"])
 
+    def test_shared_test_files_from_the_profile_are_in_every_tickets_scope(self):
+        (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({
+            "self_heal": {"enabled": True, "max_blocks": 2},
+            "target": {"shared_test_files": ["tests/conftest.py"]}}))
+        self.write("src/wizard.py")
+        self.write("tests/conftest.py", "import pytest\n")
+        self.write("tests/other/conftest.py", "import pytest\n")
+        out, _ = self.run_hook()
+        reason = (out or {}).get("reason", "")
+        self.assertNotIn("`tests/conftest.py`", reason)
+        self.assertIn("`tests/other/conftest.py`", reason, "only the listed files, not any conftest")
+
     def test_operator_scope_line_in_the_issue_allows_a_file(self):
         self.write("src/settings.py")
         prompt = "Role: `afs-specialist-migrator`, ticket `BK-05D`\nAFS-SCOPE: `src/settings.py`\n"

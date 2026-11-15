@@ -110,6 +110,44 @@ topology is committed.
 **Done when:** the baseline is committed, with every case run twice, and the report shows the per-case
 variance between the two runs.
 
+## Phase 1b: fix the gaps the eval found, then retake the baseline
+
+*Added 2026-11-15 by the operator's decision after the first baseline (`evals/results/2026-11-15-base-r{1,2}`).*
+
+The first baseline passed 6 of 16 cases, then 4 of 16, and two must-pass cases flipped between the runs.
+Most failures weren't agent quality. The agents stopped correctly at harness gaps. A topology change measured
+on that baseline would show nothing, so these fixes come before phase 2. They are listed in the order the
+eval found them.
+
+1. **The isolation fixture had no owner.** In LL-01 to LL-04 and the trial, a live-server test flushed the
+   seed rows. The migrator rule says to fix that with a project-wide fixture in `tests/conftest.py`, but no
+   ticket lists that file, so agents stopped and asked. Fix:
+   - `target.shared_test_files` in the profile lists that setup, and any ticket may change those files
+     (`afs-finish-check`);
+   - the Bootstrapper scaffolds the fixture with the test runner;
+   - the targets' profiles gain the key in their next rollout.
+2. **`afs-mutation` crashed when tests read migration data (DM-05D).** Shard workspaces left out all of
+   `.migration/`, so tests reading characterization data failed before any mutant ran. Fix: shard workspaces
+   keep `.migration/`'s data and leave only its machinery behind.
+3. **Planner checks moved up from phase 3b.** Phase 3b's checks move here: slice-spec anchors, template folders
+   versus `target_paths`, tests broken by a removal, and plan-file drift. BK-05G's missing dashboard template
+   is the same kind of gap. Phase 3b keeps only what depends on the coordinator fold. Eval cases pin their plans, so these checks don't change eval results: they run alongside the retaken baseline rather than before it.
+4. **The mutation threshold stays 0.8.** All 36 live scores met it, and 5 landed between 0.80 and 0.85. The two
+   eval misses (0.794, 0.790) are the same near-miss: live sessions closed that gap by strengthening tests,
+   sometimes in a continuation session. No change.
+5. **The eval itself was fixed along the way:**
+   - `AFS_BASE` and `origin/main` point at each case's base (eval repo setup steps);
+   - the grader handles sessions that end without retitling their PR, invalid YAML, reruns of Gates, and CI
+     that hasn't finished.
+
+**The bar for the new baseline:**
+- two runs, dispatched one after the other so the Actions queue doesn't saturate;
+- every must-pass case gives the same result in both runs;
+- more than half the cases pass.
+
+If that bar isn't met, the remaining failures get the same treatment (fix the harness gap, or record why the
+case is ill-posed) before phase 2 starts.
+
 ## Phase 2: fold the Specialist Migrator and the Bootstrapper (findings 2 and 4)
 
 These are two independent PRs, each followed by its own eval run.
@@ -319,7 +357,7 @@ future change to an agent measured against the eval.
 
 | Finding | Phase |
 |---|---|
-| 1 No eval | 1 |
+| 1 No eval | 1, 1b (gaps the eval found) |
 | 2 Specialist Migrator | 2a |
 | 3 Slice Coordinator | 3c, 3d |
 | 4 Bootstrapper | 2b |

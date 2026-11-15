@@ -113,8 +113,8 @@ def case_problems(doc):
     if doc["kind"] == "bootstrap" and not exp.get("fields"):
         out.append("a bootstrap case needs expect.fields")
     for op in doc.get("normalize") or []:
-        if not (set(op) & {"replace", "copy_from"}):
-            out.append("normalize ops are replace or copy_from")
+        if not (set(op) & {"replace", "copy_from", "yaml_set"}):
+            out.append("normalize ops are replace, copy_from or yaml_set")
     return out
 
 
@@ -193,6 +193,18 @@ def apply_normalize(tree, ops, source_dir, part="base"):
                 raise CaseError(f"normalize: {r['file']} has no {r['old']!r}")
             path.write_text(text.replace(r["old"], r["new"]), encoding="utf-8")
             done.append(f"replace in {r['file']}: {r['old']} → {r['new']}")
+        if "yaml_set" in op:                   # a profile key today's bootstrap would write
+            y = op["yaml_set"]
+            path = pathlib.Path(tree) / y["file"]
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            cur = doc
+            *parents, leaf = str(y["key"]).split(".")
+            for part in parents:
+                cur = cur.setdefault(part, {})
+            if cur.get(leaf) != y["value"]:
+                cur[leaf] = y["value"]
+                path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
+                done.append(f"set {y['file']}: {y['key']} = {y['value']!r}")
         if "copy_from" in op:
             c = op["copy_from"]
             for rel in c["paths"]:

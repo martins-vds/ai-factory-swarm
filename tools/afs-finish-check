@@ -169,7 +169,18 @@ def own_records(ticket, role):
 
 
 def always_allowed(path):
-    return path.startswith((".migration/costs/", ".migration/quirks/", ".migration/evidence/finish-check/"))
+    return (path.startswith((".migration/costs/", ".migration/quirks/", ".migration/evidence/finish-check/"))
+            or path in shared_test_files())
+
+
+def shared_test_files():
+    """`target.shared_test_files`: project-wide test setup every ticket may change (eval base-r1: LL-01 to LL-04
+    stopped because the isolation fixture the migrator rule asks for was in no ticket's files)."""
+    try:
+        profile = yaml.safe_load((MIG / "profile.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return set()
+    return set(((profile.get("target") or {}).get("shared_test_files")) or [])
 
 
 def in_scope(path, allowed):

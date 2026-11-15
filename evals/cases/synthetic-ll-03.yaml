@@ -60,5 +60,10 @@ normalize:
     old: src.loans.repository.LoanRepository.create
     new: src.loans.repository.DjangoLoanRepository.create
     optional: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py
 notes: 'Normalization: the stale ledger references the live run fixed in its harness #153 rollout (synthetic #98);
   a reference whose text is absent at this commit is skipped.'

@@ -97,8 +97,19 @@ def score_from_junit(xml_text):
     return killed, survived, skipped, locations
 
 
-COPY_IGNORE = shutil.ignore_patterns(".git", ".mutmut-cache", "__pycache__", ".pytest_cache", "node_modules",
-                                     ".venv", "venv", ".source", ".migration", "*.lcov", ".coverage*")
+_IGNORE_ANYWHERE = shutil.ignore_patterns(".git", ".mutmut-cache", "__pycache__", ".pytest_cache", "node_modules",
+                                         ".venv", "venv", ".source", "*.lcov", ".coverage*")
+# Tests read migration data (characterization observations, data snapshots, slice specs) from .migration/, so a
+# shard workspace keeps it; only its bulky machinery stays behind. Leaving all of .migration/ out made every test
+# that reads .migration/characterization/... fail in the shard, which failed the whole run (eval base-r1, DM-05D).
+_MIGRATION_MACHINERY = {"harness", "runs", "costs", "evidence", "handoffs", "returns", "graphs"}
+
+
+def COPY_IGNORE(directory, names):
+    ignored = set(_IGNORE_ANYWHERE(directory, names))
+    if os.path.basename(os.path.normpath(directory)) == ".migration":
+        ignored |= _MIGRATION_MACHINERY & set(names)
+    return ignored
 
 
 def context_tests(path, src, tests_root="tests"):
