@@ -168,6 +168,11 @@ def own_records(ticket, role):
             f".migration/evidence/mutants/{ticket}.md", f".migration/handoffs/{ticket}.md"}
 
 
+# Roles whose return reports changed-code mutation (eval b3b: the most common failure was a return that left it
+# empty, often with green Gates).
+MUTATION_ROLES = {"afs-migrator", "afs-specialist-migrator", "afs-verifier"}
+
+
 def always_allowed(path):
     return (path.startswith((".migration/costs/", ".migration/quirks/", ".migration/evidence/finish-check/"))
             or path in shared_test_files())
@@ -229,6 +234,13 @@ def findings(ticket, role, changed, prompt):
             doc = yaml.safe_load(ret.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:
             doc = {}
+        gates = doc.get("gates") if isinstance(doc.get("gates"), dict) else {}
+        if role in MUTATION_ROLES and gates.get("mutation_changed") is None:
+            found.append(("mechanical", "no-mutation-score",
+                          f"`{ret_rel}` has no `gates.mutation_changed`. Copy the score `afs-mutation` printed for "
+                          "your changed files from your journal; if it truly doesn't apply, write `n/a: <reason>` "
+                          "(e.g. `n/a: no mutable code changed`, or `n/a: not run, handed off`). It can't be "
+                          "left empty."))
         handoff = doc.get("handoff")
         if handoff not in (None, "", "none", "null"):
             hpath = str(handoff).split("#")[0]
