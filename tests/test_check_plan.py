@@ -75,6 +75,16 @@ class CheckPlanTest(unittest.TestCase):
                             for e in errs), errs)
         self.assertFalse(any("BK-02 uses the retired role" in e for e in errs), "finished tickets keep history")
 
+    def test_rework_of_a_retired_role_ticket_by_its_successor_keeps_the_id(self):
+        # eval fold-r1..r3: the Migrator reworks BK-05F, which the Specialist Migrator finished before the fold.
+        self.plan("booking", [ticket("BK-05F", ["src/a.py"], role="afs-specialist-migrator"),
+                              ticket("BK-05H", ["src/b.py"])])
+        self.touch(".migration/returns/BK-05F.afs-specialist-migrator.yaml")
+        self.touch(".migration/returns/BK-05F.afs-migrator.yaml")
+        self.touch(".migration/returns/BK-05H.afs-specialist-migrator.yaml")
+        errs = "\n".join(self.errors())
+        self.assertNotIn("already used", errs)
+
     def test_verifier_return_on_the_same_id_is_fine(self):
         self.plan("booking", [ticket("BK-05A", ["src/x.py"])])
         self.touch(".migration/returns/BK-05A.afs-verifier.yaml")

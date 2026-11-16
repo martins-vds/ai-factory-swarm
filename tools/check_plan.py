@@ -35,9 +35,17 @@ HERE = pathlib.Path(__file__).resolve().parent
 IMPLEMENTATION = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
 # Retired roles stay valid on finished tickets (history is never rewritten); an open ticket can't use one.
 RETIRED_ROLES = {"afs-specialist-migrator": "use `role: afs-migrator` and keep `specialty:` (ADR-0042)"}
+# A retired role and the role it folded into are one role for ticket ids: rework of a ticket the retired role
+# finished is done by its successor, under the same id (eval fold-r1..r3: BK-05F and BK-05G rework).
+FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator"}
 # Roles that work on another role's ticket and keep that ticket's id.
 SHARED_ID_ROLES = {"afs-verifier", "afs-slice-coordinator", "afs-auditor"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", ".source", ".migration", "__pycache__"}
+
+
+def same_role(role):
+    """`role`, plus the retired role it absorbed or the role it folded into (ADR-0042)."""
+    return {role, FOLDED_INTO.get(role)} | {old for old, new in FOLDED_INTO.items() if new == role}
 
 
 def load_plans(folder, schemas, errors):
@@ -139,7 +147,7 @@ def check(folder, schemas, errors, sample=False):
     returned = returns_by_ticket(folder)
     for t in tickets:
         path = where[t["id"]]
-        others = returned.get(t["id"], set()) - {t["role"]} - SHARED_ID_ROLES
+        others = returned.get(t["id"], set()) - same_role(t["role"]) - SHARED_ID_ROLES
         if others:
             errors.append(f"{path}: ticket id {t['id']} is already used by {', '.join(sorted(others))} "
                           f"(.migration/returns/): pick a new id")
