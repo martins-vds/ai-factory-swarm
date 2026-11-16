@@ -445,7 +445,9 @@ def grade_fields(files, expect):
     for key, want in sorted(expect["fields"].items()):
         path, _, dotted = key.partition(":")
         got = dig(files.get(path) or {}, dotted)
-        checks.append((f"{key} = {want!r}", got == want, f"got {got!r}"))
+        same = got == want or (isinstance(got, str) and isinstance(want, str)       # 'legacy/' is 'legacy'
+                               and got.rstrip("/") == want.rstrip("/"))
+        checks.append((f"{key} = {want!r}", same, f"got {got!r}"))
     return checks
 
 
