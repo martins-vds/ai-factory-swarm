@@ -1,0 +1,98 @@
+{
+  "pilot-bk-05e-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-bk-05e-verify-work",
+    "dispatched_at": "2026-11-16T03:56:21+00:00",
+    "issue": 507,
+    "work_pr": 506
+  },
+  "pilot-bk-05f": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-bk-05f",
+    "dispatched_at": "2026-11-16T03:56:27+00:00",
+    "issue": 511,
+    "work_pr": null
+  },
+  "pilot-bk-05f-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-bk-05f-verify-work",
+    "dispatched_at": "2026-11-16T03:56:25+00:00",
+    "issue": 509,
+    "work_pr": 508
+  },
+  "pilot-bk-05g": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-bk-05g",
+    "dispatched_at": "2026-11-16T03:56:34+00:00",
+    "issue": 518,
+    "work_pr": null
+  },
+  "pilot-bk-05g-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-bk-05g-verify-work",
+    "dispatched_at": "2026-11-16T03:56:32+00:00",
+    "issue": 515,
+    "work_pr": 513
+  },
+  "pilot-dm-05d": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-dm-05d",
+    "dispatched_at": "2026-11-16T03:56:36+00:00",
+    "issue": 519,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "base_branch": "eval/2026-11-16-b3b-r2/pilot-dm-05f",
+    "dispatched_at": "2026-11-16T03:56:39+00:00",
+    "issue": 521,
+    "work_pr": null
+  },
+  "synthetic-ll-01": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-01",
+    "dispatched_at": "2026-11-16T03:56:41+00:00",
+    "issue": 524,
+    "work_pr": null
+  },
+  "synthetic-ll-02": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-02",
+    "dispatched_at": "2026-11-16T03:56:48+00:00",
+    "issue": 530,
+    "work_pr": null
+  },
+  "synthetic-ll-02-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-02-verify-work",
+    "dispatched_at": "2026-11-16T03:56:45+00:00",
+    "issue": 528,
+    "work_pr": 527
+  },
+  "synthetic-ll-03": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-03",
+    "dispatched_at": "2026-11-16T03:56:55+00:00",
+    "issue": 536,
+    "work_pr": null
+  },
+  "synthetic-ll-03-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-03-verify-work",
+    "dispatched_at": "2026-11-16T03:56:52+00:00",
+    "issue": 533,
+    "work_pr": 531
+  },
+  "synthetic-ll-04": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-04",
+    "dispatched_at": "2026-11-16T03:57:02+00:00",
+    "issue": 542,
+    "work_pr": null
+  },
+  "synthetic-ll-04-verify": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-04-verify-work",
+    "dispatched_at": "2026-11-16T03:56:59+00:00",
+    "issue": 540,
+    "work_pr": 538
+  },
+  "synthetic-ll-05": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-ll-05",
+    "dispatched_at": "2026-11-16T03:57:04+00:00",
+    "issue": 543,
+    "work_pr": null
+  },
+  "synthetic-sy-01-bootstrap": {
+    "base_branch": "eval/2026-11-16-b3b-r2/synthetic-sy-01-bootstrap",
+    "dispatched_at": "2026-11-16T03:57:06+00:00",
+    "issue": 546,
+    "work_pr": null
+  }
+}
