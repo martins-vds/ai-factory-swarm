@@ -271,6 +271,62 @@ These are added to `tools/check_plan.py`, each with a fixture from the run that 
 runs through the orchestrator with a generated reconciliation file, the eval shows no flips, and coverage
 hasn't dropped.
 
+## Phase 3e: make the Verifier reliable before it's measured (finding 5)
+
+*Added 2026-11-16 by the operator's decision after baseline b3c (`evals/results/2026-11-16-b3c-summary.md`).*
+
+Phase 4a compares the Verifier against a Migrator-only topology. In baseline b3c the Verifier passed only one of
+its six cases by majority, so that comparison would measure a weak Verifier, not the role. These steps come
+first. Each one is measured on the Verifier cases, three runs each, by majority.
+
+**What the baseline shows** (each Verifier return in b3c):
+
+| Problem | Cases | Example |
+|---|---|---|
+| Misses import-level layering defects | LL-02 (r2, r3), BK-05F (all), BK-05E (r1, r2) | Use cases import Django's clock and ORM; a use case raises `Http404`; views call the repository |
+| Grader missed a correct finding | BK-05E r3 | It found "views call CargoRepository directly; ADR-0001 requires an application service", but the keywords didn't match |
+| Serious findings on clean cases, possibly real | LL-03 r1/r3, BK-05G r2/r3 | htmx 2.x doesn't swap 4xx/5xx responses; the URLconf omits booking routes; an interrupted mutation run |
+| Verdict contradicts the findings | LL-04 r1 | `changes-required` with no major or blocker finding |
+
+1. **Fix the grader first.**
+   - Defect keywords name the defect and its ADR, not a gate's name. For example, BK-05E adds
+     `application service`, `repository directly` and `ADR-0001`.
+   - Regrade b3c with the new keywords. Grader fixes come before agent fixes, so agents aren't blamed for the
+     grader's mistakes.
+2. **Make layering a deterministic gate.** All three real misses are import-level violations, which a tool can
+   find every time:
+   - **The rule lives in the profile.** `gates.layering` holds the layer contracts the architecture ADRs
+     state. For example: `application` may not import `django.http`, `django.utils.timezone` or
+     `*.models`; views may not import repositories.
+   - **A tool checks it.** `check_layers.py` (or import-linter, if the stack pack ships it) runs in the idiom
+     gate, for every Migrator ticket and in CI.
+   - **The Migrator can't create these defects in the first place.** The Verifier's gate-3 review then
+     covers what a tool can't see.
+3. **The verdict follows the findings, mechanically.** The finish check and `validate.py` reject a Verifier
+   return whose verdict disagrees with its findings:
+   - `pass` means no major or blocker finding;
+   - `changes-required` means at least one major or blocker finding about the work;
+   - `blocked` only when the Verifier couldn't verify (a gate didn't run). Its `blocked_reason` names the gate
+     that didn't run.
+4. **A serious finding carries evidence.** A major or blocker finding must cite:
+   - a failing test the Verifier added (`tests_added`); or
+   - a journal log (`.migration/runs/…`) showing the failure.
+
+   Opinions without evidence are `minor`. This targets the clean-case findings: the htmx and URLconf claims
+   either come with a failing test, or they're not serious.
+5. **The operator reviews the clean cases' findings.** LL-03's htmx 4xx handling and BK-05G's missing booking
+   routes may be real defects the live Verifier missed, like BK-05F's. Each confirmed one turns its case into
+   a defect case (as with BK-05F, #173). Each rejected one stays clean and counts as a false positive.
+6. **An interrupted run is `blocked`, not a defect.** A mutation run or browser suite that didn't finish
+   (BK-05G r3) blocks with the gate named in `blocked_reason`. The eval reports such cases separately from
+   wrong verdicts, as timeouts are.
+
+**Done when:**
+- every Verifier case passes by majority of three, or carries an operator ruling that explains why not;
+- no clean case fails on a finding without evidence.
+
+Then phase 4a runs against this Verifier.
+
 ## Phase 4: measured experiments (findings 5 and 6, part 2; finding 7 recorded)
 
 These are experiments, not planned folds. Each runs on the eval, twice per case, and its result is recorded
@@ -361,7 +417,7 @@ future change to an agent measured against the eval.
 | 2 Specialist Migrator | 2a |
 | 3 Slice Coordinator | 3c, 3d |
 | 4 Bootstrapper | 2b |
-| 5 Verifier | 3a (cost), 4a (experiment) |
+| 5 Verifier | 3a (cost), 3e (reliability), 4a (experiment) |
 | 6 Analyst → Characterizer → Planner | 3b (checks), 4b (experiment) |
 | 7 Auditor | 4c (decision), 5 (trim) |
 | 8 Prose rules, Frankenprompt | 3a (tools), 5 (audit) |

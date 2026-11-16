@@ -45,12 +45,16 @@ expect:
   - label: view bypasses the application layer
     severity_min: major
     any_of:
+    - adr-0001
+    - application entry
     - application layer
+    - application service
+    - bypass
+    - calls cargorepository
+    - layering
+    - repository directly
     - use case
     - use-case
-    - application entry
-    - bypass
-    - layering
 normalize:
 - replace:
     file: .migration/ledger/handling.rest-report-contract.yaml
