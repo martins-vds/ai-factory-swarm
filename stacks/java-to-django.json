@@ -248,6 +248,6 @@
     }
   ],
   "shared_test_setup": {
-    "tests/conftest.py": "\"\"\"Project-wide test isolation (AFS harness: target.shared_test_files).\n\nEach database test restores the rows that migrations seeded, so a test\nthat flushes the database (live-server and browser tests do) can't leave\nthe next test without its seed data.\n\"\"\"\n\nimport pytest\n\n\n@pytest.fixture(autouse=True)\ndef django_db_serialized_rollback():\n    return True\n"
+    "tests/conftest.py": "\"\"\"Project-wide test isolation (AFS harness: target.shared_test_files).\n\nEach database test restores the rows that migrations seeded, so a test\nthat flushes the database (live-server and browser tests do) can't leave\nthe next test without its seed data.\n\npytest-django saves the database contents at setup only for tests whose\ndjango_db marker asks for serialized_rollback; the fixture below is\nignored there for marked tests. The hook makes every marker ask, so the\ncontents are always saved, whatever tests are collected.\n\"\"\"\n\nimport pytest\n\n\ndef pytest_collection_modifyitems(items):\n    for item in items:\n        marker = item.get_closest_marker('django_db')\n        if marker is not None and not marker.kwargs.get('serialized_rollback'):\n            kwargs = {**marker.kwargs, 'serialized_rollback': True}\n            item.add_marker(pytest.mark.django_db(*marker.args, **kwargs))\n\n\n@pytest.fixture(autouse=True)\ndef django_db_serialized_rollback():\n    return True\n"
   }
 }
