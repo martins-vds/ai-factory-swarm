@@ -95,6 +95,16 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("`src/settings.py`", out["reason"])
         self.assertIn("Don't widen your own scope", out["reason"])
 
+    def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):
+        self.write("src/wizard.py")
+        ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"
+        ret.parent.mkdir(parents=True, exist_ok=True)
+        for i, (value, refused) in enumerate(((None, True), ("n/a: no mutable code changed", False), (0.86, False))):
+            ret.write_text(yaml.safe_dump({"role": "afs-specialist-migrator", "ticket": "BK-05D",
+                                           "gates": {"mutation_changed": value}}))
+            out, _ = self.run_hook(session=f"s{i}")
+            self.assertEqual("has no `gates.mutation_changed`" in (out or {}).get("reason", ""), refused, value)
+
     def test_shared_test_files_from_the_profile_are_in_every_tickets_scope(self):
         (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({
             "self_heal": {"enabled": True, "max_blocks": 2},
