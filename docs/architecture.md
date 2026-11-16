@@ -104,6 +104,7 @@ humans, and approved for cutover.
 | 39 | Workflow runs on Copilot PRs wait for a person's approval by default; the dispatcher never approves them; turning approval off is a per-repo choice that needs the listed mitigations | [0039](adr/0039-copilot-workflow-runs-wait-for-approval-by-default.md) |
 | 40 | Migrator work reaches the default branch only with a passing Verifier return committed after the migrator return's latest change; rework needs a fresh verification | [0040](adr/0040-migrator-work-merges-only-after-its-verifier-passes.md) |
 | 41 | Changes to agents, skills or their rules are measured against an end-to-end eval of real tickets (`afs-eval`), each affected case run at least twice; no must-pass case may flip; the eval repository runs Copilot workflows without approval | [0041](adr/0041-agent-changes-are-measured-against-an-end-to-end-eval.md) |
+| 42 | The Specialist Migrator folds into the Migrator: a ticket with `specialty:` loads the `afs-specialty` skill; the retired role's returns stay valid, and open tickets can't use it | [0042](adr/0042-the-specialist-migrator-folds-into-the-migrator.md) |
 
 ---
 
@@ -184,8 +185,7 @@ Roles evolve from PR #6's seven agents. New roles are marked ★.
 | ★ **Characterizer** | L1 | Builds a harness around the source and records its observable behavior as characterization tests; inventories legacy tests and the behavior they assert; re-runs the risk map with characterization coverage. | `.migration/characterization/`, ledger |
 | **Planner** | L1 | Proposes vertical slices from the graph, ledger and risk map, with dependency edges and sizing; includes data-migration slices. | Draft slice plan |
 | ★ **Slice Coordinator** | L1 | Owns one slice end to end: sequences its tickets on the frontier, dispatches workers, runs slice acceptance, keeps the ledger in sync. | Tracker comments, evidence |
-| **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. | Target code (one PR per ticket) |
-| **Specialist Migrator** | L2 | Profile-defined specialists: **data migration** (§11), **UI** (rebuilds screens in the target front end following the chosen UI direction, with `ui-ux-pro-max`), messaging, etc. PR #6's DB Migrator becomes the data specialist. | Target code, data pipeline |
+| **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. A ticket with `specialty:` (**data migration** §11, **UI** in the chosen UI direction, messaging) loads the `afs-specialty` skill; the separate Specialist Migrator role was folded in (ADR-0042). | Target code (one PR per ticket), data pipeline |
 | **Verifier** | L2 | Fresh context, no builder reasoning. Runs the per-PR gates (§10.3), including CRAP and mutation on changed code; adds tests where coverage or mutation score is short. Reports, never fixes production code. | Tests, evidence |
 | **Auditor** | L1 / L0 | Read-only, first-principles. Per slice: capability coverage and differential checks. Final: full bidirectional audit and the A–G report. Ignores progress labels. | Evidence report |
 
@@ -626,7 +626,7 @@ Re-architecting the domain usually changes the data model, so moving the data is
 workstream ([ADR-0010](adr/0010-data-migration-workstream.md)):
 
 - **Deliverable:** a repeatable pipeline that converts legacy data into the target schema, run by the
-  Data Specialist Migrator, tracked as its own slices and tickets.
+  Migrator on data-specialty tickets (`afs-specialty`), tracked as its own slices and tickets.
 - **Tests:** reconciliation checks (row counts, checksums, referential integrity) and business
   invariants that must hold after conversion, plus characterization of legacy stored procedures and
   reports that the target replaces.

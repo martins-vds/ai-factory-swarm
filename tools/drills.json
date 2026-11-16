@@ -143,7 +143,7 @@
         {
           "op": "write",
           "path": ".migration/plan/afs-drill.tickets.yaml",
-          "text": "slice: afs-drill\ntickets:\n  - id: DRILL-01\n    role: afs-specialist-migrator\n    files: [drill/hello.txt]\n    blocked_by: []\n  - id: DRILL-02\n    role: afs-specialist-migrator\n    files: [drill/a.txt]\n    blocked_by: []\n"
+          "text": "slice: afs-drill\ntickets:\n  - id: DRILL-01\n    role: afs-migrator\n    specialty: ui\n    files: [drill/hello.txt]\n    blocked_by: []\n  - id: DRILL-02\n    role: afs-migrator\n    specialty: ui\n    files: [drill/a.txt]\n    blocked_by: []\n"
         },
         {
           "op": "profile_set",
@@ -152,13 +152,13 @@
         }
       ],
       "trigger": "agent",
-      "agent": "afs-specialist-migrator",
+      "agent": "afs-migrator",
       "timeout": 3600,
-      "issue": "**Role:** `afs-specialist-migrator`, ticket `DRILL-01`.\n\nCreate `drill/hello.txt` containing `hello`, commit it, and stop. Do nothing else in this session.",
+      "issue": "**Role:** `afs-migrator` (`specialty: ui`), ticket `DRILL-01`.\n\nCreate `drill/hello.txt` containing `hello`, commit it, and stop. Do nothing else in this session.",
       "expect": {
         "files_include": [
           "drill/hello.txt",
-          ".migration/returns/DRILL-01.afs-specialist-migrator.yaml"
+          ".migration/returns/DRILL-01.afs-migrator.yaml"
         ]
       }
     },
@@ -174,7 +174,7 @@
         {
           "op": "write",
           "path": ".migration/plan/afs-drill.tickets.yaml",
-          "text": "slice: afs-drill\ntickets:\n  - id: DRILL-01\n    role: afs-specialist-migrator\n    files: [drill/hello.txt]\n    blocked_by: []\n  - id: DRILL-02\n    role: afs-specialist-migrator\n    files: [drill/a.txt]\n    blocked_by: []\n"
+          "text": "slice: afs-drill\ntickets:\n  - id: DRILL-01\n    role: afs-migrator\n    specialty: ui\n    files: [drill/hello.txt]\n    blocked_by: []\n  - id: DRILL-02\n    role: afs-migrator\n    specialty: ui\n    files: [drill/a.txt]\n    blocked_by: []\n"
         },
         {
           "op": "profile_set",
@@ -183,9 +183,9 @@
         }
       ],
       "trigger": "agent",
-      "agent": "afs-specialist-migrator",
+      "agent": "afs-migrator",
       "timeout": 3600,
-      "issue": "**Role:** `afs-specialist-migrator`, ticket `DRILL-02`.\n\nCreate `drill/a.txt` containing `a` and `drill/b.txt` containing `b`, commit both, write your return file, and stop.",
+      "issue": "**Role:** `afs-migrator` (`specialty: ui`), ticket `DRILL-02`.\n\nCreate `drill/a.txt` containing `a` and `drill/b.txt` containing `b`, commit both, write your return file, and stop.",
       "expect": {
         "files_exclude": [
           "drill/b.txt"

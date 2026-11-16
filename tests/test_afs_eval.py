@@ -93,6 +93,16 @@ class NormalizeTest(unittest.TestCase):
             self.assertEqual(ev.apply_normalize(d, [op], None), [], "already set: no change")
 
 
+class RoleMapTest(unittest.TestCase):
+    def test_a_folded_role_is_dispatched_and_graded_as_its_successor_without_touching_the_case(self):
+        c = case(agent="afs-specialist-migrator", role="afs-specialist-migrator",
+                 issue={"title": "t", "body": "**Role:** `afs-specialist-migrator`, `specialty: data`."})
+        m = ev.mapped(c, {"afs-specialist-migrator": "afs-migrator"})
+        self.assertEqual((m["agent"], m["role"]), ("afs-migrator", "afs-migrator"))
+        self.assertIn("`afs-migrator`, `specialty: data`", m["issue"]["body"])
+        self.assertEqual(c["agent"], "afs-specialist-migrator", "the case itself is unchanged")
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."

@@ -29,7 +29,7 @@ slice.
 
 ## Procedure
 1. **Frontier.** Open, unblocked, unclaimed tickets of your slice. Claim before dispatching.
-2. **Dispatch** one `afs-migrator` (or `afs-specialist-migrator` for data/UI/messaging tickets) per
+2. **Dispatch** one `afs-migrator` (a ticket with `specialty:` loads `afs-specialty`; ADR-0042) per
    ticket — locally, or remotely by assigning the issue to the Copilot coding agent with that custom
    agent (needs a user token: run this role locally, or ask L0 to dispatch; agents/README.md). Parallel only for tickets with no blocking edge and no shared files; within
    `profile.concurrency`.

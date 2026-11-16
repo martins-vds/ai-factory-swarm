@@ -105,6 +105,8 @@ def roles():
     out = {}
     for f in sorted((ROOT / "agents").glob("afs-*.agent.md")):
         out[f.name.split(".")[0]] = parse_template(contract_text(f))
+    for f in sorted((ROOT / "agents/retired").glob("afs-*.md")):    # retired roles: history stays valid
+        out[f.name.split(".")[0]] = parse_template(contract_text(f))
     return out
 
 

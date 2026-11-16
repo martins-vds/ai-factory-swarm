@@ -34,10 +34,14 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 - `receiving-code-review` — when review feedback arrives.
 - `diagnosing-bugs` — when a failure is not obvious.
 - `lessons-learned` — recall before starting; record surprises.
+- `afs-specialty` — your ticket has `specialty:` (data, ui or messaging): what it adds (ADR-0042).
+- `afs-data-pipeline`, `db-seed` — data tickets, as `afs-specialty` says.
+- `ui-ux-pro-max`, `prototype` — UI tickets, as `afs-specialty` says.
 
 ## Procedure
 1. **Understand the capability** from the ledger entry, its characterization, and the graph (graph
-   first; source files only through the file-read gate).
+   first; source files only through the file-read gate). A ticket with `specialty:` → load
+   `afs-specialty` now and follow it alongside these steps.
 2. **Tests first:** turn the characterization cases (and transcribed legacy-test behavior) into failing
    target tests at the equivalence boundary.
 3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign with the refactoring and design

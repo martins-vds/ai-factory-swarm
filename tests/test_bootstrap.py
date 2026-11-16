@@ -182,7 +182,7 @@ class BootstrapTest(unittest.TestCase):
         r = self.run_bootstrap()
         lock = json.loads((ROOT / "skills.lock.json").read_text())
         self.assertEqual(r["skills"], len(lock["skills"]) + len(json.loads(PACK.read_text())["skills"]))
-        self.assertEqual(r["agents"], 10)
+        self.assertEqual(r["agents"], 9)   # the Specialist Migrator folded into the Migrator (ADR-0042)
         for f in [".migration/source.lock", ".migration/profile.yaml", ".migration/capabilities.yaml",
                   ".migration/harness/tools/afs-run", ".migration/harness/tools/check_stack_base.py",
                   ".migration/harness/tools/check_domain_coverage.py",

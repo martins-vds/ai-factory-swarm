@@ -17,7 +17,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
 ROLES = ["program-orchestrator", "bootstrapper", "analyst", "characterizer", "planner", "slice-coordinator",
-         "migrator", "specialist-migrator", "verifier", "auditor"]
+         "migrator", "verifier", "auditor"]
 MAX_AGENT_CHARS = 9000
 FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.S)
 
