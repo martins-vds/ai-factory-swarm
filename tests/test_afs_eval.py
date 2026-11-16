@@ -159,6 +159,8 @@ class GradeTest(unittest.TestCase):
         checks = ev.grade_fields(files, {"fields": {"p.yaml:source.path": "legacy",
                                                     "c.yaml:characterization.tier": "A"}})
         self.assertEqual([ok for _, ok, _ in checks], [False, True])
+        self.assertTrue(ev.verdict(ev.grade_fields({"p.yaml": {"source": {"path": "legacy/"}}},
+                                                   {"fields": {"p.yaml:source.path": "legacy"}})))
 
     def test_only_errors_the_agent_added_count(self):
         self.assertEqual(ev.new_errors(["old"], ["old", "new"]), ["new"])
