@@ -30,8 +30,15 @@ expect:
   gates: success
   mutation_changed: profile threshold
 normalize:
+- replace:
+    file: .migration/plan/loan-catalog.tickets.yaml
+    old: "      - tests/loans/\n      - templates/base.html\n"
+    new: "      - tests/loans/\n      - tests/test_ui_smoke.py\n      - templates/base.html\n"
+    optional: true
 - yaml_set:
     file: .migration/profile.yaml
     key: target.shared_test_files
     value:
     - tests/conftest.py
+notes: 'Normalization: LL-01''s plan ticket gains tests/test_ui_smoke.py, which its issue asks for. The live run
+  fixed the plan the same way (synthetic #71); without it, b3c r2 and r3 rightly stopped on the scope question.'
