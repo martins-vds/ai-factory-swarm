@@ -103,6 +103,22 @@ class RoleMapTest(unittest.TestCase):
         self.assertEqual(c["agent"], "afs-specialist-migrator", "the case itself is unchanged")
 
 
+class ReplanTest(unittest.TestCase):
+    def test_only_open_tickets_of_a_folded_role_are_re_planned(self):
+        with tempfile.TemporaryDirectory() as d:
+            plan = pathlib.Path(d, ".migration/plan"); plan.mkdir(parents=True)
+            (pathlib.Path(d, ".migration/returns")).mkdir()
+            pathlib.Path(d, ".migration/returns/BK-01.afs-specialist-migrator.yaml").write_text("role: x\n")
+            (plan / "booking.tickets.yaml").write_text(yaml.safe_dump({"slice": "booking", "tickets": [
+                {"id": "BK-01", "role": "afs-specialist-migrator"}, {"id": "BK-02", "role": "afs-specialist-migrator"},
+                {"id": "BK-03", "role": "afs-migrator"}]}))
+            notes = ev.replan_open_tickets(d, {"afs-specialist-migrator": "afs-migrator"})
+            roles = {t["id"]: t["role"] for t in yaml.safe_load((plan / "booking.tickets.yaml").read_text())["tickets"]}
+            self.assertEqual(roles, {"BK-01": "afs-specialist-migrator", "BK-02": "afs-migrator", "BK-03": "afs-migrator"})
+            self.assertEqual(len(notes), 1)
+            self.assertEqual(ev.replan_open_tickets(d, {}), [])
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."
