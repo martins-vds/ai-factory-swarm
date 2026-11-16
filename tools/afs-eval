@@ -311,8 +311,26 @@ def find_pr(eval_repo, head, base):
     return prs[0]["number"] if prs else None
 
 
+def role_map(a):
+    """`--role-map old=new`: evaluate a topology change (a folded role) on unchanged cases (ADR-0041/0042)."""
+    return dict(pair.split("=", 1) for pair in (getattr(a, "role_map", None) or []))
+
+
+def mapped(case, roles):
+    if not roles:
+        return case
+    case = json.loads(json.dumps(case))
+    for key in ("agent", "role"):
+        case[key] = roles.get(case[key], case[key])
+    for key in ("title", "body"):
+        for old, new in roles.items():
+            case["issue"][key] = case["issue"][key].replace(old, new)
+    return case
+
+
 def dispatch(a, cases):
     state = load_state(a)
+    cases = [mapped(c, role_map(a)) for c in cases]
     for case in cases:
         name = branch(a.run, case)
         base_branch = name
@@ -483,6 +501,7 @@ def verdict(checks):
 
 def grade(a, cases):
     state = load_state(a)
+    cases = [mapped(c, role_map(a)) for c in cases]
     results = {"run": a.run, "eval_repo": a.eval_repo, "graded_at": now(), "cases": {}}
     sources = pathlib.Path(a.sources)
     for case in cases:
@@ -657,6 +676,9 @@ def main(argv=None):
             p.add_argument("--eval-repo", required=True)
             p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
             p.add_argument("--sources", default=os.path.expanduser("~/.cache/afs-eval/sources"))
+        if name in ("dispatch", "grade"):
+            p.add_argument("--role-map", action="append", metavar="OLD=NEW",
+                           help="dispatch and grade a case's role as another (a folded role)")
         if name == "prepare":
             p.add_argument("--harness", default=str(ROOT))
             p.add_argument("--allow-unreleased", action="store_true")

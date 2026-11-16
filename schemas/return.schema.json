@@ -1408,193 +1408,6 @@
       "if": {
         "properties": {
           "role": {
-            "const": "afs-specialist-migrator"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "ticket",
-          "specialty",
-          "pr",
-          "gates",
-          "specialty_evidence",
-          "ledger_updated",
-          "quirk_tickets",
-          "handoff"
-        ],
-        "properties": {
-          "ticket": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "specialty": {
-            "enum": [
-              "data",
-              "ui",
-              "messaging",
-              null
-            ]
-          },
-          "pr": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "gates": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "required": [
-              "build",
-              "behavior",
-              "idiom",
-              "crap",
-              "mutation_changed",
-              "regression"
-            ],
-            "properties": {
-              "build": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "behavior": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "idiom": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "crap": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "mutation_changed": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "number",
-                      "null"
-                    ],
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "regression": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              }
-            }
-          },
-          "specialty_evidence": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "ledger_updated": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "quirk_tickets": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "handoff": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "role": {
             "const": "afs-verifier"
           }
         }
@@ -1817,6 +1630,193 @@
                 "null"
               ]
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "const": "afs-specialist-migrator"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ticket",
+          "specialty",
+          "pr",
+          "gates",
+          "specialty_evidence",
+          "ledger_updated",
+          "quirk_tickets",
+          "handoff"
+        ],
+        "properties": {
+          "ticket": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "specialty": {
+            "enum": [
+              "data",
+              "ui",
+              "messaging",
+              null
+            ]
+          },
+          "pr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gates": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "build",
+              "behavior",
+              "idiom",
+              "crap",
+              "mutation_changed",
+              "regression"
+            ],
+            "properties": {
+              "build": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "behavior": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "idiom": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "crap": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "mutation_changed": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "regression": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              }
+            }
+          },
+          "specialty_evidence": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "ledger_updated": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "quirk_tickets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "handoff": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

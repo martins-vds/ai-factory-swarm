@@ -33,6 +33,8 @@ from jsonschema import Draft202012Validator
 
 HERE = pathlib.Path(__file__).resolve().parent
 IMPLEMENTATION = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
+# Retired roles stay valid on finished tickets (history is never rewritten); an open ticket can't use one.
+RETIRED_ROLES = {"afs-specialist-migrator": "use `role: afs-migrator` and keep `specialty:` (ADR-0042)"}
 # Roles that work on another role's ticket and keep that ticket's id.
 SHARED_ID_ROLES = {"afs-verifier", "afs-slice-coordinator", "afs-auditor"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", ".source", ".migration", "__pycache__"}
@@ -151,6 +153,9 @@ def check(folder, schemas, errors, sample=False):
     open_tickets = [t for t in tickets
                     if t["role"] not in returned.get(t["id"], set()) and not t.get("done_before_returns")]
     for t in open_tickets:
+        if t["role"] in RETIRED_ROLES:
+            errors.append(f"{where[t['id']]}: {t['id']} uses the retired role {t['role']}: "
+                          f"{RETIRED_ROLES[t['role']]}")
         if t["role"] in IMPLEMENTATION and not t["files"]:
             errors.append(f"{where[t['id']]}: {t['id']} ({t['role']}) names no files")
     deps = reachable(tickets)

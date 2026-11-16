@@ -66,6 +66,15 @@ class CheckPlanTest(unittest.TestCase):
         self.touch(".migration/returns/BK-03.afs-characterizer.yaml")
         self.assertIn("BK-03 is already used by afs-characterizer", "\n".join(self.errors()))
 
+    def test_the_retired_specialist_role_is_refused_on_open_tickets_and_kept_on_finished_ones(self):
+        self.plan("booking", [ticket("BK-01", ["src/a.py"], role="afs-specialist-migrator"),
+                              ticket("BK-02", ["src/b.py"], role="afs-specialist-migrator")])
+        self.touch(".migration/returns/BK-02.afs-specialist-migrator.yaml")
+        errs = self.errors()
+        self.assertTrue(any("BK-01 uses the retired role afs-specialist-migrator" in e and "ADR-0042" in e
+                            for e in errs), errs)
+        self.assertFalse(any("BK-02 uses the retired role" in e for e in errs), "finished tickets keep history")
+
     def test_verifier_return_on_the_same_id_is_fine(self):
         self.plan("booking", [ticket("BK-05A", ["src/x.py"])])
         self.touch(".migration/returns/BK-05A.afs-verifier.yaml")
