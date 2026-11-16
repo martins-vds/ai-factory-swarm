@@ -631,3 +631,21 @@ class SharedTestSetupTest(unittest.TestCase):
     def test_the_django_pack_ships_the_isolation_fixture(self):
         pack = json.loads((ROOT / "stacks/java-to-django.json").read_text())
         self.assertIn("django_db_serialized_rollback", pack["shared_test_setup"]["tests/conftest.py"])
+
+
+class SharedTestSetupFormatTest(unittest.TestCase):
+    """The template lands in a target's tree, where the idiom gate formats and lints everything (eval b3a-r1:
+    an unformatted template failed every synthetic Migrator's Gates on a file the agent never touched)."""
+
+    @unittest.skipUnless(shutil.which("ruff"), "ruff not installed")
+    def test_every_template_is_ruff_clean_at_line_length_88_with_single_quotes(self):
+        pack = json.loads((ROOT / "stacks/java-to-django.json").read_text())
+        for rel, text in pack.get("shared_test_setup", {}).items():
+            with tempfile.TemporaryDirectory() as d:
+                (pathlib.Path(d) / "pyproject.toml").write_text(
+                    '[tool.ruff]\nline-length = 88\n[tool.ruff.format]\nquote-style = "single"\n')
+                f = pathlib.Path(d) / "check.py"
+                f.write_text(text)
+                for cmd in (["ruff", "format", "--check", str(f)], ["ruff", "check", str(f)]):
+                    r = subprocess.run(cmd, cwd=d, capture_output=True, text=True)
+                    self.assertEqual(r.returncode, 0, f"{rel}: {' '.join(cmd[:2])}\n{r.stdout}{r.stderr}")
