@@ -119,13 +119,13 @@
         },
         {
           "check": "verdict",
-          "detail": "changes-required (expected pass)",
-          "ok": false
+          "detail": "changes-required (expected changes-required or blocked)",
+          "ok": true
         },
         {
-          "check": "no blocker or major finding",
-          "detail": "2 serious finding(s)",
-          "ok": false
+          "check": "finds: htmx 2 doesn't swap the dialogs' 404 responses (an unknown tracking ID leaves the dialog loading)",
+          "detail": "major: HTMX 404 responses are not configured to swap, so an unknown or stale tracking ID leaves the dialog on its loading messa",
+          "ok": true
         }
       ],
       "ci": {
@@ -140,7 +140,7 @@
       },
       "kind": "verifier",
       "must_pass": true,
-      "passed": false,
+      "passed": true,
       "pr": 940,
       "skills": {
         "afs-evidence": 1,
@@ -279,13 +279,13 @@
         },
         {
           "check": "verdict",
-          "detail": "pass (expected pass)",
-          "ok": true
+          "detail": "pass (expected changes-required)",
+          "ok": false
         },
         {
-          "check": "no blocker or major finding",
-          "detail": "0 serious finding(s)",
-          "ok": true
+          "check": "finds: about.html uses Tailwind utilities (py-8, mt-8, leading-relaxed) the committed CSS lacks",
+          "detail": "no finding \u2265 major matches",
+          "ok": false
         }
       ],
       "ci": {
@@ -300,7 +300,7 @@
       },
       "kind": "verifier",
       "must_pass": true,
-      "passed": true,
+      "passed": false,
       "pr": 950,
       "skills": {
         "afs-evidence": 1,
@@ -322,6 +322,6 @@
     }
   },
   "eval_repo": "martins-vds/ai-factory-eval",
-  "graded_at": "2026-11-17T13:58:13+00:00",
+  "graded_at": "2026-11-17T14:03:38+00:00",
   "run": "2026-11-17-v3g-r2"
 }

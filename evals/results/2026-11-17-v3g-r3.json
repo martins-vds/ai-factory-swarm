@@ -117,13 +117,13 @@
         },
         {
           "check": "verdict",
-          "detail": "pass (expected pass)",
-          "ok": true
+          "detail": "pass (expected changes-required or blocked)",
+          "ok": false
         },
         {
-          "check": "no blocker or major finding",
-          "detail": "0 serious finding(s)",
-          "ok": true
+          "check": "finds: htmx 2 doesn't swap the dialogs' 404 responses (an unknown tracking ID leaves the dialog loading)",
+          "detail": "no finding \u2265 major matches",
+          "ok": false
         }
       ],
       "ci": {
@@ -138,7 +138,7 @@
       },
       "kind": "verifier",
       "must_pass": true,
-      "passed": true,
+      "passed": false,
       "pr": 966,
       "skills": {
         "afs-evidence": 1,
@@ -276,13 +276,13 @@
         },
         {
           "check": "verdict",
-          "detail": "changes-required (expected pass)",
-          "ok": false
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
         },
         {
-          "check": "no blocker or major finding",
-          "detail": "1 serious finding(s)",
-          "ok": false
+          "check": "finds: about.html uses Tailwind utilities (py-8, mt-8, leading-relaxed) the committed CSS lacks",
+          "detail": "major: The linked Tailwind asset lacks .py-8, .mt-8, and .leading-relaxed, so the approved reading-room layout is incomplete.",
+          "ok": true
         }
       ],
       "ci": {
@@ -297,7 +297,7 @@
       },
       "kind": "verifier",
       "must_pass": true,
-      "passed": false,
+      "passed": true,
       "pr": 974,
       "skills": {
         "afs-evidence": 1,
@@ -319,6 +319,6 @@
     }
   },
   "eval_repo": "martins-vds/ai-factory-eval",
-  "graded_at": "2026-11-17T13:58:47+00:00",
+  "graded_at": "2026-11-17T14:04:10+00:00",
   "run": "2026-11-17-v3g-r3"
 }
