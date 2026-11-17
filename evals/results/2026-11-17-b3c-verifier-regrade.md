@@ -25,3 +25,15 @@ The failures that remain, by kind, and the phase 3e step that targets each:
   (evidence) and step 5 (the operator's ruling).
 - **Verdict contradicts findings:** LL-04 r1 (`changes-required` with no serious finding). Targeted by step 3.
 - **Blocked on a finding instead of a gate:** BK-05G r2 and r3. Targeted by steps 3 and 6.
+
+## Operator rulings (step 5, 2026-11-17)
+
+- **LL-03 verify becomes a defect case.** htmx 2.0.11 doesn't swap 4xx or 5xx responses by default, so the fee
+  page's error fragments never show. Graded that way, b3c gives:
+  - r3 pass: `changes-required`, with the htmx finding as major;
+  - r1 fail: `changes-required`, but on a ledger finding;
+  - r2 fail: `pass`.
+
+  The majority is still fail, so the total stays 1 of 6.
+- **BK-05G verify stays clean.** The b3c blocker "the URLconf omits the booking routes" (r2) is a false
+  positive.
