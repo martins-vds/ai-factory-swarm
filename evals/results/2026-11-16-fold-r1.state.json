@@ -1,0 +1,32 @@
+{
+  "pilot-bk-05f": {
+    "base_branch": "eval/2026-11-16-fold-r1/pilot-bk-05f",
+    "dispatched_at": "2026-11-16T20:33:44+00:00",
+    "issue": 727,
+    "work_pr": null
+  },
+  "pilot-bk-05g": {
+    "base_branch": "eval/2026-11-16-fold-r1/pilot-bk-05g",
+    "dispatched_at": "2026-11-16T20:33:47+00:00",
+    "issue": 728,
+    "work_pr": null
+  },
+  "pilot-dm-05d": {
+    "base_branch": "eval/2026-11-16-fold-r1/pilot-dm-05d",
+    "dispatched_at": "2026-11-16T20:33:50+00:00",
+    "issue": 729,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "base_branch": "eval/2026-11-16-fold-r1/pilot-dm-05f",
+    "dispatched_at": "2026-11-16T20:33:53+00:00",
+    "issue": 730,
+    "work_pr": null
+  },
+  "synthetic-ll-03": {
+    "base_branch": "eval/2026-11-16-fold-r1/synthetic-ll-03",
+    "dispatched_at": "2026-11-16T20:33:56+00:00",
+    "issue": 733,
+    "work_pr": null
+  }
+}

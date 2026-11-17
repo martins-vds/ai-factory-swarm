@@ -1,6 +1,9 @@
 # ADR-0042: The Specialist Migrator folds into the Migrator
 
-- Status: Proposed. It is accepted only once the eval comparison below holds (ADR-0041).
+- Status: Accepted (2026-11-17), on the condition that harness #180 merges first. The fold measurement
+  ([summary](../../evals/results/2026-11-16-fold-summary.md)) holds once #180's plan-check gap is discounted:
+  LL-03 3/3, DM-05F 3/3 and BK-05F 2/3 pass, as in b3c; BK-05G improves to 2/3; DM-05D stays a fail
+  (a case-text scope defect).
 - Date: 2026-11-16
 - Amends: ADR-0010 (who runs the data pipeline) and ADR-0014 (who builds UI screens)
 - Source: [agent-topology review](../reviews/agent-topology-review.md), finding 2; [plan](../reviews/agent-topology-plan.md),
@@ -43,6 +46,9 @@ The eval baseline b3c gives a measured starting point for the specialty cases:
    plain Migrator case (LL-03) run three times with the folded harness. They are compared with b3c by
    majority of three. If any case that passes by majority in b3c fails by majority after the fold, this ADR
    is rejected and the role restored.
+5. **Rework keeps the ticket id.** A retired role and the role it folded into are one role for ticket ids
+   (`check_plan.py` `FOLDED_INTO`, #180). The Migrator reworks a ticket the Specialist Migrator finished under
+   the same id. The fold measurement found this gap: without it, BK-05F failed validation in every run.
 
 ## Consequences
 - There are nine role agents, not ten, and one prompt fewer to keep in step.
