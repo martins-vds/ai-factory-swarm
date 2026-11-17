@@ -1,0 +1,333 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05E.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: view bypasses the application layer",
+          "detail": "major: The dashboard adapter imports and queries CargoRepository directly instead of calling a use case, violating ADR-0001.",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": null,
+        "Migrator work is verified before it merges": null,
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 763,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "ui-ux-pro-max": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 30.9,
+        "output_tokens": 0,
+        "requests": 147,
+        "sessions": 1
+      }
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05F.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "blocked (expected changes-required or blocked)",
+          "ok": true
+        },
+        {
+          "check": "finds: application use case raises Django Http404 (framework coupling, ADR-0001)",
+          "detail": "no finding \u2265 major matches",
+          "ok": false
+        },
+        {
+          "check": "finds: route eligibility checked in the view, not enforced by the use case",
+          "detail": "no finding \u2265 major matches",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": null,
+        "Migrator work is verified before it merges": null,
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 766,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "clean-architecture": 1,
+        "clean-code": 1,
+        "code-review": 1,
+        "domain-driven-design": 1,
+        "patterns-of-enterprise-application-architecture": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 49.6,
+        "output_tokens": 0,
+        "requests": 212,
+        "sessions": 1
+      }
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05G.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "pass (expected pass)",
+          "ok": true
+        },
+        {
+          "check": "no blocker or major finding",
+          "detail": "0 serious finding(s)",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 770,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 11.9,
+        "output_tokens": 0,
+        "requests": 75,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-02.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: use cases coupled to the framework clock and the ORM",
+          "detail": "major: Lending and return use cases depend on Django's clock and concrete ORM repository instead of application-owned ports.",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "failure",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 774,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "tdd": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 12.9,
+        "output_tokens": 0,
+        "requests": 111,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-03.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "pass (expected changes-required)",
+          "ok": false
+        },
+        {
+          "check": "finds: htmx 2 doesn't swap the 4xx/5xx error fragments (the 502 alert never shows)",
+          "detail": "no finding \u2265 major matches",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": null,
+        "Migrator work is verified before it merges": null,
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 778,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 30.9,
+        "output_tokens": 0,
+        "requests": 165,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-04.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected pass)",
+          "ok": false
+        },
+        {
+          "check": "no blocker or major finding",
+          "detail": "1 serious finding(s)",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 780,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "ui-ux-pro-max": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 18.1,
+        "output_tokens": 0,
+        "requests": 135,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-17T04:25:56+00:00",
+  "run": "2026-11-17-v3e-r1"
+}
