@@ -116,12 +116,24 @@ normalize:
     - ruff check
     - ruff format --check
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      - src/**/templates/**/*.html
+      scripts:
+      - static/**/*.js
+      - assets/**/*.js
+      htmx_errors: true
 notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in eval b3b-r3 a Verifier found two
   major layering defects: the application use case raises Django Http404, and route eligibility is checked in the
   view instead of being enforced by the use case. The operator confirmed both as real violations. The work under
@@ -129,4 +141,4 @@ notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in 
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
   target. Operator ruling 2026-11-17 (option 3): a defect from an earlier ticket is reported apart (`inherited`),
   never as a finding. The use case''s Http404 comes from BK-05C, so it left the expected findings; the eligibility
-  check in the view is BK-05F''s own.'
+  check in the view is BK-05F''s own. The profile also gets `ui_checks` (check_ui.py in the idiom gate).'

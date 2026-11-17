@@ -454,11 +454,12 @@ def check_thresholds(path, profile, errors):
 
 
 def check_layering_gate(path, profile, errors):
-    """A profile with layer contracts runs them: `layering` without check_layers.py in gates.idiom checks nothing."""
-    if profile.get("layering") and not any("check_layers.py" in str(cmd)
-                                            for cmd in (profile.get("gates") or {}).get("idiom") or []):
-        errors.append(f"{path}: `layering` is set but gates.idiom doesn't run it; add "
-                      "`python .migration/harness/tools/check_layers.py`")
+    """A profile with layer contracts or UI checks runs them: without the tool in gates.idiom, they check nothing."""
+    idiom = (profile.get("gates") or {}).get("idiom") or []
+    for key, tool in (("layering", "check_layers.py"), ("ui_checks", "check_ui.py")):
+        if profile.get(key) and not any(tool in str(cmd) for cmd in idiom):
+            errors.append(f"{path}: `{key}` is set but gates.idiom doesn't run it; add "
+                          f"`python .migration/harness/tools/{tool}`")
 
 
 def main():

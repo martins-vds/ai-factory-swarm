@@ -602,6 +602,42 @@
           }
         }
       }
+    },
+    "ui_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "templates"
+      ],
+      "description": "UI checks tools/check_ui.py makes in the idiom gate, on the templates a branch changed (ADR-0043). When set, gates.idiom must run check_ui.py.",
+      "properties": {
+        "templates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "description": "Template path globs (`**` spans folders)."
+        },
+        "scripts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Script globs where htmx configuration may also live."
+        },
+        "htmx_errors": {
+          "type": "boolean",
+          "description": "A template that sends an htmx request needs error-response handling somewhere (responseHandling, a beforeSwap or responseError listener, or response-targets)."
+        },
+        "built_css": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A committed, pre-built Tailwind stylesheet: every utility a changed template uses must be in it."
+        }
+      }
     }
   },
   "$defs": {

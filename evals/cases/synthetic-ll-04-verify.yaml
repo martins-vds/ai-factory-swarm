@@ -55,7 +55,7 @@ notes: 'Now a clean case. The live Verifier blocked LL-04 on the seed-flush regr
   unset since LL-01) is an inherited defect, reported under `inherited`, not as a finding. Re-ruled 2026-11-17 from
   the code: a defect case. LL-04''s own about.html uses py-8, mt-8 and leading-relaxed, which the pre-built static/css/tailwind.css
   (last built in LL-01) doesn''t contain; LL-04 didn''t rebuild it. The stylesheet 404 stays inherited (LL-06, synthetic
-  #134).'
+  #134). The profile also gets `ui_checks` (check_ui.py in the idiom gate).'
 normalize:
 - yaml_set:
     file: .migration/profile.yaml
@@ -89,9 +89,20 @@ normalize:
     - ruff check src config manage.py tests
     - ruff format --check src config manage.py tests
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css
