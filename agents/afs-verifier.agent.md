@@ -46,8 +46,18 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
      `check_layers.py`. A violation it reports fails the gate, which is a finding (`evidence: run: <name>`).
      A `known, not failing` line is debt from an earlier ticket: list it under `inherited` (step 6) when this
      ticket's code relies on it.
-   - Your review covers what the tool can't see. Is each rule enforced where the ADR puts it (a use case, not
-     a view)? Does a view call a use case, or does it do the use case's work itself?
+   - Your review covers what the tool can't see. Two checks find what reading alone misses; do both, and
+     let a failing test be the evidence:
+     - **Where each rule is enforced.** For every business rule the ticket implements (an eligibility check,
+       a limit, a state transition), write a test that calls the use case directly, with no view and no
+       request, using input the rule must refuse. If the use case accepts it, the rule lives in the wrong
+       layer (often the view): that failing test makes it a major finding.
+     - **Every error path renders.** For every request the ticket's pages send (a form post, an htmx or
+       fetch call), list the non-2xx responses its view can return (validation 4xx, not found, a failed
+       downstream call 5xx). Check each one shows the user what the plan says. htmx 2 swaps no 4xx or 5xx
+       response unless the page configures it (`htmx.config.responseHandling`, an `htmx:beforeSwap`
+       handler, or the response-targets extension). Without that, the error fragment never appears: a
+       test that asserts the configuration, or a browser test that triggers the error, shows it.
 4. **Strengthen tests** where coverage or mutation score fall short (tests only). Surviving mutants that
    reveal missing behavior go in the report.
 5. **Ledger:** entries validate; statuses and evidence are true.
