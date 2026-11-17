@@ -42,7 +42,8 @@ notes: 'Now a clean case. The live Verifier blocked LL-04 on the seed-flush regr
   the isolation fixture (harness #167), and the full suite passes on this work branch (b3b-r1: the Verifier ran
   it and found no regression). Pass is the right verdict. Phase 3e: the profile gets today''s layer contracts (`layering`,
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
-  target.'
+  target. Operator ruling 2026-11-17 (option 3): stays clean. The stylesheet 404 every v3e Verifier found (STATICFILES_DIRS
+  unset since LL-01) is an inherited defect, reported under `inherited`, not as a finding.'
 normalize:
 - yaml_set:
     file: .migration/profile.yaml

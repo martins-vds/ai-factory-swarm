@@ -219,6 +219,15 @@ class VerifierVerdictTest(unittest.TestCase):
                                      blocked_reason="mutation_changed: the run was interrupted at 40 of 120 mutants"),
                          [])
 
+    def test_inherited_defects_are_reported_apart(self):
+        # Operator ruling 2026-11-17 (eval v3e LL-04): a defect from an earlier ticket never changes the verdict.
+        ok = self.errors(verdict="pass", inherited=[{"where": "config/settings.py:117", "origin": "LL-01",
+                                                     "what": "STATICFILES_DIRS unset; tailwind.css 404s",
+                                                     "evidence": "run: about-stylesheet"}])
+        self.assertEqual(ok, [])
+        errs = self.errors(verdict="pass", inherited=[{"where": "config/settings.py:117", "what": "x"}])
+        self.assertTrue(any("`origin`" in e for e in errs), errs)
+
     def test_a_handoff_or_another_role_is_not_checked(self):
         self.assertEqual(self.errors(verdict="changes-required", handoff=".migration/handoffs/T-1.md"), [])
         self.assertEqual(self.errors(role="afs-migrator", verdict="changes-required"), [])

@@ -44,8 +44,8 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
 3. **Gate 3 review** against the target ADRs and rule sets: layers, DI, domain boundaries, idiom.
    - Import-level layering is a tool's job: when the profile has `layering`, the idiom gate runs
      `check_layers.py`. A violation it reports fails the gate, which is a finding (`evidence: run: <name>`).
-     A `known, not failing` line is debt in code this ticket's work depends on: report it when the ticket's
-     code relies on it.
+     A `known, not failing` line is debt from an earlier ticket: list it under `inherited` (step 6) when this
+     ticket's code relies on it.
    - Your review covers what the tool can't see. Is each rule enforced where the ADR puts it (a use case, not
      a view)? Does a view call a use case, or does it do the use case's work itself?
 4. **Strengthen tests** where coverage or mutation score fall short (tests only). Surviving mutants that
@@ -58,6 +58,13 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
 
      A claim you can't back this way is `minor`. If a behavior looks wrong but you can't make a test fail,
      it isn't proven.
+   - **Judge this ticket's work; report inherited defects apart.** A defect whose cause is outside this
+     ticket's diff (code an earlier ticket wrote, which this work depends on) is not a finding. List it under
+     `inherited`, with `where`, `what`, `origin` (the ticket that wrote it, or `unknown`) and `evidence`
+     (`run: <name>` of a failing run; don't commit a failing test for it). It never changes the verdict. The
+     dispatcher plans its fix as a separate ticket. Example: an About page that is unstyled because the
+     project's static-files setting predates the ticket is `inherited`; a view this ticket wrote that skips
+     the use case is a finding.
    - **The verdict follows the findings.**
      - `pass`: no blocker or major finding.
      - `changes-required`: at least one blocker or major finding.
@@ -87,4 +94,5 @@ ledger_issues: [<one line>]
 quirk_tickets: [<link>]
 ```
 Add `blocked_reason: "<gate>: <why>"` when the verdict is `blocked`. Each blocker or major finding also
-carries `evidence:` (step 6).
+carries `evidence:` (step 6). Add `inherited: [{where, what, origin, evidence}]` for defects from earlier
+tickets (step 6).

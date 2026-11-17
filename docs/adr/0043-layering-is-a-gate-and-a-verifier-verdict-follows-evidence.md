@@ -42,7 +42,13 @@ A prompt can ask for care, but it can't make a review deterministic. A tool and 
    Without evidence, a finding is `minor`.
 5. **History stays valid.** Verifier returns committed before this rule reached a target are exempt, by the
    same marker mechanism as the PR-reference rule.
-6. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
+6. **A defect from an earlier ticket is reported apart** (operator ruling, 2026-11-17).
+   - Its cause lies outside the ticket's diff, in code an earlier ticket wrote that this work depends on.
+   - It goes under `inherited` (`where`, `what`, `origin`, `evidence`), never under `findings`, and never
+     changes the verdict. Its fix is planned as its own ticket.
+   - Phase 3e's first measurement prompted this: every Verifier found LL-01's unserved stylesheet while
+     verifying LL-04, and BK-05C's `Http404` while verifying BK-05F.
+7. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
    way timeouts are reported apart from wrong verdicts.
 
 ## Consequences
