@@ -474,6 +474,15 @@ def grade_verifier(ret, expect):
     return checks
 
 
+def blocked_gate(ret, expect):
+    """The gate a Verifier's unexpected `blocked` verdict names (`blocked_reason: '<gate>: <why>'`), else None."""
+    allowed = expect["verdict"] if isinstance(expect["verdict"], list) else [expect["verdict"]]
+    if (ret or {}).get("verdict") != "blocked" or "blocked" in allowed:
+        return None
+    reason = str((ret or {}).get("blocked_reason") or "")
+    return reason if ":" in reason and reason.split(":", 1)[0].strip() else None
+
+
 def dig(doc, dotted):
     cur = doc
     for part in str(dotted).split("."):
@@ -585,6 +594,9 @@ def grade(a, cases):
                 checks += grade_migrator(ret, gates, threshold)
             elif case["kind"] == "verifier":
                 checks += grade_verifier(ret, case["expect"])
+                gate = blocked_gate(ret, case["expect"])
+                if gate:
+                    row["blocked_gate"] = gate
             else:
                 files = {}
                 for path in {k.partition(":")[0] for k in case["expect"]["fields"]}:
@@ -595,7 +607,11 @@ def grade(a, cases):
             for wt in trees.values():
                 git(src, "worktree", "remove", "--force", str(wt), check=False)
         row["checks"] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
-        row.update(status="ci-pending" if row.pop("ci_pending", False) else "graded", passed=verdict(checks),
+        # A Verifier blocked because a gate couldn't run or finish (phase 3e) is reported apart from a wrong
+        # verdict, as a timed-out session is: it still fails, but it says the run, not the review, went wrong.
+        status = ("ci-pending" if row.pop("ci_pending", False)
+                  else "verifier-blocked" if "blocked_gate" in row else "graded")
+        row.update(status=status, passed=verdict(checks),
                    skills=session_skills(src, "refs/afs-eval/head"))
     out = pathlib.Path(a.results_dir) / f"{a.run}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

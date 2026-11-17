@@ -100,6 +100,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-run`: run a gate once, keep the full log, show a summary
 - `afs-mutation`: mutation testing on changed code
 - `crap.py`: CRAP from complexity and coverage
+- `check_layers.py`: imports follow the profile's layer contracts (`layering`); runs in the idiom gate
 - `afs-services`: start and check the test services from the compose file
 - `check_runtime.py`: runtimes match the profile
 - `afs-acceptance`: run the acceptance gates outside an agent session

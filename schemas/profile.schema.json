@@ -508,6 +508,100 @@
           "description": "Blocks per session before the hook writes a 'self-check failed' handoff and lets the agent stop."
         }
       }
+    },
+    "layering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contracts"
+      ],
+      "description": "Layer contracts the architecture ADRs state, checked by tools/check_layers.py in the idiom gate (phase 3e). A file the `files` globs match may not import a module a `forbid` pattern matches. When set, gates.idiom must run check_layers.py.",
+      "properties": {
+        "source_root": {
+          "type": "string",
+          "description": "Module names are file paths under this folder (`src` when code imports `cargotracker.*`; `.` when it imports `src.*`). Default `.`."
+        },
+        "contracts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "files",
+              "forbid"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "adr": {
+                "type": "string",
+                "description": "The ADR or ruling the contract comes from."
+              },
+              "files": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Path globs (`**` spans folders)."
+              },
+              "forbid": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Dotted module patterns with shell wildcards; a pattern also matches every module under it."
+              },
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "except_files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "known": {
+          "type": "array",
+          "description": "Violations that predate a contract: reported, not failing. Each names what will remove it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "module",
+              "reason"
+            ],
+            "properties": {
+              "file": {
+                "type": "string",
+                "minLength": 1
+              },
+              "module": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

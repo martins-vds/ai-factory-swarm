@@ -749,7 +749,9 @@ quirk_tickets: []
             validate = (ROOT / "tools/validate.py").read_text(encoding="utf-8")
             (tools / "validate.py").write_text(
                 validate.replace('PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"',
-                                 'PR_ATTRIBUTION_RULE_V1 = "OLD_RULE_MARKER"'),
+                                 'PR_ATTRIBUTION_RULE_V1 = "OLD_RULE_MARKER"')
+                .replace('VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"',
+                         'VERIFIER_VERDICT_RULE_V1 = "OLD_VERIFIER_MARKER"'),
                 encoding="utf-8")
             shutil.copyfile(ROOT / "tools/afs_trace.py", tools / "afs_trace.py")
             shutil.copyfile(ROOT / "tools/check_plan.py", tools / "check_plan.py")

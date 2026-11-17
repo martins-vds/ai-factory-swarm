@@ -165,6 +165,14 @@ class GradeTest(unittest.TestCase):
         self.assertFalse(ev.verdict(ev.grade_verifier({"verdict": "pass", "findings": [
             {"severity": "major", "what": "timed out"}]}, expect)))
 
+    def test_a_verifier_blocked_on_a_gate_is_reported_apart(self):
+        # Phase 3e: an interrupted gate run blocks, and the eval reports it apart from a wrong verdict.
+        ret = {"verdict": "blocked", "blocked_reason": "mutation_changed: interrupted at 40 of 120"}
+        self.assertEqual(ev.blocked_gate(ret, {"verdict": "pass"}), ret["blocked_reason"])
+        self.assertIsNone(ev.blocked_gate(ret, {"verdict": ["changes-required", "blocked"]}))
+        self.assertIsNone(ev.blocked_gate({"verdict": "blocked"}, {"verdict": "pass"}))
+        self.assertIsNone(ev.blocked_gate({"verdict": "changes-required"}, {"verdict": "pass"}))
+
     def test_a_missing_return_fails_every_verifier_check(self):
         self.assertFalse(ev.verdict(ev.grade_verifier(None, {"verdict": "pass"})))
 

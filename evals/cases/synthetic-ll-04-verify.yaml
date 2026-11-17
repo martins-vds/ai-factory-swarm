@@ -40,10 +40,45 @@ expect:
   verdict: pass
 notes: 'Now a clean case. The live Verifier blocked LL-04 on the seed-flush regression, but today''s bootstrap creates
   the isolation fixture (harness #167), and the full suite passes on this work branch (b3b-r1: the Verifier ran
-  it and found no regression). Pass is the right verdict.'
+  it and found no regression). Pass is the right verdict. Phase 3e: the profile gets today''s layer contracts (`layering`,
+  run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
+  target.'
 normalize:
 - yaml_set:
     file: .migration/profile.yaml
     key: target.shared_test_files
     value:
     - tests/conftest.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: layering
+    value:
+      source_root: .
+      contracts:
+      - name: use cases depend only on their ports
+        adr: synthetic LL-02 verify ruling (#79)
+        files:
+        - src/*/services.py
+        forbid:
+        - django
+        - src.*.models
+        - src.*.repository
+        - src.*.clock
+        - src.*.gateway
+        - src.*.views
+        - src.*.forms
+        - src.*.composition
+        - src.core
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.idiom
+    value:
+    - ruff check src config manage.py tests
+    - ruff format --check src config manage.py tests
+    - python .migration/harness/tools/check_layers.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
