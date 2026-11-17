@@ -119,12 +119,24 @@ normalize:
     - ruff check
     - ruff format --check
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      - src/**/templates/**/*.html
+      scripts:
+      - static/**/*.js
+      - assets/**/*.js
+      htmx_errors: true
 notes: 'The live Verifier checked #395 and #402 together; here the work PR is #402''s change on top of #395. Normalization:
   the two stale ledger references and the plan ticket lists the live run added later (pilot #490, b6852cd), each
   only where this commit lacks them. Phase 3e: the profile gets today''s layer contracts (`layering`, run in the
@@ -135,4 +147,4 @@ notes: 'The live Verifier checked #395 and #402 together; here the work PR is #4
   diff (188581d) adds the hx-get dialog buttons and the htmx event script to not_routed_table.html; htmx 2.0.11
   swaps no 4xx response and nothing configures it, so the dialogs'' 404 fragment never shows. That is the LL-03
   defect class. The no-JavaScript-fallback finding is not a defect: ADR-0002''s no-JS clause covers the tracking
-  lookup only.'
+  lookup only. The profile also gets `ui_checks` (check_ui.py in the idiom gate).'

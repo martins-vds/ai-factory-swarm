@@ -93,12 +93,24 @@ normalize:
     - ruff check src config manage.py tests
     - ruff format --check src config manage.py tests
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css
 notes: 'Normalization: stale ledger references the live run fixed later (synthetic #98), as they apply to this commit.
   Phase 3e: the profile gets today''s layer contracts (`layering`, run in the idiom gate) and self-healing, so the
-  Verifier''s verdict and evidence rules are enforced as on a live target.'
+  Verifier''s verdict and evidence rules are enforced as on a live target. The profile also gets `ui_checks` (check_ui.py
+  in the idiom gate).'

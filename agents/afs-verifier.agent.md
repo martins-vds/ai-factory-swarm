@@ -42,8 +42,10 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
    replacement behavior explicitly, distinguish inconsistent source snapshots from target defects,
    and keep unresolved differences visible in the evidence report.
 3. **Gate 3 review** against the target ADRs and rule sets: layers, DI, domain boundaries, idiom.
-   - Import-level layering is a tool's job: when the profile has `layering`, the idiom gate runs
-     `check_layers.py`. A violation it reports fails the gate, which is a finding (`evidence: run: <name>`).
+   - Import-level layering and two UI checks are tools' jobs. When the profile has `layering`, the idiom
+     gate runs `check_layers.py`. When it has `ui_checks`, the gate runs `check_ui.py`: htmx error responses
+     render, and the built CSS holds every utility a changed template uses. A violation either reports fails
+     the gate, which is a finding (`evidence: run: <name>`).
      A `known, not failing` line is debt from an earlier ticket: list it under `inherited` (step 6) when this
      ticket's code relies on it.
    - Your review covers what the tool can't see. Two checks find what reading alone misses; do both, and

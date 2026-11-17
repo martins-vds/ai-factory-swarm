@@ -55,7 +55,7 @@ notes: 'A defect case since 2026-11-17 (operator ruling, phase 3e step 5): htmx 
   by an eval Verifier in b3c r3; the live Verifier missed it. The seed-flush regression the live Verifier blocked
   on is gone with today''s bootstrap (harness #167, #174). Phase 3e: the profile gets today''s layer contracts (`layering`,
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
-  target.'
+  target. The profile also gets `ui_checks` (check_ui.py in the idiom gate).'
 normalize:
 - replace:
     file: .migration/ledger/data.loan-storage.yaml
@@ -124,9 +124,20 @@ normalize:
     - ruff check src config manage.py tests
     - ruff format --check src config manage.py tests
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css

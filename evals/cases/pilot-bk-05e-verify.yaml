@@ -136,13 +136,25 @@ normalize:
     - ruff check
     - ruff format --check
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      - src/**/templates/**/*.html
+      scripts:
+      - static/**/*.js
+      - assets/**/*.js
+      htmx_errors: true
 notes: 'Normalization: the two stale ledger references and the plan ticket lists the live run added later (pilot
   #490, b6852cd), each only where this commit lacks them. Phase 3e: the profile gets today''s layer contracts (`layering`,
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
-  target.'
+  target. The profile also gets `ui_checks` (check_ui.py in the idiom gate).'

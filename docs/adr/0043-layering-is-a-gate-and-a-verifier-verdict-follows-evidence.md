@@ -48,7 +48,15 @@ A prompt can ask for care, but it can't make a review deterministic. A tool and 
      changes the verdict. Its fix is planned as its own ticket.
    - Phase 3e's first measurement prompted this: every Verifier found LL-01's unserved stylesheet while
      verifying LL-04, and BK-05C's `Http404` while verifying BK-05F.
-7. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
+7. **Two UI defects are tools' jobs too** (`ui_checks` in the profile; `tools/check_ui.py` in the idiom gate,
+   on the templates a branch changed):
+   - a template that sends an htmx request needs error-response handling somewhere, because htmx swaps no 4xx
+     or 5xx response by default;
+   - when the stylesheet is committed pre-built, every Tailwind utility a changed template uses must be in it.
+
+   Phase 3e's v3g found these defects (LL-03, BK-05G, LL-04) in one run of three; the tool finds them in
+   every run. `validate.py` refuses `ui_checks` without the gate.
+8. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
    way timeouts are reported apart from wrong verdicts.
 
 ## Consequences

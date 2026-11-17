@@ -73,13 +73,25 @@ normalize:
     - ruff check src config manage.py tests
     - ruff format --check src config manage.py tests
     - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
 - yaml_set:
     file: .migration/profile.yaml
     key: self_heal
     value:
       enabled: true
       max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css
 notes: 'The clean Verifier case since BK-05G and LL-04 were re-ruled as defect cases (2026-11-17): the eval keeps
   at least one, so a Verifier that rejects everything can''t pass. LL-05 is the monthly report command (no UI).
   The live Verifier returned pass (#123) and the work merged (#120); no later finding contradicts it. Phase 3e:
-  today''s layer contracts, idiom gate and self-healing, as in the other Verifier cases.'
+  today''s layer contracts, idiom gate and self-healing, as in the other Verifier cases. The profile also gets `ui_checks`
+  (check_ui.py in the idiom gate).'
