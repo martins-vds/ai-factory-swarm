@@ -54,7 +54,13 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    a `django_db_serialized_rollback` fixture returning `True` in `tests/conftest.py`). The profile's
    `target.shared_test_files` lists where that setting lives; any ticket may change those files. Run the full suite in
    its default order before finishing: a test that passes alone can still break another one.
-5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR.
+5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR. Record each
+   capability's **business rules** under `rules` (`id`, `rule`, `source`): every check that refuses input
+   or must hold (an eligibility check, a limit, a state transition), from the legacy code, a quirk ruling
+   or the plan. Include each one your code enforces, wherever it enforces it, a view included. A
+   capability with none (a static page, a layout) gets `no_rules: <why>`. The Verifier proves each rule is
+   enforced in the layer the ADRs name, so a rule you leave out goes unchecked. The finish check refuses
+   your return while a ticket capability has neither.
 6. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
 
 ## Rules
