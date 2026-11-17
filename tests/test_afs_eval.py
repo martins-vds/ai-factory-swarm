@@ -119,6 +119,87 @@ class ReplanTest(unittest.TestCase):
             self.assertEqual(ev.replan_open_tickets(d, {}), [])
 
 
+def _run(name, rows):
+    return {"run": name, "cases": {cid: dict(r) for cid, r in rows.items()}}
+
+
+class CompareTest(unittest.TestCase):
+    """Majority comparison with usage (adapted from the single-agent-loop kit's compare.py)."""
+
+    def test_a_baseline_majority_pass_that_fails_now_breaks_the_change(self):
+        u = {"requests": 100, "output_tokens": 5000, "minutes": 20.0}
+        base = [_run(f"b{i}", {"a": {"passed": True, "usage": u}, "b": {"passed": i == 0}}) for i in range(3)]
+        now = [_run(f"n{i}", {"a": {"passed": i == 0, "usage": dict(u, requests=80)}, "b": {"passed": True}})
+               for i in range(3)]
+        text, broken = ev.compare(now, base)
+        self.assertEqual(broken, ["a"])
+        self.assertIn("does not hold", text)
+        self.assertIn("80 (-20%)", text)
+        self.assertIn("fail → pass", text)
+
+    def test_the_change_holds_when_no_majority_pass_is_lost(self):
+        base = [_run("b", {"a": {"passed": False}})]
+        now = [_run("n", {"a": {"passed": True}}), _run("n2", {"a": {"passed": False}})]
+        text, broken = ev.compare(now, base)
+        self.assertEqual(broken, [])       # 1 of 2 isn't a majority, and the baseline failed anyway
+        self.assertIn("the change holds", text)
+
+
+class UsageTest(unittest.TestCase):
+    def test_usage_sums_requests_tokens_and_minutes(self):
+        recs = [{"models": {"m": {"requests": 3, "output": 100}}, "started_at": "2026-11-17T01:00:00Z",
+                 "ended_at": "2026-11-17T01:30:00.000Z"},
+                {"models": {"m": {"requests": 2, "output": 50}, "n": {"requests": 1, "output": 5}}}]
+        self.assertEqual(ev.session_usage(recs),
+                         {"sessions": 2, "requests": 6, "output_tokens": 155, "minutes": 30.0})
+
+
+class CoverageTest(unittest.TestCase):
+    def test_role_chains_from_returns_and_roles_without_a_case(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d, ".migration/returns"); r.mkdir(parents=True)
+            for name in ("BK-01.afs-specialist-migrator", "BK-01.afs-verifier", "BK-02.afs-migrator",
+                         "booking.afs-analyst"):
+                (r / f"{name}.yaml").write_text("x: 1\n")
+            cases = [{"id": "c", "role": "afs-migrator"}, {"id": "v", "role": "afs-verifier"}]
+            text, no_case = ev.coverage(cases, [d], {"afs-specialist-migrator": "afs-migrator"})
+            self.assertEqual(no_case, ["afs-analyst"])
+            self.assertIn("| 1 | afs-migrator, afs-verifier | — |", text)
+
+
+class CouplingTest(unittest.TestCase):
+    """Which roles run one after another (adapted from the single-agent-loop kit's coupling_map.py)."""
+
+    def test_pairs_that_always_follow_are_merge_candidates(self):
+        traces = {"BK": ["afs-analyst", "afs-characterizer", "afs-planner"],
+                  "DM": ["afs-analyst", "afs-characterizer", "afs-planner", "afs-migrator"],
+                  "HR": ["afs-analyst", "afs-planner"], "TC": ["afs-auditor"]}
+        text, candidates = ev.coupling(traces, min_coupling=0.8, min_share=0.4)
+        self.assertIn(("afs-analyst", "afs-characterizer"), candidates)
+        self.assertIn(("afs-characterizer", "afs-planner"), candidates)
+        self.assertNotIn(("afs-planner", "afs-migrator"), candidates)   # 1 of 4 traces: below min_share
+        self.assertIn("| afs-analyst | 3 | 75% |", text)
+
+    def test_traces_follow_the_order_returns_were_first_committed(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            def git(*a):
+                subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@e", *a],
+                               check=True, capture_output=True)
+            git("init", "-q")
+            r = pathlib.Path(d, ".migration/returns"); r.mkdir(parents=True)
+            for i, name in enumerate(["BK-03.afs-characterizer", "BK-02.afs-analyst",
+                                      "BK-05A.afs-specialist-migrator", "BK-05A.afs-verifier"]):
+                (r / f"{name}.yaml").write_text("x: 1\n")
+                git("add", "-A")
+                git("commit", "-q", "-m", name, "--date", f"2026-11-0{i + 1}T00:00:00Z")
+                subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q",
+                                "--amend", "--no-edit"], env={**__import__("os").environ,
+                                "GIT_COMMITTER_DATE": f"2026-11-0{i + 1}T00:00:00Z"}, check=True)
+            traces = ev.role_traces(d, "slice", {"afs-specialist-migrator": "afs-migrator"})
+            self.assertEqual(traces, {"BK": ["afs-characterizer", "afs-analyst", "afs-migrator", "afs-verifier"]})
+
+
 class RetiredRoleTest(unittest.TestCase):
     def test_prepare_always_re_plans_retired_roles(self):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.

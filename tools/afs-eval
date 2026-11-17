@@ -12,6 +12,12 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
   afs-eval grade   --cases evals/cases --run R --eval-repo O/R [--case ID ...]   # writes evals/results/R.json
   afs-eval refresh --cases evals/cases --run R --eval-repo O/R  # after the eval repo's main moved mid-run
   afs-eval report  --results evals/results/R.json [--baseline evals/results/B.json] [--out R.md]
+  afs-eval compare --runs R1.json R2.json R3.json --baseline B1.json B2.json B3.json [--out F.md]
+                                                                # majority per case, flips, usage; exit 1 when
+                                                                # a baseline majority pass now fails
+  afs-eval coverage --target DIR [--target DIR ...] [--require] # role chains the live targets use vs the cases
+  afs-eval coupling --target DIR [...] [--by slice|ticket]       # which roles carry the work and which always
+                                                                # run one after another (merge candidates)
   afs-eval skills  --repo DIR [--repo DIR ...]                  # skill loads per agent, from cost records
 
 **prepare** builds, for each case, the branch `eval/<run>/<case>` in the eval repo:
@@ -45,12 +51,14 @@ Grading never trusts the agent's own claims where CI or a re-run can decide: Gat
 CI, validation is re-run here.
 """
 import argparse
+import collections
 import datetime as dt
 import json
 import os
 import pathlib
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -621,7 +629,7 @@ def grade(a, cases):
         status = ("ci-pending" if row.pop("ci_pending", False)
                   else "verifier-blocked" if "blocked_gate" in row else "graded")
         row.update(status=status, passed=verdict(checks),
-                   skills=session_skills(src, "refs/afs-eval/head"))
+                   **usage_and_skills(src))
     out = pathlib.Path(a.results_dir) / f"{a.run}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
@@ -648,17 +656,53 @@ def agent_pr(eval_repo, issue, base):
     return None
 
 
-def session_skills(src, ref):
-    names = git(src, "ls-tree", "-r", "--name-only", ref, ".migration/costs", check=False).stdout.split()
-    skills = {}
+def usage_and_skills(src):
+    records = session_records(src, "refs/afs-eval/base", "refs/afs-eval/head")
+    return {"skills": session_skills(records), "usage": session_usage(records)}
+
+
+def session_records(src, base, head):
+    """Cost records the agent's sessions added (base..head). The case branch carries the source target's own
+    history of records, which belong to other sessions."""
+    names = git(src, "diff", "--diff-filter=A", "--name-only", base, head, "--", ".migration/costs",
+                check=False).stdout.split()
+    out = []
     for name in names:
         try:
-            rec = json.loads(git(src, "show", f"{ref}:{name}").stdout)
+            out.append(json.loads(git(src, "show", f"{head}:{name}").stdout))
         except ValueError:
             continue
+    return out
+
+
+def session_skills(records):
+    skills = {}
+    for rec in records:
         for s in rec.get("skills_invoked") or []:
             skills[s["skill"]] = skills.get(s["skill"], 0) + s["count"]
     return dict(sorted(skills.items()))
+
+
+def minutes(rec):
+    try:
+        start = dt.datetime.fromisoformat(str(rec["started_at"]).replace("Z", "+00:00"))
+        end = dt.datetime.fromisoformat(str(rec["ended_at"]).replace("Z", "+00:00"))
+        return max((end - start).total_seconds() / 60, 0.0)
+    except (KeyError, ValueError):
+        return 0.0
+
+
+def session_usage(records):
+    """What a case's sessions spent: model requests, output tokens and wall minutes (cost records, ADR-0021).
+    Input tokens aren't recorded on the coding agent, so cost isn't computed; it is never guessed."""
+    usage = {"sessions": len(records), "requests": 0, "output_tokens": 0, "minutes": 0.0}
+    for rec in records:
+        for m in (rec.get("models") or {}).values():
+            usage["requests"] += int(m.get("requests") or 0)
+            usage["output_tokens"] += int(m.get("output") or 0)
+        usage["minutes"] += minutes(rec)
+    usage["minutes"] = round(usage["minutes"], 1)
+    return usage
 
 
 # ---------------------------------------------------------------- report
@@ -696,6 +740,160 @@ def report(results, baseline=None):
         lines += ["", "## Skills loaded across the run", ""]
         lines += [f"- `{s}`: {n}" for s, n in sorted(skills.items(), key=lambda kv: (-kv[1], kv[0]))]
     return "\n".join(lines) + "\n"
+
+
+def majority(runs):
+    """{case: {"passes": n, "runs": n, "passed": bool, "usage": median usage}} over runs of one variant."""
+    out = {}
+    for res in runs:
+        for cid, row in res["cases"].items():
+            c = out.setdefault(cid, {"passes": 0, "runs": 0, "must_pass": row.get("must_pass"), "usages": [],
+                                     "statuses": []})
+            c["runs"] += 1
+            c["passes"] += 1 if row.get("passed") else 0
+            c["statuses"].append("pass" if row.get("passed") else row.get("status") or "fail")
+            if row.get("usage"):
+                c["usages"].append(row["usage"])
+    for c in out.values():
+        c["passed"] = c["passes"] * 2 > c["runs"]
+        usages = c.pop("usages")
+        c["usage"] = {k: statistics.median(u[k] for u in usages) for k in ("requests", "output_tokens", "minutes")} \
+            if usages else None
+    return out
+
+
+def pct(new, old):
+    return "n/a" if not old else f"{(new - old) / old:+.0%}"
+
+
+def compare(runs, baseline_runs):
+    """Two variants by majority of their runs (ADR-0041). The change holds unless a case that passes by majority
+    in the baseline fails by majority after it. Usage (median per case) is shown beside, for a person to weigh;
+    it never decides. Adapted from compare.py in anthropics/single-agent-loop-kit (Apache-2.0)."""
+    now, before = majority(runs), majority(baseline_runs)
+    lines = [f"# {', '.join(r['run'] for r in runs)} against {', '.join(r['run'] for r in baseline_runs)}", "",
+             "| Case | Baseline | Now | Flip | Requests | Output tokens | Minutes |", "|---|---|---|---|---|---|---|"]
+    broken = []
+    totals = {"now": collections.Counter(), "before": collections.Counter()}
+    for cid in sorted(now):
+        n, b = now.get(cid), before.get(cid)
+        flip = ""
+        if n and b and n["passed"] != b["passed"]:
+            flip = "fail → pass" if n["passed"] else "**pass → fail**"
+            if not n["passed"]:
+                broken.append(cid)
+        cells = []
+        for key in ("requests", "output_tokens", "minutes"):
+            nu, bu = (n or {}).get("usage"), (b or {}).get("usage")
+            if nu and bu:
+                totals["now"][key] += nu[key]
+                totals["before"][key] += bu[key]
+                cells.append(f"{nu[key]:g} ({pct(nu[key], bu[key])})")
+            else:
+                cells.append(f"{nu[key]:g}" if nu else "—")
+        show = lambda c: f"{c['passes']}/{c['runs']} {'pass' if c['passed'] else 'fail'}" if c else "—"  # noqa: E731
+        lines.append(f"| `{cid}` | {show(b)} | {show(n)} | {flip} | " + " | ".join(cells) + " |")
+    pn = sum(1 for c in now.values() if c["passed"])
+    shared = [cid for cid in now if cid in before]
+    pb = sum(1 for cid in shared if before[cid]["passed"])
+    lines += ["", f"By majority: **{pn}/{len(now)}** now; the baseline passes {pb}/{len(shared)} of the same cases."]
+    if totals["before"]:
+        lines.append("Median usage over the cases both variants ran: " + ", ".join(
+            f"{k.replace('_', ' ')} {totals['now'][k]:g} ({pct(totals['now'][k], totals['before'][k])})"
+            for k in ("requests", "output_tokens", "minutes")) + ".")
+    lines += ["", "**Verdict:** " + (f"the change does not hold: {', '.join(broken)} passed by majority before and "
+                                     "fails by majority now." if broken else
+                                     "the change holds: no case that passed by majority now fails by majority.")]
+    return "\n".join(lines) + "\n", broken
+
+
+def chains(target_dirs, retired=None):
+    """Role chains a live target used: for each ticket, the set of roles whose returns it has (a retired role
+    counted as its successor)."""
+    retired = retired or {}
+    out = collections.Counter()
+    for d in target_dirs:
+        by_ticket = collections.defaultdict(set)
+        for f in pathlib.Path(d, ".migration/returns").glob("*.y*ml"):
+            ticket, _, role = f.stem.rpartition(".")
+            if ticket and role.startswith("afs-"):
+                by_ticket[ticket].add(retired.get(role, role))
+        for roles in by_ticket.values():
+            out[tuple(sorted(roles))] += 1
+    return out
+
+
+def coverage(cases, target_dirs, retired=None):
+    """Which role chains the live targets use have a case for every role in them. A case runs one session, so
+    this is role coverage per chain: a chain whose roles all have cases can still drop a handoff the eval never
+    sees. Adapted from chain_coverage.py in anthropics/single-agent-loop-kit (Apache-2.0)."""
+    retired = retired or {}
+    cased = {retired.get(r, r) for r in (c.get("role") or c.get("agent") for c in cases)}
+    used = chains(target_dirs, retired)
+    lines = ["| Tickets | Roles | Roles without a case |", "|---|---|---|"]
+    gaps = []
+    for roles, n in used.most_common():
+        current = list(roles)
+        missing = [r for r in current if r not in cased]
+        if missing:
+            gaps.append((current, missing))
+        lines.append(f"| {n} | {', '.join(current)} | {', '.join(missing) or '—'} |")
+    roles_used = sorted({r for roles in used for r in roles})
+    no_case = [r for r in roles_used if r not in cased]
+    lines += ["", f"Roles with a case: {', '.join(sorted(r for r in cased if r)) or 'none'}.",
+              f"Roles the targets use with no case: {', '.join(no_case) or 'none'}. A change to one of these "
+              "roles can't be measured until a case covers it."]
+    return "\n".join(lines) + "\n", no_case
+
+
+def role_traces(target_dir, by="slice", retired=None):
+    """{trace: [role, ...]} in the order each role first committed a return. A trace is a slice (the ticket id's
+    prefix: BK-05F → BK) or one ticket."""
+    retired = retired or {}
+    root = pathlib.Path(target_dir)
+    log = git(root, "log", "--reverse", "--diff-filter=A", "--name-only", "--format=@%ct", "--",
+              ".migration/returns", check=False).stdout.splitlines()
+    first, when = {}, 0
+    for line in log:
+        if line.startswith("@"):
+            when = int(line[1:])
+        elif line.strip():
+            first.setdefault(pathlib.Path(line.strip()).name, when)
+    traces = collections.defaultdict(list)
+    for f in sorted(root.glob(".migration/returns/*.y*ml"), key=lambda f: (first.get(f.name, 0), f.name)):
+        ticket, _, role = f.stem.rpartition(".")
+        if not ticket or not role.startswith("afs-"):
+            continue
+        role = retired.get(role, role)
+        key = ticket.split("-", 1)[0] if by == "slice" else ticket
+        if not traces[key] or traces[key][-1] != role:
+            traces[key].append(role)
+    return dict(traces)
+
+
+def coupling(traces, min_coupling=0.8, min_share=0.2):
+    """Which roles carry the work, and which run right after one another (adapted from coupling_map.py in
+    anthropics/single-agent-loop-kit, Apache-2.0). A pair is a merge candidate when B follows A directly in at
+    least `min_coupling` of the traces holding the rarer of the two, and the pair appears in at least
+    `min_share` of all traces. The fixed pipeline order (ADR-0040's Migrator → Verifier, a slice's analysis →
+    characterization → plan) shows up here by design: read a candidate against the ADR that set the order."""
+    n = len(traces)
+    seen = collections.Counter(r for roles in traces.values() for r in set(roles))
+    follows = collections.Counter()
+    for roles in traces.values():
+        follows.update(set(zip(roles, roles[1:])))
+    lines = ["| Role | Traces | Share |", "|---|---|---|"]
+    lines += [f"| {r} | {c} | {c / n:.0%} |" for r, c in seen.most_common()]
+    lines += ["", "| A → B | Traces | Coupling | Share | Merge candidate |", "|---|---|---|---|---|"]
+    candidates = []
+    for (a, b), c in follows.most_common():
+        couple = c / min(seen[a], seen[b])
+        share = c / n
+        hit = couple >= min_coupling and share >= min_share
+        if hit:
+            candidates.append((a, b))
+        lines.append(f"| {a} → {b} | {c} | {couple:.0%} | {share:.0%} | {'yes' if hit else ''} |")
+    return "\n".join(lines) + "\n", candidates
 
 
 def must_pass_regressions(results, baseline):
@@ -738,6 +936,19 @@ def main(argv=None):
     p.add_argument("--results", required=True)
     p.add_argument("--baseline")
     p.add_argument("--out")
+    p = sub.add_parser("compare")
+    p.add_argument("--runs", nargs="+", required=True, help="graded results of the changed variant")
+    p.add_argument("--baseline", nargs="+", required=True, help="graded results of the baseline")
+    p.add_argument("--out")
+    p = sub.add_parser("coverage")
+    p.add_argument("--cases", default=str(ROOT / "evals/cases"))
+    p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns)")
+    p.add_argument("--require", action="store_true", help="exit 1 when a used role has no case")
+    p = sub.add_parser("coupling")
+    p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns' history)")
+    p.add_argument("--by", choices=("slice", "ticket"), default="slice")
+    p.add_argument("--min-coupling", type=float, default=0.8)
+    p.add_argument("--min-share", type=float, default=0.2)
     p = sub.add_parser("skills")
     p.add_argument("--repo", action="append", required=True, help="a target checkout with .migration/costs")
     a = ap.parse_args(argv)
@@ -752,6 +963,27 @@ def main(argv=None):
             print(f"afs-eval: must-pass case(s) flipped to fail: {', '.join(regressions)}", file=sys.stderr)
         print(f"AFS-TOOL afs-eval exit={1 if regressions else 0}")
         return 1 if regressions else 0
+    if a.cmd == "compare":
+        load = lambda paths: [json.loads(pathlib.Path(x).read_text()) for x in paths]  # noqa: E731
+        text, broken = compare(load(a.runs), load(a.baseline))
+        (pathlib.Path(a.out).write_text(text) if a.out else sys.stdout.write(text))
+        print(f"AFS-TOOL afs-eval exit={1 if broken else 0}")
+        return 1 if broken else 0
+    if a.cmd == "coverage":
+        sys.path.insert(0, str(HERE))
+        from check_plan import FOLDED_INTO
+        text, no_case = coverage(load_cases(a.cases), a.target, FOLDED_INTO)
+        sys.stdout.write(text)
+        return 1 if (a.require and no_case) else 0
+    if a.cmd == "coupling":
+        sys.path.insert(0, str(HERE))
+        from check_plan import FOLDED_INTO
+        traces = {}
+        for t in a.target:
+            traces.update({f"{pathlib.Path(t).name}:{k}": v for k, v in role_traces(t, a.by, FOLDED_INTO).items()})
+        text, _ = coupling(traces, a.min_coupling, a.min_share)
+        sys.stdout.write(f"{len(traces)} traces (by {a.by}).\n\n" + text)
+        return 0
     if a.cmd == "skills":
         records = []
         for repo in a.repo:

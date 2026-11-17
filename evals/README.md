@@ -40,6 +40,45 @@ r2 with r1, which shows how much the cases vary on their own.
 **Comparisons.** Compare only against a baseline taken with the same Copilot model. Each results file records
 when it was graded.
 
+**Deciding on a change.** Use `compare` with all the runs of both variants:
+
+```sh
+python $H/tools/afs-eval compare --runs evals/results/$R-r{1,2,3}.json --baseline evals/results/<base>-r{1,2,3}.json
+```
+
+It judges every case by majority of its runs. It exits 1 when a case that passes by majority in the baseline
+fails by majority now: the rule ADR-0041 and ADR-0042 apply.
+
+Beside each case it shows the median model requests, output tokens and minutes, with the change from the
+baseline. These come from the sessions' cost records. The coding agent records no input tokens, so no cost in
+money is computed. Usage informs a person's call; it never decides one.
+
+**What the eval can't measure yet.** `coverage` lists the role chains the live targets used, one per ticket,
+from their returns, and the roles that have no case:
+
+```sh
+python $H/tools/afs-eval coverage --target /path/to/pilot --target /path/to/synthetic
+```
+
+Run it before changing a role. A change to a role without a case can't be measured until a case covers it.
+A case runs one session, so even a chain whose roles all have cases can drop a handoff unseen.
+
+**Which roles to merge.** `coupling` reads the live targets' return history. Each slice is one trace, with
+its roles in the order they first committed a return (`--by ticket` makes each ticket a trace instead):
+
+```sh
+python $H/tools/afs-eval coupling --target /path/to/pilot --target /path/to/synthetic
+```
+
+It shows how many traces each role appears in. It flags a pair as a merge candidate when one role follows the
+other in most traces that hold the rarer of the two. Some pairs follow by design, such as the Migrator and
+Verifier under ADR-0040: read each candidate against the ADR that set its order.
+
+`compare`, `coverage` and `coupling` adapt three scripts from Anthropic's
+[single-agent-loop kit](https://github.com/anthropics/single-agent-loop-kit) (Apache-2.0): `compare.py`,
+`chain_coverage.py` and `coupling_map.py`. The kit's eval runner and reference loop drive an agent built on the
+API; ours are Copilot custom agents, so those parts don't fit.
+
 ## The eval repository's `main`
 
 Copilot reads custom agents and `copilot-setup-steps.yml` from the default branch. So the eval repository's
