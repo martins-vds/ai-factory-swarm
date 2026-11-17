@@ -119,6 +119,54 @@ class ReplanTest(unittest.TestCase):
             self.assertEqual(ev.replan_open_tickets(d, {}), [])
 
 
+def _run(name, rows):
+    return {"run": name, "cases": {cid: dict(r) for cid, r in rows.items()}}
+
+
+class CompareTest(unittest.TestCase):
+    """Majority comparison with usage (adapted from the single-agent-loop kit's compare.py)."""
+
+    def test_a_baseline_majority_pass_that_fails_now_breaks_the_change(self):
+        u = {"requests": 100, "output_tokens": 5000, "minutes": 20.0}
+        base = [_run(f"b{i}", {"a": {"passed": True, "usage": u}, "b": {"passed": i == 0}}) for i in range(3)]
+        now = [_run(f"n{i}", {"a": {"passed": i == 0, "usage": dict(u, requests=80)}, "b": {"passed": True}})
+               for i in range(3)]
+        text, broken = ev.compare(now, base)
+        self.assertEqual(broken, ["a"])
+        self.assertIn("does not hold", text)
+        self.assertIn("80 (-20%)", text)
+        self.assertIn("fail → pass", text)
+
+    def test_the_change_holds_when_no_majority_pass_is_lost(self):
+        base = [_run("b", {"a": {"passed": False}})]
+        now = [_run("n", {"a": {"passed": True}}), _run("n2", {"a": {"passed": False}})]
+        text, broken = ev.compare(now, base)
+        self.assertEqual(broken, [])       # 1 of 2 isn't a majority, and the baseline failed anyway
+        self.assertIn("the change holds", text)
+
+
+class UsageTest(unittest.TestCase):
+    def test_usage_sums_requests_tokens_and_minutes(self):
+        recs = [{"models": {"m": {"requests": 3, "output": 100}}, "started_at": "2026-11-17T01:00:00Z",
+                 "ended_at": "2026-11-17T01:30:00.000Z"},
+                {"models": {"m": {"requests": 2, "output": 50}, "n": {"requests": 1, "output": 5}}}]
+        self.assertEqual(ev.session_usage(recs),
+                         {"sessions": 2, "requests": 6, "output_tokens": 155, "minutes": 30.0})
+
+
+class CoverageTest(unittest.TestCase):
+    def test_role_chains_from_returns_and_roles_without_a_case(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d, ".migration/returns"); r.mkdir(parents=True)
+            for name in ("BK-01.afs-specialist-migrator", "BK-01.afs-verifier", "BK-02.afs-migrator",
+                         "booking.afs-analyst"):
+                (r / f"{name}.yaml").write_text("x: 1\n")
+            cases = [{"id": "c", "role": "afs-migrator"}, {"id": "v", "role": "afs-verifier"}]
+            text, no_case = ev.coverage(cases, [d], {"afs-specialist-migrator": "afs-migrator"})
+            self.assertEqual(no_case, ["afs-analyst"])
+            self.assertIn("| 1 | afs-migrator, afs-verifier | — |", text)
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."

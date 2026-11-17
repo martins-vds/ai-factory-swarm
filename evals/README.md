@@ -40,6 +40,36 @@ r2 with r1, which shows how much the cases vary on their own.
 **Comparisons.** Compare only against a baseline taken with the same Copilot model. Each results file records
 when it was graded.
 
+**Deciding on a change.** Use `compare` with all the runs of both variants:
+
+```sh
+python $H/tools/afs-eval compare --runs evals/results/$R-r{1,2,3}.json --baseline evals/results/<base>-r{1,2,3}.json
+```
+
+It judges every case by majority of its runs. It exits 1 when a case that passes by majority in the baseline
+fails by majority now: the rule ADR-0041 and ADR-0042 apply.
+
+Beside each case it shows the median model requests, output tokens and minutes, with the change from the
+baseline. These come from the sessions' cost records. The coding agent records no input tokens, so no cost in
+money is computed. Usage informs a person's call; it never decides one.
+
+**What the eval can't measure yet.** `coverage` lists the role chains the live targets used, one per ticket,
+from their returns, and the roles that have no case:
+
+```sh
+python $H/tools/afs-eval coverage --target /path/to/pilot --target /path/to/synthetic
+```
+
+Run it before changing a role. A change to a role without a case can't be measured until a case covers it.
+A case runs one session, so even a chain whose roles all have cases can drop a handoff unseen.
+
+`compare` and `coverage` adapt two scripts from Anthropic's
+[single-agent-loop kit](https://github.com/anthropics/single-agent-loop-kit) (Apache-2.0): `compare.py` and
+`chain_coverage.py`. The rest of the kit doesn't fit this harness:
+- its eval runner and reference loop drive an agent built on the API, and ours are Copilot custom agents;
+- `coupling_map.py` would show which roles run together, but here the order is fixed by ADR-0040 (every
+  Migrator ticket gets a Verifier), not discovered.
+
 ## The eval repository's `main`
 
 Copilot reads custom agents and `copilot-setup-steps.yml` from the default branch. So the eval repository's
