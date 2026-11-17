@@ -60,6 +60,8 @@ import yaml
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
 KINDS = ("migrator", "verifier", "bootstrap")
 SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
 COPILOT = "copilot-swe-agent[bot]"
@@ -291,9 +293,16 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
         raise
 
 
+def prepare_role_map(a):
+    """Roles to re-plan on open tickets: every retired role, plus `--role-map`."""
+    return {**FOLDED_INTO, **role_map(a)}
+
+
 def prepare(a, cases):
+    # A retired role's open tickets are always re-planned under its successor: today's check_plan refuses them,
+    # and the agent would stop at setup (v3e-r1: every pilot Verifier case had AM-04D/BK-05F/BK-05G open).
     ROLE_MAP_FOR_PREPARE.clear()
-    ROLE_MAP_FOR_PREPARE.update(role_map(a))
+    ROLE_MAP_FOR_PREPARE.update(prepare_role_map(a))
     harness = pathlib.Path(a.harness).resolve()
     if not a.allow_unreleased:
         head = git(harness, "rev-parse", "HEAD").stdout.strip()

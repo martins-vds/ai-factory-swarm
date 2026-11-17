@@ -119,6 +119,15 @@ class ReplanTest(unittest.TestCase):
             self.assertEqual(ev.replan_open_tickets(d, {}), [])
 
 
+class RetiredRoleTest(unittest.TestCase):
+    def test_prepare_always_re_plans_retired_roles(self):
+        # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.
+        import argparse
+        self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=None)),
+                         {"afs-specialist-migrator": "afs-migrator"})
+        self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=["a=b"]))["a"], "b")
+
+
 class IssueTest(unittest.TestCase):
     def test_bare_references_point_at_the_source_repo_and_the_work_pr_is_filled_in(self):
         body = "Verify {work_pr}. See #89, o/x#3 and [#4](u). Rule #1 stays."
