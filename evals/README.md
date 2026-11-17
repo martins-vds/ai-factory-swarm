@@ -63,12 +63,21 @@ python $H/tools/afs-eval coverage --target /path/to/pilot --target /path/to/synt
 Run it before changing a role. A change to a role without a case can't be measured until a case covers it.
 A case runs one session, so even a chain whose roles all have cases can drop a handoff unseen.
 
-`compare` and `coverage` adapt two scripts from Anthropic's
-[single-agent-loop kit](https://github.com/anthropics/single-agent-loop-kit) (Apache-2.0): `compare.py` and
-`chain_coverage.py`. The rest of the kit doesn't fit this harness:
-- its eval runner and reference loop drive an agent built on the API, and ours are Copilot custom agents;
-- `coupling_map.py` would show which roles run together, but here the order is fixed by ADR-0040 (every
-  Migrator ticket gets a Verifier), not discovered.
+**Which roles to merge.** `coupling` reads the live targets' return history. Each slice is one trace, with
+its roles in the order they first committed a return (`--by ticket` makes each ticket a trace instead):
+
+```sh
+python $H/tools/afs-eval coupling --target /path/to/pilot --target /path/to/synthetic
+```
+
+It shows how many traces each role appears in. It flags a pair as a merge candidate when one role follows the
+other in most traces that hold the rarer of the two. Some pairs follow by design, such as the Migrator and
+Verifier under ADR-0040: read each candidate against the ADR that set its order.
+
+`compare`, `coverage` and `coupling` adapt three scripts from Anthropic's
+[single-agent-loop kit](https://github.com/anthropics/single-agent-loop-kit) (Apache-2.0): `compare.py`,
+`chain_coverage.py` and `coupling_map.py`. The kit's eval runner and reference loop drive an agent built on the
+API; ours are Copilot custom agents, so those parts don't fit.
 
 ## The eval repository's `main`
 

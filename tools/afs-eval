@@ -16,6 +16,8 @@ and grades what comes back. Comparing two runs shows which cases *flipped*, not 
                                                                 # majority per case, flips, usage; exit 1 when
                                                                 # a baseline majority pass now fails
   afs-eval coverage --target DIR [--target DIR ...] [--require] # role chains the live targets use vs the cases
+  afs-eval coupling --target DIR [...] [--by slice|ticket]       # which roles carry the work and which always
+                                                                # run one after another (merge candidates)
   afs-eval skills  --repo DIR [--repo DIR ...]                  # skill loads per agent, from cost records
 
 **prepare** builds, for each case, the branch `eval/<run>/<case>` in the eval repo:
@@ -844,6 +846,56 @@ def coverage(cases, target_dirs, retired=None):
     return "\n".join(lines) + "\n", no_case
 
 
+def role_traces(target_dir, by="slice", retired=None):
+    """{trace: [role, ...]} in the order each role first committed a return. A trace is a slice (the ticket id's
+    prefix: BK-05F → BK) or one ticket."""
+    retired = retired or {}
+    root = pathlib.Path(target_dir)
+    log = git(root, "log", "--reverse", "--diff-filter=A", "--name-only", "--format=@%ct", "--",
+              ".migration/returns", check=False).stdout.splitlines()
+    first, when = {}, 0
+    for line in log:
+        if line.startswith("@"):
+            when = int(line[1:])
+        elif line.strip():
+            first.setdefault(pathlib.Path(line.strip()).name, when)
+    traces = collections.defaultdict(list)
+    for f in sorted(root.glob(".migration/returns/*.y*ml"), key=lambda f: (first.get(f.name, 0), f.name)):
+        ticket, _, role = f.stem.rpartition(".")
+        if not ticket or not role.startswith("afs-"):
+            continue
+        role = retired.get(role, role)
+        key = ticket.split("-", 1)[0] if by == "slice" else ticket
+        if not traces[key] or traces[key][-1] != role:
+            traces[key].append(role)
+    return dict(traces)
+
+
+def coupling(traces, min_coupling=0.8, min_share=0.2):
+    """Which roles carry the work, and which run right after one another (adapted from coupling_map.py in
+    anthropics/single-agent-loop-kit, Apache-2.0). A pair is a merge candidate when B follows A directly in at
+    least `min_coupling` of the traces holding the rarer of the two, and the pair appears in at least
+    `min_share` of all traces. The fixed pipeline order (ADR-0040's Migrator → Verifier, a slice's analysis →
+    characterization → plan) shows up here by design: read a candidate against the ADR that set the order."""
+    n = len(traces)
+    seen = collections.Counter(r for roles in traces.values() for r in set(roles))
+    follows = collections.Counter()
+    for roles in traces.values():
+        follows.update(set(zip(roles, roles[1:])))
+    lines = ["| Role | Traces | Share |", "|---|---|---|"]
+    lines += [f"| {r} | {c} | {c / n:.0%} |" for r, c in seen.most_common()]
+    lines += ["", "| A → B | Traces | Coupling | Share | Merge candidate |", "|---|---|---|---|---|"]
+    candidates = []
+    for (a, b), c in follows.most_common():
+        couple = c / min(seen[a], seen[b])
+        share = c / n
+        hit = couple >= min_coupling and share >= min_share
+        if hit:
+            candidates.append((a, b))
+        lines.append(f"| {a} → {b} | {c} | {couple:.0%} | {share:.0%} | {'yes' if hit else ''} |")
+    return "\n".join(lines) + "\n", candidates
+
+
 def must_pass_regressions(results, baseline):
     return [c for c, d, m in flips(results, baseline) if m and d == "pass → fail"]
 
@@ -892,6 +944,11 @@ def main(argv=None):
     p.add_argument("--cases", default=str(ROOT / "evals/cases"))
     p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns)")
     p.add_argument("--require", action="store_true", help="exit 1 when a used role has no case")
+    p = sub.add_parser("coupling")
+    p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns' history)")
+    p.add_argument("--by", choices=("slice", "ticket"), default="slice")
+    p.add_argument("--min-coupling", type=float, default=0.8)
+    p.add_argument("--min-share", type=float, default=0.2)
     p = sub.add_parser("skills")
     p.add_argument("--repo", action="append", required=True, help="a target checkout with .migration/costs")
     a = ap.parse_args(argv)
@@ -918,6 +975,15 @@ def main(argv=None):
         text, no_case = coverage(load_cases(a.cases), a.target, FOLDED_INTO)
         sys.stdout.write(text)
         return 1 if (a.require and no_case) else 0
+    if a.cmd == "coupling":
+        sys.path.insert(0, str(HERE))
+        from check_plan import FOLDED_INTO
+        traces = {}
+        for t in a.target:
+            traces.update({f"{pathlib.Path(t).name}:{k}": v for k, v in role_traces(t, a.by, FOLDED_INTO).items()})
+        text, _ = coupling(traces, a.min_coupling, a.min_share)
+        sys.stdout.write(f"{len(traces)} traces (by {a.by}).\n\n" + text)
+        return 0
     if a.cmd == "skills":
         records = []
         for repo in a.repo:

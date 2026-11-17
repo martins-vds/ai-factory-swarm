@@ -167,6 +167,39 @@ class CoverageTest(unittest.TestCase):
             self.assertIn("| 1 | afs-migrator, afs-verifier | — |", text)
 
 
+class CouplingTest(unittest.TestCase):
+    """Which roles run one after another (adapted from the single-agent-loop kit's coupling_map.py)."""
+
+    def test_pairs_that_always_follow_are_merge_candidates(self):
+        traces = {"BK": ["afs-analyst", "afs-characterizer", "afs-planner"],
+                  "DM": ["afs-analyst", "afs-characterizer", "afs-planner", "afs-migrator"],
+                  "HR": ["afs-analyst", "afs-planner"], "TC": ["afs-auditor"]}
+        text, candidates = ev.coupling(traces, min_coupling=0.8, min_share=0.4)
+        self.assertIn(("afs-analyst", "afs-characterizer"), candidates)
+        self.assertIn(("afs-characterizer", "afs-planner"), candidates)
+        self.assertNotIn(("afs-planner", "afs-migrator"), candidates)   # 1 of 4 traces: below min_share
+        self.assertIn("| afs-analyst | 3 | 75% |", text)
+
+    def test_traces_follow_the_order_returns_were_first_committed(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            def git(*a):
+                subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@e", *a],
+                               check=True, capture_output=True)
+            git("init", "-q")
+            r = pathlib.Path(d, ".migration/returns"); r.mkdir(parents=True)
+            for i, name in enumerate(["BK-03.afs-characterizer", "BK-02.afs-analyst",
+                                      "BK-05A.afs-specialist-migrator", "BK-05A.afs-verifier"]):
+                (r / f"{name}.yaml").write_text("x: 1\n")
+                git("add", "-A")
+                git("commit", "-q", "-m", name, "--date", f"2026-11-0{i + 1}T00:00:00Z")
+                subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q",
+                                "--amend", "--no-edit"], env={**__import__("os").environ,
+                                "GIT_COMMITTER_DATE": f"2026-11-0{i + 1}T00:00:00Z"}, check=True)
+            traces = ev.role_traces(d, "slice", {"afs-specialist-migrator": "afs-migrator"})
+            self.assertEqual(traces, {"BK": ["afs-characterizer", "afs-analyst", "afs-migrator", "afs-verifier"]})
+
+
 class RetiredRoleTest(unittest.TestCase):
     def test_prepare_always_re_plans_retired_roles(self):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.
