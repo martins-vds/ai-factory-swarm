@@ -162,6 +162,8 @@ def check_verifier_return(folder, path, doc, errors):
     - `blocked`: only when a gate couldn't run or finish; `blocked_reason` is `<gate>: <why>`.
     - A blocker or major finding has `evidence`: a test id from `tests_added` (a test that shows the defect), or
       `run: <name>`, a failing run of that name in the ticket's journal. Without evidence, it is `minor`.
+    - `inherited` (defects from earlier tickets this work depends on, operator ruling 2026-11-17) is reported
+      apart: each entry has `where`, `what` and `origin`, and none counts toward the verdict.
     Eval b3c: verdicts contradicted findings (LL-04 r1), and unproven serious findings failed clean work."""
     if doc.get("role") != "afs-verifier" or doc.get("handoff") not in (None, "", "none"):
         return
@@ -181,6 +183,11 @@ def check_verifier_return(folder, path, doc, errors):
             errors.append(f"{path}: verdict blocked needs `blocked_reason: '<gate>: <why>'` naming the gate that "
                           f"couldn't run or finish ({', '.join(VERIFIER_GATES)}). A defect you found is a "
                           "finding with verdict changes-required, not blocked")
+    inherited = doc.get("inherited")
+    if inherited is not None and (not isinstance(inherited, list) or not all(
+            isinstance(i, dict) and i.get("where") and i.get("what") and i.get("origin") for i in inherited)):
+        errors.append(f"{path}: `inherited` lists defects from earlier tickets, each with `where`, `what` and "
+                      "`origin` (the ticket that wrote it, or 'unknown')")
     if serious:
         tests = {str(t) for t in doc.get("tests_added") or []}
         journal = folder / "evidence" / "runs" / f"{doc.get('ticket')}.md"

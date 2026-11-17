@@ -27,14 +27,6 @@ expect:
   - changes-required
   - blocked
   findings:
-  - label: application use case raises Django Http404 (framework coupling, ADR-0001)
-    severity_min: major
-    any_of:
-    - http404
-    - django http
-    - framework
-    - application layer
-    - adr-0001
   - label: route eligibility checked in the view, not enforced by the use case
     severity_min: major
     any_of:
@@ -135,4 +127,6 @@ notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in 
   view instead of being enforced by the use case. The operator confirmed both as real violations. The work under
   review is unchanged; only the expected outcome changed. Phase 3e: the profile gets today''s layer contracts (`layering`,
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
-  target.'
+  target. Operator ruling 2026-11-17 (option 3): a defect from an earlier ticket is reported apart (`inherited`),
+  never as a finding. The use case''s Http404 comes from BK-05C, so it left the expected findings; the eligibility
+  check in the view is BK-05F''s own.'
