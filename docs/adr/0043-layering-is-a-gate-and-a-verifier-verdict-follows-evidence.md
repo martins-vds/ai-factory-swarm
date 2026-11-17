@@ -66,7 +66,16 @@ A prompt can ask for care, but it can't make a review deterministic. A tool and 
      doesn't exist.
    - Eval v3h prompted this: every run missed BK-05F's eligibility rule in the view, though the prompt asked
      for exactly this test.
-9. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
+9. **Business rules live in the ledger** (operator decision, 2026-11-17, after eval v3i).
+   - The Migrator records each capability's business rules under the ledger entry's `rules` (`id`, `rule`,
+     `source`), wherever its code enforces them, a view included. A capability with none gets `no_rules`.
+   - The Verifier's `rules` must cover every ledger rule (`ledger_rule: <id>`), so the list the Verifier
+     checks is not one it chose itself.
+   - `validate.py` checks both, after the `LEDGER_RULES_RULE_V1` marker.
+   - Eval v3i prompted this: BK-05F's Verifiers listed only rules the use case enforced, because the
+     misplaced rule was in no plan or ledger. The Characterizer may record rules too, once it has an eval
+     case to measure the change.
+10. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
    way timeouts are reported apart from wrong verdicts.
 
 ## Consequences

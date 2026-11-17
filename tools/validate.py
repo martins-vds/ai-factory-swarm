@@ -40,6 +40,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for rollout compatibility.
 VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns committed before this rule are exempt.
 VERIFIER_RULES_RULE_V1 = "VERIFIER_RULES_RULE_V1"  # Phase 3e (rules checked): earlier returns are exempt.
+LEDGER_RULES_RULE_V1 = "LEDGER_RULES_RULE_V1"  # Phase 3e (rules in the ledger): earlier returns are exempt.
 
 
 def load_schema(schemas, name):
@@ -273,10 +274,50 @@ def check_verifier_rules(folder, path, doc, errors):
         if r["enforced"] is False and str(r["test"]) not in serious_evidence:
             errors.append(f"{path}: rules[{i}] ('{r['rule']}') isn't enforced by {r['use_case']}: report it as a "
                           f"blocker or major finding with `evidence: {r['test']}`")
+    for cap in caps:
+        listed = {str(r.get("ledger_rule")) for r in rules if isinstance(r, dict) and r.get("capability") == cap}
+        for lr in ledger_rules(folder, cap):
+            if lr["id"] not in listed:
+                errors.append(f"{path}: the ledger lists rule '{lr['id']}' for {cap} ({lr['rule']}); add it to `rules` "
+                              f"with `ledger_rule: {lr['id']}` and a use-case test, enforced or not")
     missing = [c for c in caps if c not in covered]
     if missing:
         errors.append(f"{path}: no rule checked for capability {', '.join(missing)}: add its business rules to "
                       "`rules`, each with a use-case test, or say why it has none under `no_rules`")
+
+
+def ledger_rules(folder, capability):
+    """The `rules` a capability's ledger entry records ([] when none, or when the entry is missing)."""
+    entry = folder / "ledger" / f"{capability}.yaml"
+    try:
+        data = (load_yaml(entry) or {}) if entry.is_file() else {}
+    except Exception:  # noqa: BLE001 (a broken entry is the schema check's error to report)
+        return []
+    return [r for r in data.get("rules") or [] if isinstance(r, dict) and r.get("id")]
+
+
+def check_migrator_ledger_rules(folder, path, doc, errors):
+    """Phase 3e: the Migrator records each capability's business rules in its ledger entry, so the Verifier's
+    rule check has a list to cover that it didn't choose itself (eval v3i: BK-05F's Verifiers listed only rules
+    the use case enforced; the misplaced one was in no plan or ledger).
+
+    Every capability the plan gives a finished Migrator ticket has a ledger entry with `rules` (each `id` and
+    `rule`) or `no_rules: <why>`."""
+    if doc.get("role") != "afs-migrator" or doc.get("handoff") not in (None, "", "none"):
+        return
+    caps = ticket_capabilities(folder, doc.get("ticket"))
+    for cap in caps or []:
+        entry = folder / "ledger" / f"{cap}.yaml"
+        try:
+            data = (load_yaml(entry) or {}) if entry.is_file() else None
+        except Exception:  # noqa: BLE001
+            continue
+        if data is None:
+            continue                                  # a missing entry is check_return_evidence's to report
+        if not data.get("rules") and not data.get("no_rules"):
+            errors.append(f"{path}: ledger entry {cap} records no business rules: list each rule the capability "
+                          "carries under `rules` (`id`, `rule`, `source`), wherever your code enforces it, or say "
+                          "why it has none under `no_rules`")
 
 
 def cell(text, limit=400):
@@ -593,6 +634,8 @@ def main():
                     check_verifier_return(folder, path, doc, errors)
                 if not predates_rule(path, folder, VERIFIER_RULES_RULE_V1):
                     check_verifier_rules(folder, path, doc, errors)
+                if not predates_rule(path, folder, LEDGER_RULES_RULE_V1):
+                    check_migrator_ledger_rules(folder, path, doc, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:

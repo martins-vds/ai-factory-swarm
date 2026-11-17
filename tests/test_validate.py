@@ -301,5 +301,76 @@ class VerifierRulesTest(unittest.TestCase):
         self.assertEqual(self.errors(ticket="HR-04A"), [])
 
 
+class LedgerRulesTest(unittest.TestCase):
+    """Phase 3e: the Migrator records business rules in the ledger; the Verifier covers each (eval v3i, BK-05F)."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools"))
+        import validate
+        self.validate = validate
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self.tmp.name)
+        self.mig = self.repo / ".migration"
+        for d in ("plan", "returns", "ledger"):
+            (self.mig / d).mkdir(parents=True)
+        (self.mig / "plan/booking.tickets.yaml").write_text(
+            "slice: booking\ntickets:\n  - id: BK-05F\n    capabilities: [booking.routing-assign, booking.screen-route]\n")
+        t = self.repo / "tests/booking/test_routing.py"
+        t.parent.mkdir(parents=True)
+        t.write_text("def test_assign_route_rejects_out_of_spec_itinerary():\n    pass\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def ledger(self, cap, **extra):
+        import yaml
+        (self.mig / "ledger" / f"{cap}.yaml").write_text(yaml.safe_dump({"id": cap, **extra}))
+
+    def run_check(self, fn, **doc):
+        errs = []
+        getattr(self.validate, fn)(self.mig, self.mig / "returns/BK-05F.x.yaml", doc, errs)
+        return errs
+
+    def test_the_migrator_records_rules_or_says_why_not(self):
+        self.ledger("booking.routing-assign")
+        self.ledger("booking.screen-route", no_rules="renders the route only")
+        errs = self.run_check("check_migrator_ledger_rules", role="afs-migrator", ticket="BK-05F")
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("booking.routing-assign", errs[0])
+        self.ledger("booking.routing-assign", rules=[{"id": "satisfies-spec", "rule": "the itinerary satisfies "
+                                                      "the route specification"}])
+        self.assertEqual(self.run_check("check_migrator_ledger_rules", role="afs-migrator", ticket="BK-05F"), [])
+        self.assertEqual(self.run_check("check_migrator_ledger_rules", role="afs-migrator", ticket="BK-05F",
+                                        handoff=".migration/handoffs/BK-05F.md"), [])
+
+    def test_the_verifier_covers_every_ledger_rule(self):
+        self.ledger("booking.routing-assign", rules=[{"id": "satisfies-spec", "rule": "the itinerary satisfies "
+                                                      "the route specification"}])
+        self.ledger("booking.screen-route", no_rules="renders the route only")
+        test = "tests/booking/test_routing.py::test_assign_route_rejects_out_of_spec_itinerary"
+        other = {"capability": "booking.routing-assign", "rule": "unknown tracking ID is refused",
+                 "use_case": "CargoRouting.assign_route", "test": test, "enforced": True}
+        doc = {"role": "afs-verifier", "ticket": "BK-05F", "verdict": "pass", "findings": [],
+               "rules": [other], "no_rules": {"booking.screen-route": "renders only"}}
+        errs = self.run_check("check_verifier_rules", **doc)
+        self.assertTrue(any("satisfies-spec" in e for e in errs), errs)
+        covered = dict(other, rule="the itinerary satisfies the route specification", enforced=False,
+                       ledger_rule="satisfies-spec")
+        doc.update(verdict="changes-required", rules=[other, covered],
+                   findings=[{"severity": "major", "where": "views.py:36", "what": "spec checked in the view",
+                              "evidence": test}])
+        self.assertEqual(self.run_check("check_verifier_rules", **doc), [])
+
+    def test_the_ledger_schema_takes_rules(self):
+        import json
+
+        from jsonschema import Draft202012Validator
+        schema = json.loads((ROOT / "schemas/ledger-entry.schema.json").read_text())
+        props = Draft202012Validator(schema["properties"]["rules"])
+        props.validate([{"id": "satisfies-spec", "rule": "x", "source": "plan"}])
+        self.assertFalse(props.is_valid([{"id": "Bad Id", "rule": "x"}]))
+
+
 if __name__ == "__main__":
     unittest.main()
