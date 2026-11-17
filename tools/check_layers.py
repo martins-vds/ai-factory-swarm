@@ -38,7 +38,6 @@ import ast
 import fnmatch
 import pathlib
 import re
-import sys
 
 import yaml
 
