@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Data for the operator's dashboard: what waits on the operator, and how the eval has moved.
+
+    afs-dashboard needs --repo OWNER/REPO [--repo ...] --out needs.json
+    afs-dashboard trend [--results evals/results] [--target DIR ...] --out trend.json
+
+`needs` lists what only the operator can do, from the GitHub REST API:
+- Workflow runs waiting for approval, one row per branch. ADR-0039 has the operator approve every Copilot
+  run on a target.
+- Ready (non-draft) pull requests: the operator merges.
+- Slice acceptances waiting for the side-by-side check: an open PR whose slice coordinator return says
+  `human_check: requested` (ADR-0031). The operator compares and approves; nothing here marks it passed.
+
+The dashboard only shows these; it never approves, merges or signs off.
+
+`trend` reads every graded run family in the results folder (`<date>-<name>-r<N>.json`). It gives the majority
+per case, the cases that pass by majority per family, and median usage. With `--target`, it also lists the
+roles the live targets use that no eval case covers (`afs-eval coverage`).
+
+Writes JSON `{"rows": [...]}` files. A file has one table, so `trend` writes three: `<out>`, `<out stem>-cases`
+and `<out stem>-coverage`.
+"""
+import argparse
+import collections
+import datetime as dt
+import importlib.machinery
+import importlib.util
+import json
+import pathlib
+import re
+import statistics
+import subprocess
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent
+FAMILY = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-(?P<name>.+)-r(?P<n>\d+)\.json$")
+
+
+def gh(path):
+    r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"afs-dashboard: gh api {path}: {r.stderr.strip()}")
+    return json.loads(r.stdout or "null")
+
+
+def needs(repos):
+    rows = []
+    for repo in repos:
+        runs = gh(f"repos/{repo}/actions/runs?status=action_required&per_page=100").get("workflow_runs") or []
+        by_branch = collections.defaultdict(list)
+        for run in runs:
+            by_branch[run.get("head_branch") or "?"].append(run)
+        for branch, items in by_branch.items():
+            oldest = min(r["created_at"] for r in items)
+            prs = [p["number"] for r in items for p in r.get("pull_requests") or []]
+            number = prs[0] if prs else None
+            rows.append({"kind": "Approve workflow runs", "repo": repo, "number": number,
+                         "title": f"{len(items)} run(s) on {branch}",
+                         "url": f"https://github.com/{repo}/pull/{number}" if number
+                         else f"https://github.com/{repo}/actions",
+                         "waiting_since": oldest})
+        for pr in gh(f"repos/{repo}/pulls?state=open&per_page=100"):
+            base = {"repo": repo, "number": pr["number"], "title": pr["title"], "url": pr["html_url"],
+                    "waiting_since": pr["created_at"]}
+            if not pr.get("draft"):
+                rows.append({"kind": "Merge pull request", **base})
+            files = gh(f"repos/{repo}/pulls/{pr['number']}/files?per_page=100")
+            for f in files:
+                if f["filename"].endswith(".afs-slice-coordinator.yaml") and f.get("status") != "removed":
+                    text = subprocess.run(["gh", "api", f"repos/{repo}/contents/{f['filename']}?ref={pr['head']['sha']}",
+                                           "-H", "Accept: application/vnd.github.raw"],
+                                          capture_output=True, text=True).stdout
+                    if re.search(r"^human_check:\s*requested\b", text, re.M):
+                        rows.append({"kind": "Side-by-side check", **base})
+    for r in rows:
+        r["id"] = f"{r['kind']}: {r['repo'].split('/')[-1]} " + (f"#{r['number']}" if r["number"] else r["title"])
+    rows.sort(key=lambda r: r["waiting_since"])
+    now = dt.datetime.now(dt.timezone.utc)
+    for r in rows:
+        since = dt.datetime.fromisoformat(r["waiting_since"].replace("Z", "+00:00"))
+        r["waiting_days"] = round((now - since).total_seconds() / 86400, 1)
+    return rows
+
+
+def families(results):
+    out = collections.defaultdict(list)
+    for f in sorted(pathlib.Path(results).glob("*.json")):
+        m = FAMILY.match(f.name)
+        if m and not f.name.endswith(".state.json"):
+            out[(m["date"], m["name"])].append(json.loads(f.read_text()))
+    return out
+
+
+def trend(results):
+    fams, cases = [], []
+    for (date, name), runs in sorted(families(results).items()):
+        per_case = collections.defaultdict(lambda: {"passes": 0, "runs": 0, "minutes": []})
+        for run in runs:
+            for cid, row in (run.get("cases") or {}).items():
+                c = per_case[cid]
+                c["runs"] += 1
+                c["passes"] += 1 if row.get("passed") else 0
+                if (row.get("usage") or {}).get("minutes"):
+                    c["minutes"].append(row["usage"]["minutes"])
+        passed = 0
+        minutes = []
+        by_kind = collections.Counter()
+        for cid, c in sorted(per_case.items()):
+            ok = c["passes"] * 2 > c["runs"]
+            kind = "verifier" if cid.endswith("-verify") else "migrator"
+            passed += ok
+            by_kind[kind + "_cases"] += 1
+            by_kind[kind + "_passed"] += ok
+            minutes += c["minutes"]
+            cases.append({"family": name, "date": date, "case": cid, "kind": kind, "passes": c["passes"],
+                          "runs": c["runs"], "passed": ok})
+        fams.append({"family": name, "date": date, "runs": len(runs), "cases": len(per_case),
+                     "passed_cases": passed,
+                     "pass_rate": round(passed / len(per_case), 3) if per_case else 0,
+                     **{k: by_kind[k] for k in ("verifier_passed", "verifier_cases", "migrator_passed",
+                                                "migrator_cases")},
+                     "median_minutes": round(statistics.median(minutes), 1) if minutes else None})
+    return fams, cases
+
+
+def coverage(targets):
+    loader = importlib.machinery.SourceFileLoader("afs_eval", str(HERE / "afs-eval"))
+    spec = importlib.util.spec_from_loader("afs_eval", loader)
+    ev = importlib.util.module_from_spec(spec)
+    loader.exec_module(ev)
+    sys.path.insert(0, str(HERE))
+    from check_plan import FOLDED_INTO
+    _, no_case = ev.coverage(ev.load_cases(ROOT / "evals/cases"), targets, FOLDED_INTO)
+    used = sorted({r for roles in ev.chains(targets, FOLDED_INTO) for r in roles})
+    return [{"role": r, "has_case": r not in no_case} for r in used]
+
+
+def write(path, rows, source):
+    """`{rows, meta}`: the rows, with this script's own text and its input, so a reader can check and rerun it."""
+    meta = [{"label": "tools/afs-dashboard", "value": pathlib.Path(__file__).read_text(), "type": "code",
+             "lang": "python"},
+            {"label": "Input", "value": source},
+            {"label": "Generated", "value": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}]
+    pathlib.Path(path).write_text(json.dumps({"rows": rows, "meta": meta}, indent=1) + "\n")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("needs")
+    p.add_argument("--repo", action="append", required=True)
+    p.add_argument("--out", required=True)
+    p = sub.add_parser("trend")
+    p.add_argument("--results", default=str(ROOT / "evals/results"))
+    p.add_argument("--target", action="append", default=[])
+    p.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    if a.cmd == "needs":
+        rows = needs(a.repo)
+        write(a.out, rows, "GitHub REST API: " + ", ".join(a.repo))
+        print(f"{len(rows)} item(s) wait on the operator -> {a.out}")
+        return 0
+    fams, cases = trend(a.results)
+    out = pathlib.Path(a.out)
+    src = f"graded runs in {pathlib.Path(a.results).name}/ (<date>-<family>-r<N>.json)"
+    write(out, fams, src)
+    write(out.with_name(out.stem + "-cases.json"), cases, src)
+    if a.target:
+        write(out.with_name(out.stem + "-coverage.json"), coverage(a.target),
+              "returns in " + ", ".join(pathlib.Path(t).name for t in a.target) + "; evals/cases/")
+    print(f"{len(fams)} run families, {len(cases)} case rows -> {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
