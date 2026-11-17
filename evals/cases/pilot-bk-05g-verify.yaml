@@ -51,6 +51,69 @@ normalize:
     key: target.shared_test_files
     value:
     - tests/conftest.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: layering
+    value:
+      source_root: src
+      contracts:
+      - name: the domain is plain Python
+        adr: ADR-0001
+        files:
+        - src/cargotracker/*/domain/**/*.py
+        forbid:
+        - django
+        - cargotracker.*.application
+        - cargotracker.*.infrastructure
+        - cargotracker.*.interfaces
+      - name: use cases don't depend on web adapters or persistence
+        adr: ADR-0001
+        files:
+        - src/cargotracker/*/application/**/*.py
+        forbid:
+        - django.http
+        - django.shortcuts
+        - django.urls
+        - django.template
+        - django.views
+        - django.db
+        - django.utils.timezone
+        - cargotracker.*.infrastructure
+        - cargotracker.*.interfaces
+      - name: web adapters call use cases, not repositories
+        adr: ADR-0001
+        files:
+        - src/cargotracker/*/interfaces/**/*.py
+        forbid:
+        - cargotracker.*.infrastructure
+        - cargotracker.*.domain.repository
+      known:
+      - file: src/cargotracker/booking/application/routing.py
+        module: django.http
+        reason: BK-05C raises Http404 in the use case; found by the BK-05F verify eval case (operator ruling 2026-11-16);
+          a pilot ticket is to move it to a domain error the view maps
+      - file: src/cargotracker/cargo/interfaces/admin_map/views.py
+        module: cargotracker.cargo.domain.repository
+        reason: AM-04C's view receives the repository and passes it to build_admin_map_data; to wire a use case
+          instead
+      - file: src/cargotracker/handling/interfaces/rest.py
+        module: cargotracker.handling.domain.repository
+        reason: the handling report view receives the repository and passes it to accept_registration; to wire a
+          use case instead
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.idiom
+    value:
+    - ruff check
+    - ruff format --check
+    - python .migration/harness/tools/check_layers.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
 notes: 'The live Verifier checked #395 and #402 together; here the work PR is #402''s change on top of #395. Normalization:
   the two stale ledger references and the plan ticket lists the live run added later (pilot #490, b6852cd), each
-  only where this commit lacks them.'
+  only where this commit lacks them. Phase 3e: the profile gets today''s layer contracts (`layering`, run in the
+  idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live target.'

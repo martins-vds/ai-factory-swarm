@@ -32,9 +32,6 @@ class ValidateTest(unittest.TestCase):
                 self.assertIn(expected, r.stderr)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 import validate as validate_mod  # noqa: E402
@@ -150,3 +147,82 @@ class ComponentReferenceTest(unittest.TestCase):
 
     def test_entries_not_yet_migrated_are_not_held_to_their_components(self):
         self.assertEqual(self.problems("src.loans.services.future_thing", status="in-progress"), [])
+
+class VerifierVerdictTest(unittest.TestCase):
+    """Phase 3e: the verdict follows the findings, and a serious finding carries evidence."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools"))
+        import validate
+        self.validate = validate
+        self.tmp = tempfile.TemporaryDirectory()
+        self.mig = pathlib.Path(self.tmp.name) / ".migration"
+        (self.mig / "evidence/runs").mkdir(parents=True)
+        (self.mig / "returns").mkdir()
+        (self.mig / "evidence/runs/T-1.md").write_text(
+            "# Run journal: T-1\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| 2026-11-17T01:00:00+00:00 | layering | 1 | 0.2 | `python check_layers.py` | `abc` | x | |\n"
+            "| 2026-11-17T01:01:00+00:00 | tests | 0 | 3.0 | `pytest -q` | `def` | | |\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def errors(self, **doc):
+        ret = {"role": "afs-verifier", "ticket": "T-1", "verdict": "pass", "findings": [], "tests_added": []}
+        ret.update(doc)
+        path = self.mig / "returns/T-1.afs-verifier.yaml"
+        path.write_text("x\n")
+        errs = []
+        self.validate.check_verifier_return(self.mig, path, ret, errs)
+        return errs
+
+    def test_pass_with_no_serious_finding_is_fine(self):
+        self.assertEqual(self.errors(findings=[{"severity": "minor", "where": "a.py:1", "what": "naming"}]), [])
+
+    def test_pass_with_a_major_finding_is_refused(self):
+        errs = self.errors(findings=[{"severity": "major", "where": "a.py:1", "what": "x", "evidence": "run: layering"}])
+        self.assertTrue(any("verdict pass with 1" in e for e in errs), errs)
+
+    def test_changes_required_needs_a_serious_finding(self):
+        # eval b3c LL-04 r1: changes-required with no major or blocker finding.
+        errs = self.errors(verdict="changes-required",
+                           findings=[{"severity": "minor", "where": "a.py:1", "what": "x"}])
+        self.assertTrue(any("no blocker or major finding" in e for e in errs), errs)
+
+    def test_a_serious_finding_needs_evidence(self):
+        errs = self.errors(verdict="changes-required",
+                           findings=[{"severity": "major", "where": "a.py:1", "what": "htmx doesn't swap 4xx"}])
+        self.assertTrue(any("has no `evidence`" in e for e in errs), errs)
+
+    def test_evidence_by_test_or_failing_run(self):
+        ok = self.errors(verdict="changes-required", tests_added=["tests/x/test_a.py::test_rejects_ineligible"],
+                         findings=[{"severity": "major", "where": "views.py:40", "what": "eligibility in the view",
+                                    "evidence": "tests/x/test_a.py::test_rejects_ineligible"},
+                                   {"severity": "blocker", "where": "routing.py:1", "what": "Http404 in a use case",
+                                    "evidence": "run: layering"}])
+        self.assertEqual(ok, [])
+        errs = self.errors(verdict="changes-required",
+                           findings=[{"severity": "major", "where": "a.py:1", "what": "x", "evidence": "run: tests"},
+                                     {"severity": "major", "where": "b.py:1", "what": "y",
+                                      "evidence": "tests/test_b.py::test_y"}])
+        self.assertTrue(any("no failing run" in e for e in errs), errs)
+        self.assertTrue(any("isn't in tests_added" in e for e in errs), errs)
+
+    def test_blocked_names_the_gate(self):
+        errs = self.errors(verdict="blocked", findings=[])
+        self.assertTrue(any("blocked_reason" in e for e in errs), errs)
+        errs = self.errors(verdict="blocked", blocked_reason="a serious defect")
+        self.assertTrue(any("blocked_reason" in e for e in errs), errs)
+        self.assertEqual(self.errors(verdict="blocked",
+                                     blocked_reason="mutation_changed: the run was interrupted at 40 of 120 mutants"),
+                         [])
+
+    def test_a_handoff_or_another_role_is_not_checked(self):
+        self.assertEqual(self.errors(verdict="changes-required", handoff=".migration/handoffs/T-1.md"), [])
+        self.assertEqual(self.errors(role="afs-migrator", verdict="changes-required"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

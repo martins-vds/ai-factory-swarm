@@ -38,6 +38,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 HERE = pathlib.Path(__file__).resolve().parent
 PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for rollout compatibility.
+VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns committed before this rule are exempt.
 
 
 def load_schema(schemas, name):
@@ -118,6 +119,11 @@ def shallow_history(folder):
 
 def pre_rule_null_pr(path, folder):
     """Keep an unchanged null-PR return that predates this validator rule as historical output."""
+    return predates_rule(path, folder, PR_ATTRIBUTION_RULE_V1)
+
+
+def predates_rule(path, folder, marker):
+    """An unchanged return whose last commit came before the commit that added `marker` to this validator."""
     def git(*args):
         result = subprocess.run(["git", *args], cwd=folder, capture_output=True, text=True)
         return result.stdout.strip() if result.returncode == 0 else None
@@ -135,7 +141,7 @@ def pre_rule_null_pr(path, folder):
 
     if git_from_top("status", "--porcelain", "--", str(return_path)):
         return False
-    rule_commit = git_from_top("log", "-1", "--format=%H", "-S", PR_ATTRIBUTION_RULE_V1, "--", str(tool_path))
+    rule_commit = git_from_top("log", "-1", "--format=%H", "-S", marker, "--", str(tool_path))
     return_commit = git_from_top("log", "-1", "--format=%H", "--", str(return_path))
     if not rule_commit or not return_commit or return_commit == rule_commit:
         return False
@@ -143,6 +149,56 @@ def pre_rule_null_pr(path, folder):
         ["git", "merge-base", "--is-ancestor", return_commit, rule_commit],
         cwd=top, capture_output=True,
     ).returncode == 0
+
+
+VERIFIER_GATES = ("setup", "build", "behavior", "idiom", "crap", "mutation_changed", "regression")
+
+
+def check_verifier_return(folder, path, doc, errors):
+    """Phase 3e: a Verifier's verdict follows its findings, and a serious finding carries evidence.
+
+    - `pass`: no blocker or major finding.
+    - `changes-required`: at least one blocker or major finding.
+    - `blocked`: only when a gate couldn't run or finish; `blocked_reason` is `<gate>: <why>`.
+    - A blocker or major finding has `evidence`: a test id from `tests_added` (a test that shows the defect), or
+      `run: <name>`, a failing run of that name in the ticket's journal. Without evidence, it is `minor`.
+    Eval b3c: verdicts contradicted findings (LL-04 r1), and unproven serious findings failed clean work."""
+    if doc.get("role") != "afs-verifier" or doc.get("handoff") not in (None, "", "none"):
+        return
+    verdict = doc.get("verdict")
+    findings = [f for f in doc.get("findings") or [] if isinstance(f, dict)]
+    serious = [f for f in findings if f.get("severity") in ("blocker", "major")]
+    if verdict == "pass" and serious:
+        errors.append(f"{path}: verdict pass with {len(serious)} blocker/major finding(s); a pass has none. Use "
+                      "changes-required, or downgrade a finding you can't back with evidence to minor")
+    if verdict == "changes-required" and not serious:
+        errors.append(f"{path}: verdict changes-required with no blocker or major finding; name the defect as a "
+                      "major finding with evidence, or the verdict is pass")
+    if verdict == "blocked":
+        reason = str(doc.get("blocked_reason") or "")
+        gate = reason.split(":", 1)[0].strip()
+        if gate not in VERIFIER_GATES or not reason.partition(":")[2].strip():
+            errors.append(f"{path}: verdict blocked needs `blocked_reason: '<gate>: <why>'` naming the gate that "
+                          f"couldn't run or finish ({', '.join(VERIFIER_GATES)}). A defect you found is a "
+                          "finding with verdict changes-required, not blocked")
+    if serious:
+        tests = {str(t) for t in doc.get("tests_added") or []}
+        journal = folder / "evidence" / "runs" / f"{doc.get('ticket')}.md"
+        failed = {r["gate"] for r in journal_as_of(path, journal) if r["exit"] not in ("0", "")}
+        for f in serious:
+            ev = str(f.get("evidence") or "").strip()
+            name = ev[len("run:"):].strip() if ev.startswith("run:") else None
+            if not ev:
+                problem = "has no `evidence`"
+            elif name is not None:
+                problem = None if name in failed else f"cites run '{name}', which the journal has no failing run of"
+            else:
+                problem = None if ev in tests or any(t.startswith(ev) or ev.startswith(t) for t in tests) else \
+                    f"cites test '{ev}', which isn't in tests_added"
+            if problem:
+                errors.append(f"{path}: {f.get('severity')} finding at {f.get('where')} {problem}. Back it with a "
+                              "test you added that shows the defect (list it in tests_added and cite its id), or "
+                              "`run: <name>` of a failing afs-run in the journal; otherwise it is minor")
 
 
 def cell(text, limit=400):
@@ -390,6 +446,14 @@ def check_thresholds(path, profile, errors):
                               f"is {limit}; make them equal (the threshold is the source of truth)")
 
 
+def check_layering_gate(path, profile, errors):
+    """A profile with layer contracts runs them: `layering` without check_layers.py in gates.idiom checks nothing."""
+    if profile.get("layering") and not any("check_layers.py" in str(cmd)
+                                            for cmd in (profile.get("gates") or {}).get("idiom") or []):
+        errors.append(f"{path}: `layering` is set but gates.idiom doesn't run it; add "
+                      "`python .migration/harness/tools/check_layers.py`")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder")
@@ -405,6 +469,7 @@ def main():
             check(load_schema(schemas, schema), folder / name, errors)
             if name == "profile.yaml":
                 check_thresholds(folder / name, load_yaml(folder / name) or {}, errors)
+                check_layering_gate(folder / name, load_yaml(folder / name) or {}, errors)
             checked += 1
 
     slices = folder / "slices"
@@ -445,6 +510,8 @@ def main():
             if isinstance(doc, dict) and doc.get("ticket") and path.name not in legacy:
                 check_return_evidence(folder, path, doc, profile, pr_roles, errors)
                 check_tier_attempt(path, doc, errors)
+                if not predates_rule(path, folder, VERIFIER_VERDICT_RULE_V1):
+                    check_verifier_return(folder, path, doc, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:

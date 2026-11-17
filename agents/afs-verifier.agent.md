@@ -42,10 +42,29 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
    replacement behavior explicitly, distinguish inconsistent source snapshots from target defects,
    and keep unresolved differences visible in the evidence report.
 3. **Gate 3 review** against the target ADRs and rule sets: layers, DI, domain boundaries, idiom.
+   - Import-level layering is a tool's job: when the profile has `layering`, the idiom gate runs
+     `check_layers.py`. A violation it reports fails the gate, which is a finding (`evidence: run: <name>`).
+     A `known, not failing` line is debt in code this ticket's work depends on: report it when the ticket's
+     code relies on it.
+   - Your review covers what the tool can't see. Is each rule enforced where the ADR puts it (a use case, not
+     a view)? Does a view call a use case, or does it do the use case's work itself?
 4. **Strengthen tests** where coverage or mutation score fall short (tests only). Surviving mutants that
    reveal missing behavior go in the report.
 5. **Ledger:** entries validate; statuses and evidence are true.
-6. Report. Do not fix production code — hand findings back.
+6. **Report.** Do not fix production code: hand findings back. The finish check holds you to these rules:
+   - **A serious finding carries evidence.** A `blocker` or `major` finding has `evidence:`, one of:
+     - the id of a test you added that fails because of the defect, listed in `tests_added`;
+     - `run: <name>`, a failing `afs-run --name <name>` in the ticket's journal.
+
+     A claim you can't back this way is `minor`. If a behavior looks wrong but you can't make a test fail,
+     it isn't proven.
+   - **The verdict follows the findings.**
+     - `pass`: no blocker or major finding.
+     - `changes-required`: at least one blocker or major finding.
+     - `blocked`: only when a gate couldn't run or finish (setup failed, a service was down, a mutation run
+       was interrupted). Set `blocked_reason: "<gate>: <why>"`, where `<gate>` is one of `setup`, `build`,
+       `behavior`, `idiom`, `crap`, `mutation_changed` or `regression`. A defect you found is never
+       `blocked`.
 
 **Your files only:** add your tests, your journal rows and `<ticket>.afs-verifier.yaml`. Never edit another
 role's return file. Each return's scores are checked against the journal as of its own last commit, so your
@@ -62,8 +81,10 @@ pr: <link>
 verdict: <pass | changes-required | blocked>
 gates: {build: <exit>, behavior: <exit>, idiom: <exit>, crap: <max>, mutation_changed: <score>, regression: <exit>}
 evidence_logs: [.migration/evidence/runs/<ticket>.md]
-findings: [{severity: <blocker|major|minor>, where: <file:line>, what: <one line>}]
+findings: [{severity: <blocker|major|minor>, where: <file:line>, what: <one line>}]  # + evidence: (blocker/major)
 tests_added: [<test ids>]
 ledger_issues: [<one line>]
 quirk_tickets: [<link>]
 ```
+Add `blocked_reason: "<gate>: <why>"` when the verdict is `blocked`. Each blocker or major finding also
+carries `evidence:` (step 6).
