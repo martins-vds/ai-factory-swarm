@@ -233,5 +233,73 @@ class VerifierVerdictTest(unittest.TestCase):
         self.assertEqual(self.errors(role="afs-migrator", verdict="changes-required"), [])
 
 
+class VerifierRulesTest(unittest.TestCase):
+    """Phase 3e: the Verifier proves where each business rule is enforced (eval v3h, BK-05F)."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools"))
+        import validate
+        self.validate = validate
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self.tmp.name)
+        self.mig = self.repo / ".migration"
+        (self.mig / "plan").mkdir(parents=True)
+        (self.mig / "returns").mkdir()
+        (self.mig / "plan/booking.tickets.yaml").write_text(
+            "slice: booking\ntickets:\n  - id: BK-05F\n    capabilities: [booking.routing-assign, booking.screen-route]\n")
+        t = self.repo / "tests/booking/test_routing.py"
+        t.parent.mkdir(parents=True)
+        t.write_text("def test_assign_route_rejects_out_of_spec_itinerary():\n    pass\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    TEST = "tests/booking/test_routing.py::test_assign_route_rejects_out_of_spec_itinerary"
+
+    def errors(self, **doc):
+        ret = {"role": "afs-verifier", "ticket": "BK-05F", "verdict": "pass", "findings": []}
+        ret.update(doc)
+        errs = []
+        self.validate.check_verifier_rules(self.mig, self.mig / "returns/BK-05F.afs-verifier.yaml", ret, errs)
+        return errs
+
+    def rule(self, **kw):
+        r = {"capability": "booking.routing-assign", "rule": "only an itinerary that satisfies the route "
+             "specification is assigned", "use_case": "CargoRouting.assign_route", "test": self.TEST,
+             "enforced": True}
+        r.update(kw)
+        return r
+
+    def test_every_capability_is_covered(self):
+        self.assertEqual(self.errors(rules=[self.rule()], no_rules={"booking.screen-route": "renders only"}), [])
+        errs = self.errors(rules=[self.rule()])
+        self.assertTrue(any("booking.screen-route" in e for e in errs), errs)
+
+    def test_rules_are_required(self):
+        errs = self.errors()
+        self.assertTrue(any("list `rules`" in e for e in errs), errs)
+
+    def test_an_unenforced_rule_needs_a_serious_finding_citing_its_test(self):
+        # eval v3h BK-05F: the eligibility rule sat in the view.
+        nr = {"booking.screen-route": "renders only"}
+        errs = self.errors(rules=[self.rule(enforced=False)], no_rules=nr)
+        self.assertTrue(any("isn't enforced" in e for e in errs), errs)
+        ok = self.errors(verdict="changes-required", rules=[self.rule(enforced=False)], no_rules=nr,
+                         findings=[{"severity": "major", "where": "views.py:36", "what": "eligibility in the view",
+                                    "evidence": self.TEST}])
+        self.assertEqual(ok, [])
+
+    def test_the_test_must_exist(self):
+        errs = self.errors(rules=[self.rule(test="tests/booking/test_routing.py::test_missing")],
+                           no_rules={"booking.screen-route": "renders only"})
+        self.assertTrue(any("isn't in the repository" in e for e in errs), errs)
+
+    def test_blocked_handoff_and_unplanned_tickets_are_not_checked(self):
+        self.assertEqual(self.errors(verdict="blocked"), [])
+        self.assertEqual(self.errors(handoff=".migration/handoffs/BK-05F.md"), [])
+        self.assertEqual(self.errors(ticket="HR-04A"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

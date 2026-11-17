@@ -39,6 +39,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 HERE = pathlib.Path(__file__).resolve().parent
 PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for rollout compatibility.
 VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns committed before this rule are exempt.
+VERIFIER_RULES_RULE_V1 = "VERIFIER_RULES_RULE_V1"  # Phase 3e (rules checked): earlier returns are exempt.
 
 
 def load_schema(schemas, name):
@@ -206,6 +207,76 @@ def check_verifier_return(folder, path, doc, errors):
                 errors.append(f"{path}: {f.get('severity')} finding at {f.get('where')} {problem}. Back it with a "
                               "test you added that shows the defect (list it in tests_added and cite its id), or "
                               "`run: <name>` of a failing afs-run in the journal; otherwise it is minor")
+
+
+def ticket_capabilities(folder, ticket):
+    """The capabilities the plan gives a ticket, or None when no plan lists it."""
+    for plan in sorted((folder / "plan").glob("*.tickets.yaml")):
+        try:
+            data = load_yaml(plan) or {}
+        except Exception:  # noqa: BLE001 (a broken plan is check_plan's error to report)
+            continue
+        for t in data.get("tickets") or []:
+            if isinstance(t, dict) and t.get("id") == ticket:
+                return list(t.get("capabilities") or [])
+    return None
+
+
+def test_exists(repo, test_id):
+    """`path::name` (parameters and classes allowed) names a test function in a file of the repository."""
+    file, _, rest = str(test_id).partition("::")
+    name = rest.split("::")[-1].split("[")[0]
+    path = repo / file
+    if not file or not name or not path.is_file():
+        return False
+    return re.search(rf"^\s*(async\s+)?def\s+{re.escape(name)}\s*\(", path.read_text(encoding="utf-8"),
+                     re.M) is not None
+
+
+def check_verifier_rules(folder, path, doc, errors):
+    """Phase 3e: the Verifier proves where each business rule is enforced (eval v3h: BK-05F's eligibility rule
+    sat in the view, and no run wrote the use-case test that shows it).
+
+    - `rules` lists, for each capability the plan gives the ticket, the business rules it carries: `capability`,
+      `rule`, `use_case` (what the test calls), `test` (a test that calls the use case directly, with no view or
+      request, using input the rule must refuse) and `enforced` (true when the use case refuses it).
+    - A capability with no business rule (a static page) goes in `no_rules: {<capability>: <why>}`.
+    - `enforced: false` is a defect in the rule's layer: a blocker or major finding cites that test as evidence.
+    - Each test must exist in the repository."""
+    if doc.get("role") != "afs-verifier" or doc.get("handoff") not in (None, "", "none") \
+            or doc.get("verdict") == "blocked":
+        return
+    caps = ticket_capabilities(folder, doc.get("ticket"))
+    if caps is None:
+        return
+    rules = doc.get("rules")
+    no_rules = doc.get("no_rules") or {}
+    if not isinstance(rules, list) or not isinstance(no_rules, dict):
+        errors.append(f"{path}: list `rules` (each business rule the ticket's capabilities carry, with the use-case "
+                      "test that shows where it's enforced) and `no_rules: {<capability>: <why>}` for a capability "
+                      "with none")
+        return
+    repo = folder.resolve().parent
+    covered = set(no_rules)
+    serious_evidence = {str(f.get("evidence") or "").strip() for f in doc.get("findings") or []
+                        if isinstance(f, dict) and f.get("severity") in ("blocker", "major")}
+    for i, r in enumerate(rules):
+        if not isinstance(r, dict) or not all(r.get(k) for k in ("capability", "rule", "use_case", "test")) \
+                or not isinstance(r.get("enforced"), bool):
+            errors.append(f"{path}: rules[{i}] needs `capability`, `rule`, `use_case`, `test` and `enforced` "
+                          "(true or false)")
+            continue
+        covered.add(r["capability"])
+        if not test_exists(repo, r["test"]):
+            errors.append(f"{path}: rules[{i}] cites test '{r['test']}', which isn't in the repository; write the "
+                          "test that calls the use case directly")
+        if r["enforced"] is False and str(r["test"]) not in serious_evidence:
+            errors.append(f"{path}: rules[{i}] ('{r['rule']}') isn't enforced by {r['use_case']}: report it as a "
+                          f"blocker or major finding with `evidence: {r['test']}`")
+    missing = [c for c in caps if c not in covered]
+    if missing:
+        errors.append(f"{path}: no rule checked for capability {', '.join(missing)}: add its business rules to "
+                      "`rules`, each with a use-case test, or say why it has none under `no_rules`")
 
 
 def cell(text, limit=400):
@@ -520,6 +591,8 @@ def main():
                 check_tier_attempt(path, doc, errors)
                 if not predates_rule(path, folder, VERIFIER_VERDICT_RULE_V1):
                     check_verifier_return(folder, path, doc, errors)
+                if not predates_rule(path, folder, VERIFIER_RULES_RULE_V1):
+                    check_verifier_rules(folder, path, doc, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:
