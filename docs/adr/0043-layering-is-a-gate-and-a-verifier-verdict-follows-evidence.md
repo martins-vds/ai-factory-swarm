@@ -56,7 +56,17 @@ A prompt can ask for care, but it can't make a review deterministic. A tool and 
 
    Phase 3e's v3g found these defects (LL-03, BK-05G, LL-04) in one run of three; the tool finds them in
    every run. `validate.py` refuses `ui_checks` without the gate.
-8. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
+8. **The Verifier proves where each business rule is enforced** (operator decision, 2026-11-17).
+   - A finished return lists `rules`, covering every capability the plan gives the ticket. Each rule names
+     the use case and a test that calls it directly, with input the rule must refuse, and records whether
+     the use case refuses it.
+   - A capability with no business rule goes under `no_rules`, with the reason.
+   - An unenforced rule needs a blocker or major finding citing that test.
+   - `validate.py`, and so the finish check, refuses a return that misses a capability or cites a test that
+     doesn't exist.
+   - Eval v3h prompted this: every run missed BK-05F's eligibility rule in the view, though the prompt asked
+     for exactly this test.
+9. **The eval reports a gate-blocked Verifier apart.** Such a case still fails, but as `verifier-blocked`, the
    way timeouts are reported apart from wrong verdicts.
 
 ## Consequences

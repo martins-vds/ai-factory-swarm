@@ -50,10 +50,13 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
      ticket's code relies on it.
    - Your review covers what the tool can't see. Two checks find what reading alone misses; do both, and
      let a failing test be the evidence:
-     - **Where each rule is enforced.** For every business rule the ticket implements (an eligibility check,
-       a limit, a state transition), write a test that calls the use case directly, with no view and no
-       request, using input the rule must refuse. If the use case accepts it, the rule lives in the wrong
-       layer (often the view): that failing test makes it a major finding.
+     - **Where each rule is enforced** (required: the finish check refuses your return without it). For
+       each capability the plan gives the ticket, list its business rules (an eligibility check, a limit, a
+       state transition) under `rules`. For each rule, write a test that calls the use case directly, with
+       no view and no request, using input the rule must refuse. Record `enforced: true` when the use case
+       refuses it. When it accepts it, record `enforced: false`: the rule lives in the wrong layer (often the
+       view), and that failing test is a major finding's evidence. A capability with no business rule (a
+       static page, a report layout) goes under `no_rules` with the reason.
      - **Every error path renders.** For every request the ticket's pages send (a form post, an htmx or
        fetch call), list the non-2xx responses its view can return (validation 4xx, not found, a failed
        downstream call 5xx). Check each one shows the user what the plan says. htmx 2 swaps no 4xx or 5xx
@@ -107,4 +110,13 @@ quirk_tickets: [<link>]
 ```
 Add `blocked_reason: "<gate>: <why>"` when the verdict is `blocked`. Each blocker or major finding also
 carries `evidence:` (step 6). Add `inherited: [{where, what, origin, evidence}]` for defects from earlier
-tickets (step 6).
+tickets (step 6). Always add the rules you checked (step 3):
+```yaml
+rules:
+  - capability: <one of the ticket's capabilities>
+    rule: <the business rule, one line>
+    use_case: <the use case the test calls, e.g. CargoRouting.assign_route>
+    test: <path::test id; a test that calls the use case directly with input the rule must refuse>
+    enforced: <true | false>   # false needs a blocker/major finding with this test as evidence
+no_rules: {<capability>: <why it carries no business rule>}
+```
