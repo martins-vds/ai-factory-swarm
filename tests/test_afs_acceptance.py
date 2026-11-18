@@ -50,6 +50,13 @@ class AcceptanceTest(unittest.TestCase):
         self.out = self.repo / ".migration/runs/acceptance-123-1"
         self.env = {**os.environ, "GITHUB_SHA": self.sha, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1",
                     "GITHUB_REPOSITORY": "example/target", "GITHUB_SERVER_URL": "https://github.com"}
+        # ADR-0035: the workflow's graph job builds the target graph for this commit (gitignored download).
+        self.build = self.repo / ".migration/runs/graph-build"
+        self.build.mkdir(parents=True)
+        (self.build / "SNAPSHOT.txt").write_text(f"side: target\ntarget_commit: {self.sha}\n"
+                                                 f"tree.src: {self.git('rev-parse', 'HEAD:src')}\n")
+        (self.build / "knowledge-graph.json").write_text("{}")
+        self.env["AFS_GRAPH_TARGET_BUILD"] = str(self.build)
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.repo).decode().strip()
@@ -103,6 +110,66 @@ class AcceptanceTest(unittest.TestCase):
         self.assertEqual(verified.returncode, 0, verified.stderr)
         self.assertIn("status=verified", verified.stdout)
         self.assertNotEqual(self.run_gates().returncode, 0, "existing artifacts must not be overwritten")
+
+    def publish(self, origin):
+        """What the workflow's publish job does: the artifact's files as the tree of afs/acceptance/<run>-<attempt>."""
+        work = pathlib.Path(self.tmp.name + "-publish")
+        shutil.copytree(self.out, work)
+        self.addCleanup(shutil.rmtree, work, True)
+        for cmd in (["init", "-q", "-b", "afs/acceptance/123-1"], ["add", "-A"],
+                    ["-c", "user.name=bot", "-c", "user.email=bot@x", "commit", "-qm", "evidence"],
+                    ["push", "-q", str(origin), "HEAD:refs/heads/afs/acceptance/123-1"]):
+            subprocess.run(["git", *cmd], cwd=work, check=True, capture_output=True)
+
+    def test_evidence_fetched_from_the_publish_branch_verifies_like_the_artifact(self):
+        # pilot BK-ACCEPT: Copilot's firewall blocked the artifact's storage host; git reaches the branch
+        self.assertEqual(self.run_gates().returncode, 0)
+        origin = pathlib.Path(self.tmp.name + "-origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+        self.addCleanup(shutil.rmtree, origin, True)
+        self.git("remote", "add", "origin", str(origin))
+        self.publish(origin)
+        shutil.rmtree(self.out)
+        self.out = self.repo / ".migration/runs/fetched"
+        fetched = self.execute("fetch", "--run-id", "123", "--attempt", "1", "--dest", str(self.out))
+        self.assertEqual(fetched.returncode, 0, fetched.stderr)
+        verified = self.verify()
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertIn("status=verified", verified.stdout)
+        again = self.execute("fetch", "--run-id", "123", "--attempt", "1", "--dest", str(self.out))
+        self.assertEqual(again.returncode, 2, "a non-empty destination is refused")
+        missing = self.execute("fetch", "--run-id", "124", "--attempt", "1", "--dest", str(self.repo / ".migration/runs/x"))
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("no evidence branch afs/acceptance/124-1", missing.stderr)
+
+    def test_the_workflow_publishes_evidence_from_a_write_job_that_runs_no_target_code(self):
+        text = (ROOT / "templates/target/afs-acceptance.yml").read_text()
+        publish = text.split("\n  publish:\n", 1)[1]
+        self.assertIn("needs: acceptance", publish)
+        self.assertIn("afs/acceptance/${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}", publish)
+        self.assertNotIn("actions/checkout", publish, "the write job never checks out or runs target code")
+        # pilot run 42522962056: after failed gates, a step `if` without a status function carries an implicit
+        # success(), which is false, so the evidence was downloaded but never pushed
+        for cond in __import__("re").findall(r"(?m)^ {8}if: (.*)$", publish):
+            self.assertRegex(cond, r"always\(\)|!cancelled\(\)", f"step condition lacks a status function: {cond}")
+        acceptance = text.split("\n  acceptance:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        self.assertNotIn("contents: write", acceptance, "the gate job stays read-only")
+
+    def test_the_run_gates_its_own_target_graph_for_its_commit(self):
+        run = self.run_gates()
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        graph = self.result()["target_graph"]
+        self.assertEqual(graph["dir"], "graph/target/full")
+        self.assertIn("graph/target/full/SNAPSHOT.txt", self.result()["files"])
+        self.assertEqual(self.result()["plan"][5]["command"][-1], "--enforce-ownership")
+
+    def test_no_graph_or_a_graph_of_other_code_is_refused(self):
+        env = dict(self.env)
+        del self.env["AFS_GRAPH_TARGET_BUILD"]
+        self.assertIn("no target graph built", self.run_gates().stderr)
+        self.env = env
+        (self.build / "SNAPSHOT.txt").write_text("tree.src: " + "0" * 40 + "\n")
+        self.assertIn("doesn't describe", self.run_gates().stderr)
 
     def test_auditor_report_commit_can_advance_without_invalidating_execution_inputs(self):
         self.assertEqual(self.run_gates().returncode, 0)

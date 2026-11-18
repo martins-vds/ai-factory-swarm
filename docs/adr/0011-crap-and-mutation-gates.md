@@ -28,3 +28,12 @@ from complexity + coverage reports).
 ## Consequences
 - Slower PR checks (mutation testing is expensive); limited to changed code per PR for that reason.
 - Changing a threshold is a human decision recorded in the profile.
+
+## Amendment (2026-11-10, found by synthetic LL-04)
+The default test selection runs, for each mutated file, the tests whose coverage context executed it. Code
+that runs at import (decorators, URL tables, module constants) belongs to no test's context, and a request
+that a decorator rejects never enters the view. So the tests that kill those mutants were never selected,
+and their mutants "survived" untested: LL-04's two small views scored 0.375, 5 of 8 mutants being removed
+`@require_GET` decorators and mutated `urlpatterns`. Earlier Django slices showed the same survivors. A
+file with import-time code now also runs its bounded context's test folder (`tests/<context>/`, for
+`src/<context>/…` as well as `src/<pkg>/<context>/…`), or the whole suite when it has none.

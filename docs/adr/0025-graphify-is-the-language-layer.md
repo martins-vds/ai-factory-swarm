@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-03
+- Amends: ADR-0009
 - Spike: #38 (findings and numbers on the issue)
 
 ## Context

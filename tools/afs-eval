@@ -1,0 +1,1181 @@
+#!/usr/bin/env python3
+"""afs-eval — the end-to-end eval for the role agents (agent-topology plan, phase 1; ADR-0041).
+
+A case is one real ticket whose correct outcome is already known from the pilot or the synthetic run. A run
+re-dispatches each case to a fresh Copilot session in the eval repository, against the harness under test,
+and grades what comes back. Comparing two runs shows which cases *flipped*, not only the total.
+
+  afs-eval list    --cases evals/cases                          # the cases and what each expects
+  afs-eval prepare --cases evals/cases --run R --eval-repo O/R  # build and push one branch per case
+                   [--case ID ...] [--harness DIR] [--sources DIR] [--dry-run]
+  afs-eval dispatch --cases evals/cases --run R --eval-repo O/R [--case ID ...]
+  afs-eval grade   --cases evals/cases --run R --eval-repo O/R [--case ID ...]   # writes evals/results/R.json
+  afs-eval refresh --cases evals/cases --run R --eval-repo O/R  # after the eval repo's main moved mid-run
+  afs-eval report  --results evals/results/R.json [--baseline evals/results/B.json] [--out R.md]
+  afs-eval compare --runs R1.json R2.json R3.json --baseline B1.json B2.json B3.json [--out F.md]
+                                                                # majority per case, flips, usage; exit 1 when
+                                                                # a baseline majority pass now fails
+  afs-eval coverage --target DIR [--target DIR ...] [--require] # role chains the live targets use vs the cases
+  afs-eval coupling --target DIR [...] [--by slice|ticket]       # which roles carry the work and which always
+                                                                # run one after another (merge candidates)
+  afs-eval skills  --repo DIR [--repo DIR ...]                  # skill loads per agent, from cost records
+
+**prepare** builds, for each case, the branch `eval/<run>/<case>` in the eval repo:
+  1. the case's `source.base` commit of the source target (its history included);
+  2. the case's `normalize` edits: historical states made valid under today's rules (stale references the
+     live run fixed later, profile keys today's bootstrap writes), never a change to behavior;
+  3. the harness under test installed with `tools/bootstrap.py`, reading the normalized profile;
+  4. an `-s ours` merge of the eval repo's `main`. The tree stays the case's; only the ancestry changes, so
+     `check_stack_base.py` sees the default branch below the case branch, as on a real target.
+A verifier case also gets `eval/<run>/<case>-work`: `source.work` (the Migrator's head at the moment the
+Verifier judged it, in the live run) prepared the same way, with the case branch merged in (`-s ours`). The
+work PR, work → case branch, is what the Verifier verifies.
+
+**dispatch** opens the case's issue in the eval repo and assigns it to the Copilot coding agent with the
+case's custom agent and `base_branch`, as live tickets are dispatched (agents/README.md). Issue bodies keep
+references to the source repo's issues: bare `#N` becomes `<source repo>#N`, and `{work_pr}` becomes the
+eval repo's work PR.
+
+**grade** reads the agent's PR (the one that `Fixes` the case issue) and scores it against the case's rubric:
+  every case   the PR exists and is finished; its return file is committed and valid; `validate.py` reports
+               no error on the PR head that it did not report on the case branch (differential: historical
+               states may carry errors the agent didn't make)
+  migrator     the Gates check passed; the return's `mutation_changed` is at least the profile's threshold
+  verifier     the verdict matches; for a defect case, at least one finding at or above `severity_min`
+               matches the expected defect (a keyword, or a path prefix in `where`); for a clean case, no
+               blocker or major finding
+  bootstrap    every expected field of the committed profile or capabilities file has the expected value
+A case passes only if every check passes. `must_pass` cases are the ones a topology change may never flip.
+
+Grading never trusts the agent's own claims where CI or a re-run can decide: Gates comes from the eval repo's
+CI, validation is re-run here.
+"""
+import argparse
+import collections
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+import yaml
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
+KINDS = ("migrator", "verifier", "bootstrap")
+SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
+COPILOT = "copilot-swe-agent[bot]"
+# Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
+# agent's work. The eval repo has no such tracker, so they are reported but never graded.
+UNGRADED_CHECKS = ("Human sign-off", "Ticket reconciliation", "Capability gap issues", "Migrator work is verified")
+
+
+# ---------------------------------------------------------------- cases
+
+class CaseError(ValueError):
+    pass
+
+
+def load_case(path):
+    doc = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8")) or {}
+    problems = case_problems(doc)
+    if problems:
+        raise CaseError(f"{path}: " + "; ".join(problems))
+    return doc
+
+
+def case_problems(doc):
+    out = []
+    for key in ("id", "kind", "agent", "ticket", "role", "source", "issue", "expect"):
+        if not doc.get(key):
+            out.append(f"missing {key}")
+    if out:
+        return out
+    if doc["kind"] not in KINDS:
+        out.append(f"kind must be one of {', '.join(KINDS)}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", str(doc["id"])):
+        out.append("id: lowercase letters, digits and dashes only (it names a branch)")
+    src = doc["source"]
+    if not (src.get("repo") and re.fullmatch(r"[0-9a-f]{40}", str(src.get("base", "")))):
+        out.append("source needs repo and a full 40-character base sha")
+    if doc["kind"] == "verifier" and not re.fullmatch(r"[0-9a-f]{40}", str(src.get("work", ""))):
+        out.append("a verifier case needs source.work (the Migrator head the Verifier judged)")
+    if not (doc["issue"].get("title") and doc["issue"].get("body")):
+        out.append("issue needs title and body")
+    exp = doc["expect"]
+    if doc["kind"] == "verifier":
+        verdicts = exp.get("verdict") if isinstance(exp.get("verdict"), list) else [exp.get("verdict")]
+        if not verdicts or any(v not in ("pass", "changes-required", "blocked") for v in verdicts):
+            out.append("expect.verdict: pass, changes-required or blocked (or a list of them)")
+        for f in exp.get("findings") or []:
+            if f.get("severity_min") not in SEVERITY:
+                out.append("expect.findings[].severity_min: minor, major or blocker")
+            if not (f.get("any_of") or f.get("where")):
+                out.append("expect.findings[] needs any_of keywords or a where path prefix")
+    if doc["kind"] == "bootstrap" and not exp.get("fields"):
+        out.append("a bootstrap case needs expect.fields")
+    for op in doc.get("normalize") or []:
+        if not (set(op) & {"replace", "copy_from", "yaml_set"}):
+            out.append("normalize ops are replace, copy_from or yaml_set")
+    return out
+
+
+def load_cases(directory, only=None, include_disabled=False):
+    """The cases; a case with `disabled: <reason>` is listed but never prepared, dispatched or graded."""
+    cases = [load_case(p) for p in sorted(pathlib.Path(directory).glob("*.yaml"))]
+    ids = [c["id"] for c in cases]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        raise CaseError(f"duplicate case ids: {', '.join(dupes)}")
+    if only:
+        missing = sorted(set(only) - set(ids))
+        if missing:
+            raise CaseError(f"no such case: {', '.join(missing)}")
+        cases = [c for c in cases if c["id"] in only]
+    return cases if include_disabled else [c for c in cases if not c.get("disabled")]
+
+
+def branch(run, case, part=None):
+    # `<case>-work`, never `<case>/work`: git can't hold a branch and another branch nested under it.
+    return f"eval/{run}/{case['id']}" + (f"-{part}" if part else "")
+
+
+# ---------------------------------------------------------------- issue text
+
+def rewrite_body(body, source_repo, work_pr=None):
+    """Bare `#N` references point at the source repo's issues; `{work_pr}` is the eval work PR."""
+    text = re.sub(r"(?<![\w/#\[])#(\d+)\b", lambda m: f"{source_repo}#{m.group(1)}", body)
+    if work_pr is not None:
+        text = text.replace("{work_pr}", f"#{work_pr}")
+    return text
+
+
+def eval_note(run, case):
+    return (f"\n\n---\nEval case `{case['id']}` (run `{run}`). Work this exactly as a live ticket: same agent, "
+            f"same rules, same checks. References to `{case['source']['repo']}` issues are the live run's "
+            "tracker; read them, never write to it.")
+
+
+# ---------------------------------------------------------------- shell helpers
+
+def sh(args, cwd=None, check=True, input=None):
+    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, input=input)
+    if check and r.returncode:
+        raise RuntimeError(f"{' '.join(map(str, args))} → {r.returncode}\n{r.stderr.strip()[-2000:]}")
+    return r
+
+
+def git(cwd, *args, check=True):
+    return sh(["git", "-C", str(cwd), *args], check=check)
+
+
+def gh_api(path, method="GET", body=None, check=True):
+    args = ["gh", "api", "-X", method, path]
+    if body is not None:
+        args += ["--input", "-"]
+    r = sh(args, check=check, input=json.dumps(body) if body is not None else None)
+    return json.loads(r.stdout) if r.stdout.strip() else None
+
+
+# ---------------------------------------------------------------- prepare
+
+def apply_normalize(tree, ops, source_dir, part="base"):
+    """Apply the case's normalization ops for one branch (`on: base|work`, default both); return one line per op."""
+    done = []
+    for op in ops or []:
+        if op.get("on", part) != part:
+            continue
+        if "replace" in op:
+            r = op["replace"]
+            path = pathlib.Path(tree) / r["file"]
+            text = path.read_text(encoding="utf-8")
+            if r["old"] not in text:
+                if r.get("optional"):          # verifier cases normalize two commits; one may predate the text
+                    continue
+                raise CaseError(f"normalize: {r['file']} has no {r['old']!r}")
+            path.write_text(text.replace(r["old"], r["new"]), encoding="utf-8")
+            done.append(f"replace in {r['file']}: {r['old']} → {r['new']}")
+        if "yaml_set" in op:                   # a profile key today's bootstrap would write
+            y = op["yaml_set"]
+            path = pathlib.Path(tree) / y["file"]
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            cur = doc
+            *parents, leaf = str(y["key"]).split(".")
+            for part in parents:
+                cur = cur.setdefault(part, {})
+            if cur.get(leaf) != y["value"]:
+                cur[leaf] = y["value"]
+                path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
+                done.append(f"set {y['file']}: {y['key']} = {y['value']!r}")
+        if "copy_from" in op:
+            c = op["copy_from"]
+            for rel in c["paths"]:
+                if c.get("only_missing") and (pathlib.Path(tree) / rel).exists():
+                    continue
+                content = git(source_dir, "show", f"{c['ref']}:{rel}").stdout
+                dest = pathlib.Path(tree) / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content, encoding="utf-8")
+                done.append(f"copy {rel} from {c['ref'][:12]}")
+    return done
+
+
+ROLE_MAP_FOR_PREPARE = {}
+
+
+def replan_open_tickets(tree, roles):
+    """A folded role (`--role-map old=new`): re-plan the tickets that haven't started, as the ADR that folds the
+    role requires (ADR-0042). Finished tickets keep their role, so their returns still match."""
+    notes = []
+    plan_dir = pathlib.Path(tree) / ".migration/plan"
+    returns = pathlib.Path(tree) / ".migration/returns"
+    for path in sorted(plan_dir.glob("*.tickets.yaml")) if roles else []:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        changed = []
+        for ticket in doc.get("tickets") or []:
+            old = ticket.get("role")
+            if old in roles and not (returns / f"{ticket.get('id')}.{old}.yaml").exists():
+                ticket["role"] = roles[old]
+                changed.append(ticket["id"])
+        if changed:
+            path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
+            notes.append(f"re-planned open tickets {', '.join(changed)} in {path.name} under the folded role")
+    return notes
+
+
+def install(tree, harness, pack, allow_unreleased=False):
+    args = [sys.executable, str(pathlib.Path(harness) / "tools/bootstrap.py"), "--target", str(tree),
+            "--profile", str(pathlib.Path(tree) / ".migration/profile.yaml"),
+            "--capabilities", str(pathlib.Path(tree) / ".migration/capabilities.yaml"),
+            "--stack-pack", str(pathlib.Path(harness) / "stacks" / f"{pack}.json")]
+    if allow_unreleased:
+        args.append("--allow-unreleased")
+    sh(args)
+    for cache in pathlib.Path(tree).rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
+
+
+def source_clone(sources, repo):
+    """A local clone of the source target, fetched fresh; full history (prepare pushes it)."""
+    path = pathlib.Path(sources) / repo.replace("/", "__")
+    if not (path / ".git").exists():
+        sh(["git", "clone", "-q", f"https://github.com/{repo}", str(path)])
+    git(path, "fetch", "-q", "origin")
+    return path
+
+
+def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unreleased, label):
+    """Check out `sha` from the source clone into a worktree, install, normalize, commit, merge -s ours."""
+    wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-eval-")) / "tree"
+    git(src, "fetch", "-q", "origin", sha, check=False)
+    git(src, "worktree", "add", "-q", "--detach", str(wt), sha)
+    try:
+        # Normalize first: bootstrap reads the profile, so a key the normalization adds (target.shared_test_files)
+        # must be there when it installs. Run the other way round, bootstrap never created the shared test fixture
+        # (b3-r1, cancelled before any session ran).
+        notes = apply_normalize(wt, case.get("normalize"), src, label)
+        notes += replan_open_tickets(wt, ROLE_MAP_FOR_PREPARE)
+        if case.get("install", True):      # a bootstrap case starts before any harness is installed
+            install(wt, harness, case.get("stack_pack", "java-to-django"), allow_unreleased)
+        harness_sha = git(harness, "rev-parse", "--short", "HEAD").stdout.strip()
+        git(wt, "add", "-A")
+        msg = (f"Eval case {case['id']}: {label} at {sha[:12]} with harness {harness_sha}\n\n"
+               + ("Normalized to today's rules (no behavior change):\n" + "\n".join(f"- {n}" for n in notes)
+                  if notes else "No normalization.") + "\n")
+        git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
+            "commit", "-q", "--allow-empty", "-m", msg)
+        for ref in [eval_main, *merge_also]:
+            git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
+                "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", ref)
+        return wt, git(wt, "rev-parse", "HEAD").stdout.strip()
+    except Exception:
+        git(src, "worktree", "remove", "--force", str(wt), check=False)
+        raise
+
+
+def prepare_role_map(a):
+    """Roles to re-plan on open tickets: every retired role, plus `--role-map`."""
+    return {**FOLDED_INTO, **role_map(a)}
+
+
+def prepare(a, cases):
+    # A retired role's open tickets are always re-planned under its successor: today's check_plan refuses them,
+    # and the agent would stop at setup (v3e-r1: every pilot Verifier case had AM-04D/BK-05F/BK-05G open).
+    ROLE_MAP_FOR_PREPARE.clear()
+    ROLE_MAP_FOR_PREPARE.update(prepare_role_map(a))
+    harness = pathlib.Path(a.harness).resolve()
+    if not a.allow_unreleased:
+        head = git(harness, "rev-parse", "HEAD").stdout.strip()
+        if git(harness, "merge-base", "--is-ancestor", head, "origin/main", check=False).returncode:
+            raise SystemExit("afs-eval: the harness checkout isn't on origin/main; pass --allow-unreleased to "
+                             "evaluate an unmerged harness (a topology experiment)")
+    sources = pathlib.Path(a.sources)
+    sources.mkdir(parents=True, exist_ok=True)
+    out = []
+    for case in cases:
+        src = source_clone(sources, case["source"]["repo"])
+        remote = f"https://github.com/{a.eval_repo}"
+        git(src, "fetch", "-q", remote, "+refs/heads/main:refs/remotes/afs-eval/main")
+        eval_main = "refs/remotes/afs-eval/main"
+        wt, head = build_branch(src, case["source"]["base"], case, harness, eval_main, [], a.allow_unreleased, "base")
+        pushes = [(wt, head, branch(a.run, case))]
+        if case["kind"] == "verifier":
+            wt2, head2 = build_branch(src, case["source"]["work"], case, harness, eval_main, [head],
+                                      a.allow_unreleased, "work")
+            pushes.append((wt2, head2, branch(a.run, case, "work")))
+        for tree, sha, name in pushes:
+            errors = validate_errors(tree)
+            print(f"{case['id']}: {name}: {len(errors)} validation error(s) before the agent starts"
+                  + "".join(f"\n    {e[:200]}" for e in errors[:5]))
+            if a.dry_run:
+                print(f"{case['id']}: would push {sha[:12]} to {name}")
+            else:
+                git(tree, "-c", "push.negotiate=true", "push", "-q", "--force", remote, f"{sha}:refs/heads/{name}")
+                print(f"{case['id']}: pushed {sha[:12]} to {name}")
+        out.append({"case": case["id"], "branches": [p[2] for p in pushes]})
+        for tree, _, _ in pushes:
+            git(src, "worktree", "remove", "--force", str(tree), check=False)
+    return out
+
+
+# ---------------------------------------------------------------- dispatch
+
+def find_pr(eval_repo, head, base):
+    owner = eval_repo.split("/")[0]
+    prs = gh_api(f"repos/{eval_repo}/pulls?state=all&head={owner}:{head}&base={base}&per_page=10") or []
+    return prs[0]["number"] if prs else None
+
+
+def role_map(a):
+    """`--role-map old=new`: evaluate a topology change (a folded role) on unchanged cases (ADR-0041/0042)."""
+    return dict(pair.split("=", 1) for pair in (getattr(a, "role_map", None) or []))
+
+
+def mapped(case, roles):
+    if not roles:
+        return case
+    case = json.loads(json.dumps(case))
+    for key in ("agent", "role"):
+        case[key] = roles.get(case[key], case[key])
+    for key in ("title", "body"):
+        for old, new in roles.items():
+            case["issue"][key] = case["issue"][key].replace(old, new)
+    return case
+
+
+def dispatch(a, cases):
+    state = load_state(a)
+    cases = [mapped(c, role_map(a)) for c in cases]
+    for case in cases:
+        name = branch(a.run, case)
+        base_branch = name
+        work_pr = None
+        if case["kind"] == "verifier":
+            work = branch(a.run, case, "work")
+            work_pr = find_pr(a.eval_repo, work, name)
+            if work_pr is None:
+                work_pr = gh_api(f"repos/{a.eval_repo}/pulls", "POST", {
+                    "title": f"[eval {a.run}] {case['ticket']}: the work under verification",
+                    "head": work, "base": name, "draft": True,
+                    "body": f"The Migrator's head that the Verifier judged in the live run "
+                            f"({case['source']['repo']}@{case['source']['work'][:12]}). Never merged."})["number"]
+            base_branch = work
+        body = rewrite_body(case["issue"]["body"], case["source"]["repo"], work_pr) + eval_note(a.run, case)
+        issue = gh_api(f"repos/{a.eval_repo}/issues", "POST",
+                       {"title": f"[eval {a.run}] {rewrite_body(case['issue']['title'], case['source']['repo'], work_pr)}",
+                        "body": body})["number"]
+        gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
+            "assignees": [COPILOT],
+            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
+                                 "custom_agent": case["agent"], "custom_instructions": ""}})
+        state[case["id"]] = {"issue": issue, "work_pr": work_pr, "base_branch": base_branch,
+                             "dispatched_at": now()}
+        save_state(a, state)
+        print(f"{case['id']}: issue #{issue} assigned to Copilot ({case['agent']}, base {base_branch})")
+
+
+def state_path(a):
+    return pathlib.Path(a.results_dir) / f"{a.run}.state.json"
+
+
+def load_state(a):
+    p = state_path(a)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def save_state(a, state):
+    p = state_path(a)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+# ---------------------------------------------------------------- phase 4a: chain and oracle
+
+CHAIN_BODY = """**Role:** `afs-verifier`. Verify ticket `{ticket}` in PR #{pr}, with a fresh context. Your base branch is the
+Migrator's branch: your PR goes into it, so `{ticket}` reaches `main` verified (ADR-0040).
+
+- Re-run every gate through `afs-run`, mutation on changed code included; the full suite must pass in default order.
+- Review the work against the target's ADRs. Cover every business rule the ticket's ledger entries record
+  (`rules`) with a test that calls the use case directly, and add any rule you find in the code.
+- Add tests where evidence is missing. Never change production code. Write **your** return
+  `.migration/returns/{ticket}.afs-verifier.yaml` and journal.
+
+**Done when:** your PR commits your return and journal, and the finish check passes.
+"""
+
+
+def chain(a, cases):
+    """Phase 4a, configuration A: a Verifier session on each finished Migrator PR of run `--from-run`.
+
+    The Verifier's base is the Migrator's PR branch, as on a live target (ADR-0040). Cases the Migrator handed
+    off, or that have no PR, are skipped: there is nothing to verify."""
+    source = load_state(argparse.Namespace(results_dir=a.results_dir, run=a.from_run))
+    state = load_state(a)
+    for case in cases:
+        st = source.get(case["id"])
+        if case["kind"] != "migrator" or not st or case["id"] in state:
+            continue
+        head = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if not head or head["title"].startswith("[WIP]"):
+            print(f"{case['id']}: no finished Migrator PR in {a.from_run}; skipped")
+            continue
+        pr = head
+        ret_path = f".migration/returns/{case['ticket']}.afs-migrator.yaml"
+        r = sh(["gh", "api", f"repos/{a.eval_repo}/contents/{ret_path}?ref={head['head']['sha']}",
+                "-H", "Accept: application/vnd.github.raw"], check=False)
+        ret = yaml.safe_load(r.stdout) if r.returncode == 0 else None
+        if not isinstance(ret, dict) or ret.get("handoff") not in (None, "", "none"):
+            print(f"{case['id']}: the Migrator committed no return or handed off; skipped")
+            continue
+        body = CHAIN_BODY.format(ticket=case["ticket"], pr=pr["number"]) + eval_note(a.run, case)
+        issue = gh_api(f"repos/{a.eval_repo}/issues", "POST", {
+            "title": f"[eval {a.run}] Verify {case['ticket']} (PR #{pr['number']})", "body": body})["number"]
+        gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
+            "assignees": [COPILOT],
+            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": head["head"]["ref"],
+                                 "custom_agent": "afs-verifier", "custom_instructions": ""}})
+        state[case["id"]] = {"issue": issue, "work_pr": pr["number"], "base_branch": head["head"]["ref"],
+                             "chained_from": a.from_run, "dispatched_at": now()}
+        save_state(a, state)
+        print(f"{case['id']}: issue #{issue} assigned to Copilot (afs-verifier, base {head['head']['ref']})")
+
+
+def chain_row(src, case, st):
+    """A chained Verifier's outcome, judged later against the Migrator head's oracle (phase 4a report)."""
+    shown = git(src, "show", f"refs/afs-eval/head:.migration/returns/{case['ticket']}.afs-verifier.yaml", check=False)
+    try:
+        ret = yaml.safe_load(shown.stdout) if shown.returncode == 0 else None
+    except yaml.YAMLError:
+        ret = None
+    ret = ret if isinstance(ret, dict) else {}
+    serious = [f for f in ret.get("findings") or [] if isinstance(f, dict) and f.get("severity") in ("blocker", "major")]
+    return {"status": "graded" if ret else "no-return", "passed": None, "kind": "chain",
+            "chained_from": st["chained_from"], "work_pr": st["work_pr"], "verdict": ret.get("verdict"),
+            "serious_findings": [f"{f.get('where')}: {f.get('what')}" for f in serious]}
+
+
+def forbidden_calls(tree, specs):
+    """[(path, line, message)] for each call a case's oracle forbids in the files it names."""
+    import ast
+    found = []
+    for spec in specs or []:
+        regs = [re.compile(fnmatch_translate(g)) for g in spec["files"]]
+        for path in sorted(pathlib.Path(tree).rglob("*.py")):
+            rel = path.relative_to(tree).as_posix()
+            if rel.startswith(".migration/") or not any(r.match(rel) for r in regs):
+                continue
+            try:
+                module = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(module):
+                if isinstance(node, ast.Call):
+                    name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+                    if name == spec["call"]:
+                        found.append((rel, node.lineno, f"calls {name}: {spec['why']}"))
+    return found
+
+
+def fnmatch_translate(glob):
+    out, i = "", 0
+    while i < len(glob):
+        if glob.startswith("**/", i):
+            out, i = out + "(?:.*/)?", i + 3
+        elif glob[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        else:
+            out, i = out + re.escape(glob[i]), i + 1
+    return out + r"\Z"
+
+
+def oracle(a, cases):
+    """Phase 4a ground truth, hidden from the agents: on each Migrator PR's head, the layering and UI tools with
+    the case's own profile, plus the case's `oracle.forbid_calls`. Writes `oracle` into the run's results."""
+    out = pathlib.Path(a.results_dir) / f"{a.run}.json"
+    results = json.loads(out.read_text())
+    sources = pathlib.Path(a.sources)
+    for case in cases:
+        row = results["cases"].get(case["id"])
+        if case["kind"] != "migrator" or not row or not row.get("pr"):
+            continue
+        src = source_clone(sources, case["source"]["repo"])
+        st = load_state(a)[case["id"]]
+        git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
+            f"+refs/pull/{row['pr']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
+        with tempfile.TemporaryDirectory() as tmp:
+            wt = pathlib.Path(tmp) / "head"
+            git(src, "worktree", "add", "-q", "--detach", str(wt), "refs/afs-eval/head")
+            try:
+                base = git(src, "rev-parse", "refs/afs-eval/base").stdout.strip()
+                findings = []
+                for tool, extra in (("check_layers.py", []), ("check_ui.py", ["--changed-since", base])):
+                    r = sh([sys.executable, str(HERE / tool), "--root", str(wt), *extra], check=False)
+                    if r.returncode == 1:
+                        findings += [ln for ln in r.stdout.splitlines() if re.match(r"^[^ ].*:\d+: ", ln)
+                                     and "known, not failing" not in ln]
+                findings += [f"{p}:{n}: {m}" for p, n, m in
+                             forbidden_calls(wt, (case.get("oracle") or {}).get("forbid_calls"))]
+            finally:
+                git(src, "worktree", "remove", "--force", str(wt), check=False)
+        row["oracle"] = {"clean": not findings, "findings": findings}
+        print(f"{case['id']}: oracle {'clean' if not findings else str(len(findings)) + ' defect(s)'}")
+    out.write_text(json.dumps(results, indent=2) + "\n")
+
+
+# ---------------------------------------------------------------- refresh
+
+def refresh(a, cases):
+    """Bring a run's branches up to date after the eval repo's `main` moved (the ADR-0038 refresh, for evals).
+
+    `check_stack_base.py` needs `main` below each case branch, and each base below its PR's head; when `main`
+    moves mid-run, every check is skipped. Order: case ← main (`-s ours`), work ← case (`-s ours`), then each
+    finished agent PR's head ← its base (a normal merge: the base change carries no tree change). Running PRs
+    are left alone; refresh them once they finish."""
+    state = load_state(a)
+    remote = f"https://github.com/{a.eval_repo}"
+    ident = ["-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com"]
+    for case in cases:
+        st = state.get(case["id"])
+        if not st:
+            continue
+        src = source_clone(pathlib.Path(a.sources), case["source"]["repo"])
+        git(src, "fetch", "-q", remote, "+refs/heads/main:refs/afs-eval/main")
+        chain = [(branch(a.run, case), "refs/afs-eval/main", True)]
+        if case["kind"] == "verifier":
+            chain.append((branch(a.run, case, "work"), branch(a.run, case), True))
+        pr = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if pr and not pr["title"].startswith("[WIP]"):
+            chain.append((pr["head"]["ref"], st["base_branch"], False))
+        wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-refresh-")) / "tree"
+        try:
+            for name, onto, ours in chain:
+                git(src, "fetch", "-q", remote, f"+refs/heads/{name}:refs/afs-eval/x")
+                if onto != "refs/afs-eval/main":
+                    git(src, "fetch", "-q", remote, f"+refs/heads/{onto}:refs/afs-eval/onto")
+                    onto = "refs/afs-eval/onto"
+                if git(src, "merge-base", "--is-ancestor", onto, "refs/afs-eval/x", check=False).returncode == 0:
+                    print(f"{case['id']}: {name} already contains its base")
+                    continue
+                git(src, "worktree", "add", "-q", "--detach", str(wt), "refs/afs-eval/x")
+                try:
+                    git(wt, *ident, "merge", "-q", "--no-edit", *(["-s", "ours"] if ours else []),
+                        "--allow-unrelated-histories", onto)
+                    git(wt, "-c", "push.negotiate=true", "push", "-q", remote, f"HEAD:refs/heads/{name}")
+                    print(f"{case['id']}: refreshed {name}")
+                finally:
+                    git(src, "worktree", "remove", "--force", str(wt), check=False)
+        except RuntimeError as exc:
+            print(f"{case['id']}: refresh failed: {str(exc).splitlines()[0][:200]}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- grading (pure parts are unit-tested)
+
+def grade_verifier(ret, expect):
+    checks = []
+    verdict = (ret or {}).get("verdict")
+    allowed = expect["verdict"] if isinstance(expect["verdict"], list) else [expect["verdict"]]
+    checks.append(("verdict", verdict in allowed, f"{verdict} (expected {' or '.join(allowed)})"))
+    findings = (ret or {}).get("findings") or []
+    for want in expect.get("findings") or []:
+        floor = SEVERITY[want["severity_min"]]
+        words = [w.lower() for w in want.get("any_of") or []]
+        hit = next((f for f in findings if SEVERITY.get(str(f.get("severity")), 0) >= floor and (
+            any(w in str(f.get("what", "")).lower() for w in words)
+            or (want.get("where") and str(f.get("where", "")).startswith(want["where"])))), None)
+        label = want.get("label") or ", ".join(words) or want.get("where")
+        checks.append((f"finds: {label}", hit is not None,
+                       f"{hit.get('severity')}: {str(hit.get('what'))[:120]}" if hit else
+                       f"no finding ≥ {want['severity_min']} matches"))
+    if allowed == ["pass"]:
+        serious = [f for f in findings if SEVERITY.get(str(f.get("severity")), 0) >= SEVERITY["major"]]
+        checks.append(("no blocker or major finding", not serious, f"{len(serious)} serious finding(s)"))
+    return checks
+
+
+def blocked_gate(ret, expect):
+    """The gate a Verifier's unexpected `blocked` verdict names (`blocked_reason: '<gate>: <why>'`), else None."""
+    allowed = expect["verdict"] if isinstance(expect["verdict"], list) else [expect["verdict"]]
+    if (ret or {}).get("verdict") != "blocked" or "blocked" in allowed:
+        return None
+    reason = str((ret or {}).get("blocked_reason") or "")
+    return reason if ":" in reason and reason.split(":", 1)[0].strip() else None
+
+
+def dig(doc, dotted):
+    cur = doc
+    for part in str(dotted).split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def grade_fields(files, expect):
+    """files: {path: parsed yaml}; expect.fields: {"<path>:<dotted.key>": value}."""
+    checks = []
+    for key, want in sorted(expect["fields"].items()):
+        path, _, dotted = key.partition(":")
+        got = dig(files.get(path) or {}, dotted)
+        same = got == want or (isinstance(got, str) and isinstance(want, str)       # 'legacy/' is 'legacy'
+                               and got.rstrip("/") == want.rstrip("/"))
+        checks.append((f"{key} = {want!r}", same, f"got {got!r}"))
+    return checks
+
+
+def grade_migrator(ret, gates_conclusion, threshold):
+    checks = [("Gates check passed", gates_conclusion == "success", f"Gates: {gates_conclusion}")]
+    score = ((ret or {}).get("gates") or {}).get("mutation_changed")
+    # "n/a: no mutable code changed" is a valid answer under the return contract (nine live returns use it);
+    # CI's Gates re-checks the claim, so it counts only alongside a green Gates.
+    not_applicable = (isinstance(score, str) and score.startswith("n/a: no ") and "changed" in score
+                      and gates_conclusion == "success")
+    ok = not_applicable or (isinstance(score, (int, float)) and threshold is not None and score >= threshold)
+    checks.append((f"mutation_changed ≥ {threshold}", ok, f"reported {score!r}"))
+    return checks
+
+
+def work_check(changed):
+    """A Migrator case passes only on work: a change outside `.migration/`. m3j: two BK-05F sessions changed only
+    their return, pointing at the base's old handoff, and passed because the base already held the work."""
+    code = [f for f in changed if not f.startswith(".migration/")]
+    return ("changes the ticket's code or tests", bool(code),
+            f"{len(code)} file(s) outside .migration/" if code else "only .migration/ changed")
+
+
+def new_errors(base_errors, head_errors):
+    return sorted(set(head_errors) - set(base_errors))
+
+
+def validate_errors(tree):
+    if not (pathlib.Path(tree) / ".migration/harness/tools/validate.py").exists():
+        return []                      # a bootstrap case's branch before the harness is installed
+    r = sh([sys.executable, str(pathlib.Path(tree) / ".migration/harness/tools/validate.py"),
+            str(pathlib.Path(tree) / ".migration")], check=False)
+    lines = (r.stdout + r.stderr).splitlines()
+    return [ln.strip() for ln in lines if ln.strip() and not ln.startswith("AFS-TOOL")
+            and not re.search(r"file\(s\) checked", ln)]
+
+
+def verdict(checks):
+    return all(ok for _, ok, _ in checks)
+
+
+def grade(a, cases):
+    state = load_state(a)
+    cases = [mapped(c, role_map(a)) for c in cases]
+    results = {"run": a.run, "eval_repo": a.eval_repo, "graded_at": now(), "cases": {}}
+    sources = pathlib.Path(a.sources)
+    for case in cases:
+        st = state.get(case["id"])
+        row = {"kind": case["kind"], "must_pass": bool(case.get("must_pass", True)), "checks": []}
+        results["cases"][case["id"]] = row
+        if not st:
+            row.update(status="not-dispatched", passed=False)
+            continue
+        pr = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if not pr:
+            row.update(status="no-pr", passed=False)
+            continue
+        row["pr"] = pr["number"]
+        if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
+            ended = session_end(a.eval_repo, pr["head"]["ref"])
+            # A cancelled session (the one-hour limit) never retitles its PR: it ended unfinished. A session that
+            # completed without retitling is graded on what it committed.
+            if ended != "completed":
+                row.update(status=f"session-{ended}" if ended else "running", passed=False)
+                continue
+        src = source_clone(sources, case["source"]["repo"])
+        git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
+            f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
+        checks = []
+        if st.get("chained_from"):                # phase 4a, configuration A: the Verifier on a Migrator's PR
+            row.update(chain_row(src, case, st))
+            continue
+        ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
+        shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
+        ret, why = None, ret_path
+        if shown.returncode == 0:
+            try:
+                ret = yaml.safe_load(shown.stdout)
+            except yaml.YAMLError as exc:         # an agent can commit a return that isn't YAML; that's a fail
+                why = f"{ret_path} is not valid YAML: {str(exc).splitlines()[0]}"
+        checks.append(("return file committed", isinstance(ret, dict), why))
+        ret = ret if isinstance(ret, dict) else None
+        trees = {}
+        for ref in ("base", "head"):
+            wt = pathlib.Path(tempfile.mkdtemp(prefix="afs-grade-")) / ref
+            git(src, "worktree", "add", "-q", "--detach", str(wt), f"refs/afs-eval/{ref}")
+            trees[ref] = wt
+        try:
+            added = new_errors(validate_errors(trees["base"]), validate_errors(trees["head"]))
+            checks.append(("no new validation errors", not added, "; ".join(added)[:400] or "none"))
+            runs = gh_api(f"repos/{a.eval_repo}/commits/{pr['head']['sha']}/check-runs?per_page=100")["check_runs"]
+            runs = sorted(runs, key=lambda r: r.get("id", 0))      # later reruns override earlier ones
+            row["ci"] = {r["name"]: r["conclusion"] for r in runs}
+            if case["kind"] == "migrator":
+                latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
+                gates = latest[0]["conclusion"] if latest else None
+                if (latest and latest[0]["status"] != "completed") or (
+                        not latest and any(r["status"] != "completed" for r in runs)):
+                    row["ci_pending"] = True          # Gates still running, or not created yet behind other jobs
+                profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
+                threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
+                checks += grade_migrator(ret, gates, threshold)
+                changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
+                              check=False).stdout.split()
+                checks.append(work_check(changed))
+            elif case["kind"] == "verifier":
+                checks += grade_verifier(ret, case["expect"])
+                gate = blocked_gate(ret, case["expect"])
+                if gate:
+                    row["blocked_gate"] = gate
+            else:
+                files = {}
+                for path in {k.partition(":")[0] for k in case["expect"]["fields"]}:
+                    p = trees["head"] / path
+                    files[path] = yaml.safe_load(p.read_text()) if p.exists() else None
+                checks += grade_fields(files, case["expect"])
+        finally:
+            for wt in trees.values():
+                git(src, "worktree", "remove", "--force", str(wt), check=False)
+        row["checks"] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
+        # A Verifier blocked because a gate couldn't run or finish (phase 3e) is reported apart from a wrong
+        # verdict, as a timed-out session is: it still fails, but it says the run, not the review, went wrong.
+        status = ("ci-pending" if row.pop("ci_pending", False)
+                  else "verifier-blocked" if "blocked_gate" in row else "graded")
+        row.update(status=status, passed=verdict(checks),
+                   **usage_and_skills(src))
+    out = pathlib.Path(a.results_dir) / f"{a.run}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
+    print(f"wrote {out}")
+    return results
+
+
+def session_end(eval_repo, head_ref):
+    """The conclusion of the Copilot session's run on this branch, once it has ended (cancelled = time limit)."""
+    runs = gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=5") or {}
+    for run in runs.get("workflow_runs") or []:
+        if run.get("status") == "completed":
+            if run.get("conclusion") == "success":
+                return "completed"
+            return {"cancelled": "timed-out"}.get(run["conclusion"], run["conclusion"])
+    return None
+
+
+def agent_pr(eval_repo, issue, base):
+    owner = eval_repo.split("/")[0]
+    for pr in gh_api(f"repos/{eval_repo}/pulls?state=all&base={base}&per_page=50") or []:
+        if re.search(rf"(?i)\b(fixes|closes|resolves)\s+(?:{re.escape(eval_repo)})?#{issue}\b", pr.get("body") or ""):
+            return pr
+    return None
+
+
+def usage_and_skills(src):
+    records = session_records(src, "refs/afs-eval/base", "refs/afs-eval/head")
+    return {"skills": session_skills(records), "usage": session_usage(records)}
+
+
+def session_records(src, base, head):
+    """Cost records the agent's sessions added (base..head). The case branch carries the source target's own
+    history of records, which belong to other sessions."""
+    names = git(src, "diff", "--diff-filter=A", "--name-only", base, head, "--", ".migration/costs",
+                check=False).stdout.split()
+    out = []
+    for name in names:
+        try:
+            out.append(json.loads(git(src, "show", f"{head}:{name}").stdout))
+        except ValueError:
+            continue
+    return out
+
+
+def session_skills(records):
+    skills = {}
+    for rec in records:
+        for s in rec.get("skills_invoked") or []:
+            skills[s["skill"]] = skills.get(s["skill"], 0) + s["count"]
+    return dict(sorted(skills.items()))
+
+
+def minutes(rec):
+    try:
+        start = dt.datetime.fromisoformat(str(rec["started_at"]).replace("Z", "+00:00"))
+        end = dt.datetime.fromisoformat(str(rec["ended_at"]).replace("Z", "+00:00"))
+        return max((end - start).total_seconds() / 60, 0.0)
+    except (KeyError, ValueError):
+        return 0.0
+
+
+def session_usage(records):
+    """What a case's sessions spent: model requests, output tokens and wall minutes (cost records, ADR-0021).
+    Input tokens aren't recorded on the coding agent, so cost isn't computed; it is never guessed."""
+    usage = {"sessions": len(records), "requests": 0, "output_tokens": 0, "minutes": 0.0}
+    for rec in records:
+        for m in (rec.get("models") or {}).values():
+            usage["requests"] += int(m.get("requests") or 0)
+            usage["output_tokens"] += int(m.get("output") or 0)
+        usage["minutes"] += minutes(rec)
+    usage["minutes"] = round(usage["minutes"], 1)
+    return usage
+
+
+# ---------------------------------------------------------------- report
+
+def flips(results, baseline):
+    out = []
+    for cid, row in sorted(results["cases"].items()):
+        before = (baseline or {}).get("cases", {}).get(cid)
+        if before is not None and bool(before.get("passed")) != bool(row.get("passed")):
+            out.append((cid, "pass → fail" if before.get("passed") else "fail → pass", row.get("must_pass")))
+    return out
+
+
+def report(results, baseline=None):
+    rows = results["cases"]
+    passed = sum(1 for r in rows.values() if r.get("passed"))
+    lines = [f"# Eval run `{results['run']}`", "",
+             f"{passed}/{len(rows)} cases pass (graded {results.get('graded_at')}, eval repo "
+             f"`{results.get('eval_repo')}`).", "", "| Case | Kind | Must pass | Result | Failed checks |",
+             "|---|---|---|---|---|"]
+    for cid, r in sorted(rows.items()):
+        failed = "; ".join(f"{c['check']} ({c['detail']})" for c in r.get("checks", []) if not c["ok"])
+        result = "pass" if r.get("passed") else r.get("status") if r.get("status") != "graded" else "fail"
+        lines.append(f"| `{cid}` | {r['kind']} | {'yes' if r.get('must_pass') else 'no'} | {result} | "
+                     f"{failed.replace('|', '/') or '—'} |")
+    if baseline is not None:
+        f = flips(results, baseline)
+        lines += ["", f"## Flips against `{baseline['run']}`", ""]
+        lines += [f"- `{c}`: {d}{' **(must pass)**' if m and d == 'pass → fail' else ''}" for c, d, m in f] or ["None."]
+    skills = {}
+    for r in rows.values():
+        for s, n in (r.get("skills") or {}).items():
+            skills[s] = skills.get(s, 0) + n
+    if skills:
+        lines += ["", "## Skills loaded across the run", ""]
+        lines += [f"- `{s}`: {n}" for s, n in sorted(skills.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return "\n".join(lines) + "\n"
+
+
+def majority(runs):
+    """{case: {"passes": n, "runs": n, "passed": bool, "usage": median usage}} over runs of one variant."""
+    out = {}
+    for res in runs:
+        for cid, row in res["cases"].items():
+            c = out.setdefault(cid, {"passes": 0, "runs": 0, "must_pass": row.get("must_pass"), "usages": [],
+                                     "statuses": []})
+            c["runs"] += 1
+            c["passes"] += 1 if row.get("passed") else 0
+            c["statuses"].append("pass" if row.get("passed") else row.get("status") or "fail")
+            if row.get("usage"):
+                c["usages"].append(row["usage"])
+    for c in out.values():
+        c["passed"] = c["passes"] * 2 > c["runs"]
+        usages = c.pop("usages")
+        c["usage"] = {k: statistics.median(u[k] for u in usages) for k in ("requests", "output_tokens", "minutes")} \
+            if usages else None
+    return out
+
+
+def pct(new, old):
+    return "n/a" if not old else f"{(new - old) / old:+.0%}"
+
+
+def compare(runs, baseline_runs):
+    """Two variants by majority of their runs (ADR-0041). The change holds unless a case that passes by majority
+    in the baseline fails by majority after it. Usage (median per case) is shown beside, for a person to weigh;
+    it never decides. Adapted from compare.py in anthropics/single-agent-loop-kit (Apache-2.0)."""
+    now, before = majority(runs), majority(baseline_runs)
+    lines = [f"# {', '.join(r['run'] for r in runs)} against {', '.join(r['run'] for r in baseline_runs)}", "",
+             "| Case | Baseline | Now | Flip | Requests | Output tokens | Minutes |", "|---|---|---|---|---|---|---|"]
+    broken = []
+    totals = {"now": collections.Counter(), "before": collections.Counter()}
+    for cid in sorted(now):
+        n, b = now.get(cid), before.get(cid)
+        flip = ""
+        if n and b and n["passed"] != b["passed"]:
+            flip = "fail → pass" if n["passed"] else "**pass → fail**"
+            if not n["passed"]:
+                broken.append(cid)
+        cells = []
+        for key in ("requests", "output_tokens", "minutes"):
+            nu, bu = (n or {}).get("usage"), (b or {}).get("usage")
+            if nu and bu:
+                totals["now"][key] += nu[key]
+                totals["before"][key] += bu[key]
+                cells.append(f"{nu[key]:g} ({pct(nu[key], bu[key])})")
+            else:
+                cells.append(f"{nu[key]:g}" if nu else "—")
+        show = lambda c: f"{c['passes']}/{c['runs']} {'pass' if c['passed'] else 'fail'}" if c else "—"  # noqa: E731
+        lines.append(f"| `{cid}` | {show(b)} | {show(n)} | {flip} | " + " | ".join(cells) + " |")
+    pn = sum(1 for c in now.values() if c["passed"])
+    shared = [cid for cid in now if cid in before]
+    pb = sum(1 for cid in shared if before[cid]["passed"])
+    lines += ["", f"By majority: **{pn}/{len(now)}** now; the baseline passes {pb}/{len(shared)} of the same cases."]
+    if totals["before"]:
+        lines.append("Median usage over the cases both variants ran: " + ", ".join(
+            f"{k.replace('_', ' ')} {totals['now'][k]:g} ({pct(totals['now'][k], totals['before'][k])})"
+            for k in ("requests", "output_tokens", "minutes")) + ".")
+    lines += ["", "**Verdict:** " + (f"the change does not hold: {', '.join(broken)} passed by majority before and "
+                                     "fails by majority now." if broken else
+                                     "the change holds: no case that passed by majority now fails by majority.")]
+    return "\n".join(lines) + "\n", broken
+
+
+def chains(target_dirs, retired=None):
+    """Role chains a live target used: for each ticket, the set of roles whose returns it has (a retired role
+    counted as its successor)."""
+    retired = retired or {}
+    out = collections.Counter()
+    for d in target_dirs:
+        by_ticket = collections.defaultdict(set)
+        for f in pathlib.Path(d, ".migration/returns").glob("*.y*ml"):
+            ticket, _, role = f.stem.rpartition(".")
+            if ticket and role.startswith("afs-"):
+                by_ticket[ticket].add(retired.get(role, role))
+        for roles in by_ticket.values():
+            out[tuple(sorted(roles))] += 1
+    return out
+
+
+def coverage(cases, target_dirs, retired=None):
+    """Which role chains the live targets use have a case for every role in them. A case runs one session, so
+    this is role coverage per chain: a chain whose roles all have cases can still drop a handoff the eval never
+    sees. Adapted from chain_coverage.py in anthropics/single-agent-loop-kit (Apache-2.0)."""
+    retired = retired or {}
+    cased = {retired.get(r, r) for r in (c.get("role") or c.get("agent") for c in cases)}
+    used = chains(target_dirs, retired)
+    lines = ["| Tickets | Roles | Roles without a case |", "|---|---|---|"]
+    gaps = []
+    for roles, n in used.most_common():
+        current = list(roles)
+        missing = [r for r in current if r not in cased]
+        if missing:
+            gaps.append((current, missing))
+        lines.append(f"| {n} | {', '.join(current)} | {', '.join(missing) or '—'} |")
+    roles_used = sorted({r for roles in used for r in roles})
+    no_case = [r for r in roles_used if r not in cased]
+    lines += ["", f"Roles with a case: {', '.join(sorted(r for r in cased if r)) or 'none'}.",
+              f"Roles the targets use with no case: {', '.join(no_case) or 'none'}. A change to one of these "
+              "roles can't be measured until a case covers it."]
+    return "\n".join(lines) + "\n", no_case
+
+
+def role_traces(target_dir, by="slice", retired=None):
+    """{trace: [role, ...]} in the order each role first committed a return. A trace is a slice (the ticket id's
+    prefix: BK-05F → BK) or one ticket."""
+    retired = retired or {}
+    root = pathlib.Path(target_dir)
+    log = git(root, "log", "--reverse", "--diff-filter=A", "--name-only", "--format=@%ct", "--",
+              ".migration/returns", check=False).stdout.splitlines()
+    first, when = {}, 0
+    for line in log:
+        if line.startswith("@"):
+            when = int(line[1:])
+        elif line.strip():
+            first.setdefault(pathlib.Path(line.strip()).name, when)
+    traces = collections.defaultdict(list)
+    for f in sorted(root.glob(".migration/returns/*.y*ml"), key=lambda f: (first.get(f.name, 0), f.name)):
+        ticket, _, role = f.stem.rpartition(".")
+        if not ticket or not role.startswith("afs-"):
+            continue
+        role = retired.get(role, role)
+        key = ticket.split("-", 1)[0] if by == "slice" else ticket
+        if not traces[key] or traces[key][-1] != role:
+            traces[key].append(role)
+    return dict(traces)
+
+
+def coupling(traces, min_coupling=0.8, min_share=0.2):
+    """Which roles carry the work, and which run right after one another (adapted from coupling_map.py in
+    anthropics/single-agent-loop-kit, Apache-2.0). A pair is a merge candidate when B follows A directly in at
+    least `min_coupling` of the traces holding the rarer of the two, and the pair appears in at least
+    `min_share` of all traces. The fixed pipeline order (ADR-0040's Migrator → Verifier, a slice's analysis →
+    characterization → plan) shows up here by design: read a candidate against the ADR that set the order."""
+    n = len(traces)
+    seen = collections.Counter(r for roles in traces.values() for r in set(roles))
+    follows = collections.Counter()
+    for roles in traces.values():
+        follows.update(set(zip(roles, roles[1:])))
+    lines = ["| Role | Traces | Share |", "|---|---|---|"]
+    lines += [f"| {r} | {c} | {c / n:.0%} |" for r, c in seen.most_common()]
+    lines += ["", "| A → B | Traces | Coupling | Share | Merge candidate |", "|---|---|---|---|---|"]
+    candidates = []
+    for (a, b), c in follows.most_common():
+        couple = c / min(seen[a], seen[b])
+        share = c / n
+        hit = couple >= min_coupling and share >= min_share
+        if hit:
+            candidates.append((a, b))
+        lines.append(f"| {a} → {b} | {c} | {couple:.0%} | {share:.0%} | {'yes' if hit else ''} |")
+    return "\n".join(lines) + "\n", candidates
+
+
+def must_pass_regressions(results, baseline):
+    return [c for c, d, m in flips(results, baseline) if m and d == "pass → fail"]
+
+
+def skills_by_agent(records):
+    """{agent: {skill: loads}} from cost records."""
+    out = {}
+    for rec in records:
+        agent = rec.get("agent") or "unknown"
+        bucket = out.setdefault(agent, {})
+        for s in rec.get("skills_invoked") or []:
+            bucket[s["skill"]] = bucket.get(s["skill"], 0) + s["count"]
+    return out
+
+
+# ---------------------------------------------------------------- main
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("list", "prepare", "dispatch", "grade", "refresh"):
+        p = sub.add_parser(name)
+        p.add_argument("--cases", default=str(ROOT / "evals/cases"))
+        p.add_argument("--case", action="append", help="limit to these case ids")
+        if name != "list":
+            p.add_argument("--run", required=True)
+            p.add_argument("--eval-repo", required=True)
+            p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+            p.add_argument("--sources", default=os.path.expanduser("~/.cache/afs-eval/sources"))
+        if name in ("prepare", "dispatch", "grade"):
+            p.add_argument("--role-map", action="append", metavar="OLD=NEW",
+                           help="dispatch and grade a case's role as another (a folded role)")
+        if name == "prepare":
+            p.add_argument("--harness", default=str(ROOT))
+            p.add_argument("--allow-unreleased", action="store_true")
+            p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("report")
+    p.add_argument("--results", required=True)
+    p.add_argument("--baseline")
+    p.add_argument("--out")
+    p = sub.add_parser("chain")
+    p.add_argument("--run", required=True)
+    p.add_argument("--from-run", required=True, help="the Migrator run whose PRs the Verifiers verify")
+    p.add_argument("--eval-repo", required=True)
+    p.add_argument("--case", action="append")
+    p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+    p = sub.add_parser("oracle")
+    p.add_argument("--run", required=True)
+    p.add_argument("--eval-repo", required=True)
+    p.add_argument("--case", action="append")
+    p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+    p.add_argument("--sources", default=str(pathlib.Path.home() / ".cache/afs-eval/sources"))
+    p = sub.add_parser("compare")
+    p.add_argument("--runs", nargs="+", required=True, help="graded results of the changed variant")
+    p.add_argument("--baseline", nargs="+", required=True, help="graded results of the baseline")
+    p.add_argument("--out")
+    p = sub.add_parser("coverage")
+    p.add_argument("--cases", default=str(ROOT / "evals/cases"))
+    p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns)")
+    p.add_argument("--require", action="store_true", help="exit 1 when a used role has no case")
+    p = sub.add_parser("coupling")
+    p.add_argument("--target", action="append", required=True, help="a live target checkout (its returns' history)")
+    p.add_argument("--by", choices=("slice", "ticket"), default="slice")
+    p.add_argument("--min-coupling", type=float, default=0.8)
+    p.add_argument("--min-share", type=float, default=0.2)
+    p = sub.add_parser("skills")
+    p.add_argument("--repo", action="append", required=True, help="a target checkout with .migration/costs")
+    a = ap.parse_args(argv)
+
+    if a.cmd == "report":
+        results = json.loads(pathlib.Path(a.results).read_text())
+        baseline = json.loads(pathlib.Path(a.baseline).read_text()) if a.baseline else None
+        text = report(results, baseline)
+        (pathlib.Path(a.out).write_text(text) if a.out else sys.stdout.write(text))
+        regressions = must_pass_regressions(results, baseline) if baseline else []
+        if regressions:
+            print(f"afs-eval: must-pass case(s) flipped to fail: {', '.join(regressions)}", file=sys.stderr)
+        print(f"AFS-TOOL afs-eval exit={1 if regressions else 0}")
+        return 1 if regressions else 0
+    if a.cmd == "chain":
+        chain(a, load_cases(ROOT / "evals/cases", a.case))
+        return 0
+    if a.cmd == "oracle":
+        oracle(a, load_cases(ROOT / "evals/cases", a.case))
+        return 0
+    if a.cmd == "compare":
+        load = lambda paths: [json.loads(pathlib.Path(x).read_text()) for x in paths]  # noqa: E731
+        text, broken = compare(load(a.runs), load(a.baseline))
+        (pathlib.Path(a.out).write_text(text) if a.out else sys.stdout.write(text))
+        print(f"AFS-TOOL afs-eval exit={1 if broken else 0}")
+        return 1 if broken else 0
+    if a.cmd == "coverage":
+        sys.path.insert(0, str(HERE))
+        from check_plan import FOLDED_INTO
+        text, no_case = coverage(load_cases(a.cases), a.target, FOLDED_INTO)
+        sys.stdout.write(text)
+        return 1 if (a.require and no_case) else 0
+    if a.cmd == "coupling":
+        sys.path.insert(0, str(HERE))
+        from check_plan import FOLDED_INTO
+        traces = {}
+        for t in a.target:
+            traces.update({f"{pathlib.Path(t).name}:{k}": v for k, v in role_traces(t, a.by, FOLDED_INTO).items()})
+        text, _ = coupling(traces, a.min_coupling, a.min_share)
+        sys.stdout.write(f"{len(traces)} traces (by {a.by}).\n\n" + text)
+        return 0
+    if a.cmd == "skills":
+        records = []
+        for repo in a.repo:
+            for f in sorted(pathlib.Path(repo, ".migration/costs").glob("*.json")):
+                try:
+                    records.append(json.loads(f.read_text()))
+                except ValueError:
+                    continue
+        for agent, skills in sorted(skills_by_agent(records).items()):
+            print(f"{agent}: " + (", ".join(f"{s} ×{n}" for s, n in sorted(skills.items(), key=lambda kv: -kv[1]))
+                                  or "no skill loads recorded"))
+        return 0
+    try:
+        cases = load_cases(a.cases, a.case, include_disabled=a.cmd == "list")
+    except CaseError as exc:
+        print(f"afs-eval: {exc}", file=sys.stderr)
+        print("AFS-TOOL afs-eval exit=2")
+        return 2
+    if a.cmd == "list":
+        for c in cases:
+            state = f"disabled: {c['disabled']}" if c.get("disabled") else (
+                "must-pass" if c.get("must_pass", True) else "tracked")
+            print(f"{c['id']}\t{c['kind']}\t{c['agent']}\t{c['source']['repo']}@{c['source']['base'][:12]}\t{state}")
+        return 0
+    {"prepare": prepare, "dispatch": dispatch, "grade": grade, "refresh": refresh}[a.cmd](a, cases)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

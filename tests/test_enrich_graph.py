@@ -36,6 +36,48 @@ def path(g, anchor):
     return check_graph.data_path(anchor, g.doc["nodes"], g.doc["edges"], by_id)
 
 
+class AnchorTest(unittest.TestCase):
+    """Slice anchors name URL parameters however the spec's author wrote them (pilot BK-ACCEPT: the booking
+    slice said `<tracking_id>` for Django's `<str:tracking_id>`, and the acceptance graph gate failed)."""
+    nodes = [{"id": "e1", "type": "endpoint", "name": "/admin/cargo/<str:tracking_id>/"},
+             {"id": "e2", "type": "endpoint", "name": "/loans/{id}"},
+             {"id": "e3", "type": "endpoint", "name": "/admin/dashboard/"}]
+
+    def test_converters_and_brace_parameters_match_by_name(self):
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/cargo/<tracking_id>/", self.nodes), ["e1"])
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/loans/<int:id>", self.nodes), ["e2"])
+
+    def test_different_parameter_names_or_paths_do_not_match(self):
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/cargo/<id>/", self.nodes), [])
+        self.assertEqual(check_graph.anchor_nodes("endpoint=/admin/dashboard/not-routed/", self.nodes), [])
+
+
+class StaticPagesTest(unittest.TestCase):
+    """A Java EE app whose UI is static HTML (the synthetic target's About page, served by a JAX-RS resource)
+    has `page` nodes: the stack pack requires them, and the graph gate failed without (synthetic SY-01)."""
+    def test_static_html_is_a_page_routed_from_the_resource_that_serves_it(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        enrich_graph.ENRICHERS["java-ee"](g, ROOT / "synthetic/legacy")
+        self.assertIn("src/main/resources/static/about.html",
+                      {n["name"] for n in g.doc["nodes"] if n["type"] == "page"})
+        self.assertIn(("GET /about", "src/main/resources/static/about.html"), edges(g, "routes"))
+
+    def test_jsp_and_test_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / "src/main/java/app").mkdir(parents=True)
+            (root / "src/main/java/app/App.java").write_text("package app;\npublic class App {}\n")
+            (root / "src/main/webapp").mkdir(parents=True)
+            (root / "src/main/webapp/list.jsp").write_text("<%@ page %><html></html>")
+            (root / "src/test/resources").mkdir(parents=True)
+            (root / "src/test/resources/fixture.html").write_text("<html></html>")
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.ENRICHERS["java-ee"](g, root)
+            pages = {n["name"]: n for n in g.doc["nodes"] if n["type"] == "page"}
+        self.assertIn("src/main/webapp/list.jsp", pages)
+        self.assertNotIn("src/test/resources/fixture.html", pages, "test fixtures aren't the app's pages")
+
+
 class JavaEETest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -121,6 +163,84 @@ class JavaEETest(unittest.TestCase):
         self.assertEqual(len(g.doc["edges"]), before, "re-running adds nothing")
 
 
+class JavaEEIframeTest(unittest.TestCase):
+    wrapper = "src/main/webapp/admin/tracking/map.xhtml"
+    frame = "src/main/webapp/admin/tracking/mapFrame.xhtml"
+
+    def graph(self, markup):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            shutil.copytree(FIX / "javaee", root, dirs_exist_ok=True)
+            page = root / self.wrapper
+            page.parent.mkdir(parents=True)
+            page.write_text(markup)
+            (root / self.frame).write_text(
+                '<html><script>fetch("/orders/report", {method: "POST"});</script></html>')
+            # Same suffix in another module must never stand in for a missing local target.
+            decoy = root / "other/src/main/webapp/missing/mapFrame.xhtml"
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text('<html><h:outputText value="#{public.orders.count}"/></html>')
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            enrich_graph.merge_graphify(g, json.loads((FIX / "javaee.graphify.json").read_text()))
+            enrich_graph.enrich_java_ee(g, root)
+            before = json.dumps(g.doc, sort_keys=True)
+            enrich_graph.enrich_java_ee(g, root)
+            self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "enrichment stays idempotent")
+            return g
+
+    def test_context_path_iframe_reaches_data_through_child(self):
+        g = self.graph('<html><iframe width="100%" '
+                       'src="#{request.contextPath}/admin/tracking/mapFrame.xhtml"/></html>')
+        self.assertIn((self.wrapper, self.frame), edges(g, "contains"))
+        flow = path(g, self.wrapper)
+        self.assertIn(f"→contains `{self.frame}`", flow)
+        self.assertIn("→routes `POST /orders/report`", flow)
+        self.assertRegex(flow, r"→reads_from `(orders|Customer)`")
+        pages = {n["filePath"]: n["id"] for n in g.doc["nodes"] if n["type"] == "page"}
+        edge = next(e for e in g.doc["edges"]
+                    if e["source"] == pages[self.wrapper] and e["target"] == pages[self.frame])
+        self.assertIn("afs-enriched:jsf-iframe", edge["description"])
+        self.assertIn("#{request.contextPath}/admin/tracking/mapFrame.xhtml", edge["description"])
+
+    def test_local_path_semantics(self):
+        for src in ("mapFrame.xhtml", "./mapFrame.xhtml", "../tracking/mapFrame.xhtml",
+                    "/admin/tracking/mapFrame.xhtml", "mapFrame.xhtml?mode=live&amp;zoom=2#map"):
+            with self.subTest(src=src):
+                g = self.graph(f"<html><iframe\n src='{src}'></iframe></html>")
+                self.assertIn((self.wrapper, self.frame), edges(g, "contains"))
+                self.assertRegex(path(g, self.wrapper), r"→reads_from `(orders|Customer)`")
+
+    def test_unresolved_references_do_not_invent_data_paths(self):
+        for src in ("#{mapView.frame}", "${mapView.frame}",
+                    "#{request.contextPath}/admin/#{mapView.frame}.xhtml",
+                    "#{request.contextPath.concat('/admin/tracking/mapFrame.xhtml')}",
+                    "#{request.contextPath}//admin/tracking/mapFrame.xhtml",
+                    "https://example.test/admin/tracking/mapFrame.xhtml",
+                    "//example.test/admin/tracking/mapFrame.xhtml",
+                    "file:///admin/tracking/mapFrame.xhtml", "javascript:mapFrame.xhtml",
+                    "\\\\example.test\\mapFrame.xhtml", "%2e%2e/tracking/mapFrame.xhtml",
+                    "/missing/mapFrame.xhtml", "missing/mapFrame.xhtml", "absent.xhtml",
+                    "mapFrame.xhtml/",
+                    "../../../../other/src/main/webapp/missing/mapFrame.xhtml",
+                    "", "#map", "?mode=live"):
+            with self.subTest(src=src):
+                g = self.graph(f'<html><iframe src="{src}"/></html>')
+                self.assertFalse(any(s == self.wrapper for s, _ in edges(g, "contains")))
+                self.assertTrue(path(g, self.wrapper).startswith("**NO PATH**"))
+                self.assertRegex(path(g, self.frame), r"→reads_from `(orders|Customer)`",
+                                 "child control reaches data")
+
+    def test_inactive_or_non_src_attributes_do_not_link(self):
+        for markup in ('<!-- <iframe src="mapFrame.xhtml"/> -->',
+                       '<iframe data-src="mapFrame.xhtml"/>',
+                       '<iframe src="mapFrame.xhtml" srcdoc="inline content"/>',
+                       '<iframe src="absent.xhtml" src="mapFrame.xhtml"/>',
+                       '<base href="https://example.test/"/><iframe src="mapFrame.xhtml"/>'):
+            with self.subTest(markup=markup):
+                g = self.graph(markup)
+                self.assertTrue(path(g, self.wrapper).startswith("**NO PATH**"))
+
+
 class DjangoTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -146,7 +266,9 @@ class DjangoTest(unittest.TestCase):
 
     def test_directed_paths_to_data(self):
         self.assertIn("→reads_from `shop_orders`", path(self.g, "endpoint=/"))
-        self.assertIn("←implements `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
+        # The injected `OrderRepository` Protocol call reaches its implementation directly (ADR-0028 amendment,
+        # synthetic LF-ACCEPT), no longer through `←implements`.
+        self.assertIn("→calls `DjangoOrderRepository.find` →reads_from", path(self.g, "orders/interfaces/views.py"))
         self.assertTrue(path(self.g, "endpoint=/api/health/").startswith("**NO PATH**"))
 
     def test_management_command_and_task(self):
@@ -186,6 +308,63 @@ class DjangoHttpMethodsTest(unittest.TestCase):
             enrich_graph.enrich_django(g, root)
             self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "enrichment stays idempotent")
             return g
+
+    def test_get_object_or_404_reads_the_model_table(self):
+        """Synthetic LL-ACCEPT: the catalog's detail page read its loan with get_object_or_404, and the graph
+        showed no data path. The shortcut reads its model's table, like Model.objects.get."""
+        views = ("from django.shortcuts import get_object_or_404, render\n"
+                 "from shop.orders.application import OrderLookup\n"
+                 "from shop.orders.infrastructure.models import OrderModel\n\n"
+                 "def create_order_view(lookup: OrderLookup):\n"
+                 "    def view(request):\n"
+                 "        return render(request, 'orders/list.html', {'order': lookup.find(request.GET.get('id'))})\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return render(request, 'orders/health.html', {'o': get_object_or_404(OrderModel, pk=1)})\n")
+        g = self.graph(views)
+        self.assertIn(("health", "shop_orders"), edges(g, "reads_from"))
+        self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
+
+    def test_get_object_or_404_of_an_unknown_name_adds_no_edge(self):
+        views = ("from django.shortcuts import get_object_or_404\n"
+                 "def create_order_view(lookup):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return get_object_or_404(NotAModel, pk=1)\n")
+        self.assertNotIn("health", {s for s, _ in edges(self.graph(views), "reads_from")})
+
+
+    def test_calls_on_an_imported_module_level_instance_reach_its_class(self):
+        """Synthetic LC-ACCEPT: views called `loan_application.lend(...)` on an instance built in a composition
+        module, and every API route lost its path to data."""
+        views = ("from django.shortcuts import render\n"
+                 "from shop.orders.wiring import lookup\n\n"
+                 "def create_order_view(lookup_):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return render(request, 'orders/health.html', {'o': lookup.find(1)})\n")
+        wiring = ("from shop.orders.application import OrderLookup\n"
+                  "from shop.orders.infrastructure.repository import DjangoOrderRepository\n\n"
+                  "lookup = OrderLookup(DjangoOrderRepository())\n")
+        g = self.graph(views, pages={"src/shop/orders/wiring.py": wiring})
+        self.assertIn(("health", "OrderLookup.find"), edges(g, "calls"), "the method itself, not the whole class")
+        self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
+
+    def test_an_unknown_module_level_name_adds_no_call(self):
+        views = ("from shop.orders.wiring import thing\n"
+                 "def create_order_view(lookup):\n"
+                 "    def view(request):\n"
+                 "        return None\n"
+                 "    return view\n\n"
+                 "def health(request):\n"
+                 "    return thing.find(1)\n")
+        g = self.graph(views, pages={"src/shop/orders/wiring.py": "thing = make_thing()\n"})
+        self.assertNotIn("health", {s for s, _ in edges(g, "calls")})
+
 
     def factory(self, decorators, imports="", extra=""):
         return (
@@ -244,6 +423,51 @@ class DjangoHttpMethodsTest(unittest.TestCase):
                 names = {n["name"] for n in g.doc["nodes"] if n.get("type") == "endpoint"
                          and n.get("filePath") == "src/shop/urls.py"}
                 self.assertEqual(names, {f"{method} /" for method in methods})
+
+    def test_data_path_lists_every_table_reached_not_only_the_shortest(self):
+        # pilot DM-AUDIT: the shortest path ended at one table, and the Auditor read the other five as missing
+        g = enrich("django")
+        with tempfile.TemporaryDirectory() as d:
+            mapping = pathlib.Path(d) / "mapping.yaml"
+            mapping.write_text("tables:\n  - target: shop_orders\n  - target: orders_auditmodel\n")
+            profile = pathlib.Path(d) / "profile.yaml"
+            profile.write_text(json.dumps({"data": {"load": [f"python manage.py import_orders --mapping {mapping}"]}}))
+            enrich_graph.enrich_data_mapping(g, profile)
+        line = path(g, "command=import_orders")
+        self.assertIn("reaches 2 data node(s): orders_auditmodel, shop_orders", line)
+
+    def test_module_level_views_built_by_a_factory_are_routed(self):
+        # pilot admin live map: `live_map, live_map_markers = compose_admin_map_views()`, then path('', live_map)
+        for urls in ("from shop.orders.composition import compose_order_view\n"
+                     "orders_view = compose_order_view()\n",
+                     "from shop.orders.composition import compose_order_view\n"
+                     "orders_view, markers_view = compose_order_view()\n",
+                     "from shop.orders.composition import compose_order_view\n"
+                     "orders_view, unused = compose_order_view(), None\n"):
+            with self.subTest(urls=urls.splitlines()[1]):
+                g = self.graph(pages={"src/shop/urls.py": urls + "from django.urls import include, path\n"
+                                      "urlpatterns = [path('', orders_view, name='orders'),\n"
+                                      "    path('api/', include('shop.orders.interfaces.urls'))]\n"})
+                if "unused" in urls:
+                    self.assertNotIn(("/", "compose_order_view"), edges(g, "routes"),
+                                     "a tuple of two calls isn't one factory's result")
+                else:
+                    self.assertIn(("/", "compose_order_view"), edges(g, "routes"))
+                    self.assertFalse(path(g, "endpoint=/").startswith(("**NO PATH**", "no matching")))
+
+    def test_data_mapping_links_the_load_and_export_commands_to_mapped_tables(self):
+        g = enrich("django")
+        with tempfile.TemporaryDirectory() as d:
+            mapping = pathlib.Path(d) / "mapping.yaml"
+            mapping.write_text("tables:\n  - target: shop_orders\n  - target: nowhere\n")
+            profile = pathlib.Path(d) / "profile.yaml"
+            profile.write_text(json.dumps({"data": {
+                "load": [f"python manage.py import_orders --snapshot {{snapshot}} --mapping {mapping}"],
+                "export": [f"python manage.py import_orders --mapping {mapping} --out {{out}}"]}}))
+            enrich_graph.enrich_data_mapping(g, profile)
+        self.assertIn(("import_orders", "shop_orders"), edges(g, "writes_to"))
+        self.assertIn(("import_orders", "shop_orders"), edges(g, "reads_from"))
+        self.assertTrue(any(e["description"].startswith("afs-enriched:data-mapping") for e in g.doc["edges"]))
 
     def test_direct_decorated_view_is_not_treated_as_a_factory(self):
         g = self.graph(
@@ -468,6 +692,23 @@ class GraphGateTest(unittest.TestCase):
             self.assertEqual(self.gate(d, "--side", "target").returncode, 0)
             self.assertEqual(self.gate(d, "--side", "target", "--require-graph").returncode, 1)
 
+    def test_unbuilt_slice_data_paths_warn_until_its_code_is_merged(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/api/health/"], {})
+            (r / ".migration/plan").mkdir()
+            (r / ".migration/plan/orders.md").write_text("# orders\n")
+            (r / ".migration/plan/orders.tickets.yaml").write_text(json.dumps({"slice": "orders", "tickets": [
+                {"id": "OR-01", "role": "afs-migrator", "files": ["src/a.py"], "blocked_by": []}]}))
+            g = self.gate(d, "--side", "target")
+            self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
+            self.assertIn("not enforced: OR-01 still open", g.stderr)
+            self.assertIn("not built yet: OR-01 open", g.stdout)
+            (r / ".migration/returns").mkdir()
+            (r / ".migration/returns/OR-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+            g = self.gate(d, "--side", "target")
+            self.assertEqual(g.returncode, 1, "built: the missing path fails")
+            self.assertIn("slice orders: data path from `endpoint=/api/health/`", g.stdout)
+
     def test_target_entry_points_must_be_owned_by_a_slice(self):
         import graph_gate
         with tempfile.TemporaryDirectory() as d:
@@ -494,21 +735,54 @@ class GraphGateTest(unittest.TestCase):
             self.assertEqual(r2.returncode, 0, "outside acceptance, ownership problems are warnings")
             self.assertIn("matches no node", r2.stderr)
 
-    def test_unowned_entry_point_fails_at_acceptance(self):
+    def test_a_slice_still_being_built_is_not_held_to_its_entry_points(self):
+        """Synthetic LL-ACCEPT: accepting the catalog slice failed on the about and circulation slices' entry
+        points, which exist only once those slices are built (their data paths were already exempt)."""
+        import graph_gate
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/api/board/"], {})
+            (r / ".migration/slices/orders.yaml").write_text(json.dumps({
+                "data_paths": {"target": ["endpoint=/api/board/"]},
+                "entry_points": {"target": ["endpoint=/", "command=import_orders", "endpoint=/later/"]}}))
+            (r / ".migration/plan").mkdir(parents=True, exist_ok=True)
+            (r / ".migration/plan/orders.md").write_text("# orders\n")
+            (r / ".migration/plan/orders.tickets.yaml").write_text(json.dumps({"slice": "orders", "tickets": [
+                {"id": "OR-01", "role": "afs-migrator", "files": ["src/a.py"], "blocked_by": []}]}))
+            cwd = os.getcwd()
+            try:
+                os.chdir(r)
+                self.assertEqual(graph_gate.unowned(*graph_gate.load_graph("target"))[1], [], "OR-01 is open")
+                (r / ".migration/returns").mkdir()
+                (r / ".migration/returns/OR-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+                self.assertEqual(graph_gate.unowned(*graph_gate.load_graph("target"))[1],
+                                 ["slice orders: entry_points.target `endpoint=/later/` matches no node"], "built")
+            finally:
+                os.chdir(cwd)
+
+    def test_unowned_entry_point_fails_when_ownership_is_enforced(self):
         import graph_gate
         with tempfile.TemporaryDirectory() as d:
             r = self.repo(d, ["endpoint=/"], {})
-            cwd, accepting = os.getcwd(), graph_gate.check_graph_fresh.accepting
+            cwd = os.getcwd()
             try:
                 os.chdir(r)
-                graph_gate.check_graph_fresh.accepting = lambda base: True
                 with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
-                    code = graph_gate.main(["--side", "target", "--acceptance-since", "base"])
+                    code = graph_gate.main(["--side", "target", "--enforce-ownership"])
             finally:
-                graph_gate.check_graph_fresh.accepting = accepting
                 os.chdir(cwd)
             self.assertEqual(code, 1)
             self.assertIn("endpoint=/api/board/ (src/shop/orders/interfaces/urls.py) is owned by no slice", out.getvalue())
+
+    def test_target_graph_dir_override(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.repo(d, ["endpoint=/"], {"nodes": ["table"]}, graph=False)
+            built = r / "built"
+            built.mkdir()
+            (built / "knowledge-graph.json").write_text(json.dumps(enrich("django").doc))
+            env = {**os.environ, "AFS_GRAPH_TARGET_DIR": str(built)}
+            g = subprocess.run([sys.executable, str(ROOT / "tools/graph_gate.py"), "--side", "target", "--require-graph"],
+                               cwd=r, capture_output=True, text=True, env=env)
+            self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
 
 
 class SliceSchemaTest(unittest.TestCase):
@@ -540,3 +814,82 @@ class BootstrapGraphTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MethodDispatchTest(unittest.TestCase):
+    """Synthetic LC-ACCEPT: a class satisfying a Python Protocol without inheriting it had only a type-level
+    `implements` edge from the base graph, so calls to the protocol's methods never reached it."""
+    def graph(self):
+        g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+        repo = g.node("class", "repo.py", "Repo", "t")
+        proto = g.node("class", "ports.py", "Port", "t")
+        for owner, path_ in ((repo, "repo.py"), (proto, "ports.py")):
+            for name in ("find", "save"):
+                cls = g.nodes[owner]["name"]
+                g.edge(owner, g.node("method", path_, f"{cls}.{name}", "t"), "contains", "t", description="method")
+        g.edge(g.node("method", "repo.py", "Repo.only_here", "t"), repo, "calls", "t")
+        g.edge(repo, proto, "implements", "base-graph")
+        return g
+
+    def test_same_named_methods_implement_the_protocol_methods(self):
+        g = self.graph()
+        enrich_graph.dispatch_methods(g)
+        pairs = edges(g, "implements")
+        self.assertIn(("Repo.find", "Port.find"), pairs)
+        self.assertIn(("Repo.save", "Port.save"), pairs)
+        self.assertNotIn("Repo.only_here", {s for s, _ in pairs})
+
+    def test_dispatch_is_idempotent(self):
+        g = self.graph()
+        enrich_graph.dispatch_methods(g)
+        before = len(g.doc["edges"])
+        enrich_graph.dispatch_methods(g)
+        self.assertEqual(len(g.doc["edges"]), before)
+
+
+class InjectedProtocolTest(unittest.TestCase):
+    """Synthetic LF-ACCEPT: the base graph's AI step left out the Protocol `implements` edges and the calls
+    through `self.repository`, which a previous run had; every path through the ports was lost. Both are now
+    derived from the code."""
+    FILES = {
+        "src/loans/__init__.py": "",
+        "src/loans/apps.py": "from django.apps import AppConfig\n\nclass LoansConfig(AppConfig):\n    name = 'loans'\n",
+        "src/loans/models.py": "from django.db import models\n\nclass Loan(models.Model):\n    member = models.TextField()\n",
+        "src/loans/services.py": (
+            "from typing import Protocol\n\n"
+            "class LoanRepository(Protocol):\n    def all(self): ...\n\n"
+            "class LoanApplication:\n"
+            "    def __init__(self, repository: LoanRepository):\n        self.repository = repository\n\n"
+            "    def list_loans(self):\n        return list(self.repository.all())\n"),
+        "src/loans/repository.py": (
+            "from .models import Loan\n\n"
+            "class DjangoLoanRepository:\n    def all(self):\n        return Loan.objects.all()\n\n"
+            "class Unrelated:\n    def other(self):\n        return 1\n"),
+    }
+
+    def graph(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for name, text in self.FILES.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text)
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            for path, cls, methods in (("src/loans/services.py", "LoanApplication", ["list_loans"]),
+                                       ("src/loans/repository.py", "DjangoLoanRepository", ["all"]),
+                                       ("src/loans/repository.py", "Unrelated", ["other"])):
+                c = g.node("class", path, cls, "t")
+                for m in methods:
+                    g.edge(c, g.node("method", path, f"{cls}.{m}", "t"), "contains", "t")
+            enrich_graph.enrich_django(g, root)
+            enrich_graph.dispatch_methods(g)
+            return g
+
+    def test_a_class_satisfying_a_protocol_implements_it(self):
+        pairs = edges(self.graph(), "implements")
+        self.assertIn(("DjangoLoanRepository", "LoanRepository"), pairs)
+        self.assertNotIn("Unrelated", {s for s, _ in pairs})
+
+    def test_calls_through_an_injected_protocol_reach_its_implementation(self):
+        g = self.graph()
+        self.assertIn(("LoanApplication.list_loans", "DjangoLoanRepository.all"), edges(g, "calls"))
+        self.assertIn(("DjangoLoanRepository.all", "loans_loan"), edges(g, "reads_from"))

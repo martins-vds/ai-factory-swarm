@@ -1,6 +1,6 @@
 # ADR-0014: UI — functional fidelity is mandatory; visual direction is decided on the map
 
-- Status: Accepted
+- Status: Accepted; amended by ADR-0042 (the Migrator builds UI screens on UI-specialty tickets)
 - Date: 2026-10-30
 
 ## Context

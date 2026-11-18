@@ -1,6 +1,6 @@
 # ADR-0019: Code graphs carry their identity and are checked for freshness
 
-- Status: Accepted
+- Status: Accepted; enforcement on the target side amended by ADR-0035
 - Date: 2026-11-02
 
 ## Context

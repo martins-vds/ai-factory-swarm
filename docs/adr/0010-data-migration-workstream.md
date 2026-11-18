@@ -1,6 +1,6 @@
 # ADR-0010: Data migration as its own workstream
 
-- Status: Accepted
+- Status: Accepted; refined by ADR-0032 (snapshot format, mapping, computed reconciliation); amended by ADR-0042 (the Migrator runs the pipeline on data-specialty tickets)
 - Date: 2026-10-30
 
 ## Context

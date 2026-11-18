@@ -13,7 +13,9 @@ import os
 import sys
 
 
-def run(main, name=None):
+def run(main, name=None, verdict=True):
+    """`verdict=False` declares a tool that reports and never blocks: harness_coverage.py then needs to
+    see it run, not fail (ADR-0027). It changes nothing at run time."""
     name = name or os.path.basename(sys.argv[0])
     try:
         code = main()

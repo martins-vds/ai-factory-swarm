@@ -34,17 +34,33 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 - `receiving-code-review` — when review feedback arrives.
 - `diagnosing-bugs` — when a failure is not obvious.
 - `lessons-learned` — recall before starting; record surprises.
+- `afs-specialty` — your ticket has `specialty:` (data, ui or messaging): what it adds (ADR-0042).
+- `afs-data-pipeline`, `db-seed` — data tickets, as `afs-specialty` says.
+- `ui-ux-pro-max`, `prototype` — UI tickets, as `afs-specialty` says.
 
 ## Procedure
 1. **Understand the capability** from the ledger entry, its characterization, and the graph (graph
-   first; source files only through the file-read gate).
+   first; source files only through the file-read gate). A ticket with `specialty:` → load
+   `afs-specialty` now and follow it alongside these steps.
 2. **Tests first:** turn the characterization cases (and transcribed legacy-test behavior) into failing
    target tests at the equivalence boundary.
 3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign with the refactoring and design
    skills; never transliterate.
 4. **Gates** through `afs-run`: build, behavior, idiom & architecture, CRAP, mutation on changed code,
    full suite. Add tests until mutation reaches the threshold; never weaken anything.
-5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR.
+   **Tests leave shared state as they found it.** A test that commits for real (a browser test against a
+   live server, a transactional test) restores the database afterwards, so seed rows from data migrations
+   survive for the tests after it. Prefer one project-wide setting to per-test marks (Django + pytest-django:
+   a `django_db_serialized_rollback` fixture returning `True` in `tests/conftest.py`). The profile's
+   `target.shared_test_files` lists where that setting lives; any ticket may change those files. Run the full suite in
+   its default order before finishing: a test that passes alone can still break another one.
+5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR. Record each
+   capability's **business rules** under `rules` (`id`, `rule`, `source`): every check that refuses input
+   or must hold (an eligibility check, a limit, a state transition), from the legacy code, a quirk ruling
+   or the plan. Include each one your code enforces, wherever it enforces it, a view included. A
+   capability with none (a static page, a layout) gets `no_rules: <why>`. The Verifier proves each rule is
+   enforced in the layer the ADRs name, so a rule you leave out goes unchecked. The finish check refuses
+   your return while a ticket capability has neither.
 6. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
 
 ## Rules
@@ -58,6 +74,9 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
 (`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
+An initial WIP return may use `pr: null` before the PR exists. Before finishing, replace it with this
+return's PR as `owner/repo#N` or a canonical PR URL and commit the update. If work is incomplete, record
+a handoff; its `pr` may remain null.
 ```yaml
 ticket: <link>
 pr: <link>

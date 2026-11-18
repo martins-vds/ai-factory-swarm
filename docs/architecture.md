@@ -71,13 +71,41 @@ humans, and approved for cutover.
 | 6 | Automated differential checks first; human side-by-side check per slice; final UAT; single cutover | [0006](adr/0006-side-by-side-then-cutover.md) |
 | 7 | Quirks escalate immediately as blocking question tickets assigned to a human | [0007](adr/0007-quirks-escalate-immediately.md) |
 | 8 | Layered orchestration; local subagents or the Copilot coding agent; agents live only in the target repo | [0008](adr/0008-layered-orchestration.md) |
-| 9 | Understand Anything is the single graph tool, used directly; source snapshot committed once | [0009](adr/0009-understand-anything-as-graph-tool.md) |
+| 9 | Understand Anything builds the graph, used directly; source snapshot committed once (amended by ADR-0025) | [0009](adr/0009-understand-anything-as-graph-tool.md) |
 | 10 | Data migration is its own workstream with its own slices and tests | [0010](adr/0010-data-migration-workstream.md) |
 | 11 | CRAP and mutation testing are mandatory quality gates on the target | [0011](adr/0011-crap-and-mutation-gates.md) |
 | 12 | Built-in skill menu + required-capability checklist; gaps are resolved by the operator before migration starts | [0012](adr/0012-skill-menu-and-capability-gaps.md) |
 | 13 | A best-effort CRAP risk map of the source guides characterization, planning and refactoring; it never blocks | [0013](adr/0013-source-risk-map.md) |
 | 14 | UI: functional fidelity is mandatory; visual direction (keep or modernize) is decided on the map | [0014](adr/0014-ui-functional-fidelity-visual-direction-by-decision.md) |
 | 15 | Context budget per agent, checkpoint-and-restart, and tool output kept on disk behind wrappers and hooks | [0015](adr/0015-context-budget-and-output-hygiene.md) |
+| 16 | Test services (databases, brokers) start from one Docker Compose file named in the profile | [0016](adr/0016-test-services-from-one-compose-file.md) |
+| 17 | Gate results come from the tools' own output lines, never from what an agent reports | [0017](adr/0017-gate-results-from-tools-not-agents.md) |
+| 18 | Ledger evidence and runtimes are checked by tools, not trusted | [0018](adr/0018-evidence-and-runtime-are-checked-not-trusted.md) |
+| 19 | Code graphs carry their identity (source SHA, tree hashes) and are checked for freshness | [0019](adr/0019-code-graphs-carry-their-identity.md) |
+| 20 | Code graphs are enriched deterministically and gated (required types, anchors reach data) before planning | [0020](adr/0020-graphs-enriched-and-gated-before-planning.md) |
+| 21 | Session cost is recorded by a Copilot hook, one record per agent session | [0021](adr/0021-session-cost-from-hooks.md) |
+| 22 | Re-walking the decision map's fog after each slice is a ticket | [0022](adr/0022-fog-rewalk-after-each-slice.md) |
+| 23 | Graphs follow scheduled, pushed and scripted flows, and cover every template | [0023](adr/0023-graphs-follow-scheduled-pushed-and-scripted-flows.md) |
+| 24 | A slice epic closes only when every ticket under it left its return file | [0024](adr/0024-slice-epic-closes-only-with-every-return-file.md) |
+| 25 | Graphify is the deterministic language layer under the framework enrichers | [0025](adr/0025-graphify-is-the-language-layer.md) |
+| 26 | Every target entry point is owned by a slice | [0026](adr/0026-every-target-entry-point-is-owned-by-a-slice.md) |
+| 27 | Harness coverage is computed, and every tool announces that it ran | [0027](adr/0027-harness-coverage-is-computed.md) |
+| 28 | Graph flow is method-level | [0028](adr/0028-graph-flow-is-method-level.md) |
+| 29 | A ticket is done when its work reaches the default branch | [0029](adr/0029-a-ticket-is-done-when-its-work-reaches-main.md) |
+| 30 | Slice tickets are reconciled before the coordinator completes the slice | [0030](adr/0030-ticket-reconciliation-before-slice-completion.md) |
+| 31 | A slice's human sign-off is an approving PR review by a named approver, on the exact head commit | [0031](adr/0031-human-signoff-is-an-approving-review.md) |
+| 32 | Data moves from a snapshot through one committed mapping; reconciliation is computed by a tool | [0032](adr/0032-data-pipeline-snapshot-mapping-reconciliation.md) |
+| 33 | The source graph only grows: a regeneration keeps earlier domain flows, and CI fails a PR that loses a flow, table, endpoint, page or command | [0033](adr/0033-the-source-graph-only-grows.md) |
+| 34 | Agents pass the PR checks before they stop: a stop hook blocks on mechanical misses within a budget; scope and stuck gates escalate | [0034](adr/0034-agents-pass-the-pr-checks-before-they-stop.md) |
+| 35 | The acceptance target graph is built by the acceptance run for the exact commit it checks; the committed target graph is a reference | [0035](adr/0035-the-acceptance-target-graph-is-built-for-the-revision-it-checks.md) |
+| 36 | A slice's human check may be deferred by an approver, with a tracked issue and deadline; a deferred slice doesn't close | [0036](adr/0036-a-human-check-may-be-deferred-by-an-approver.md) |
+| 37 | A synthetic target, built from a scenario catalog, exercises the coverage paths the pilot can't; coverage is the union across targets | [0037](adr/0037-a-synthetic-target-exercises-paths-the-pilot-cant.md) |
+| 38 | When the default branch moves, open stacked PRs are refreshed bottom-up by a workflow with a push token that starts CI; agent sessions in progress and conflicts are skipped and reported | [0038](adr/0038-stacked-prs-are-refreshed-when-the-default-branch-moves.md) |
+| 39 | Workflow runs on Copilot PRs wait for a person's approval by default; the dispatcher never approves them; turning approval off is a per-repo choice that needs the listed mitigations | [0039](adr/0039-copilot-workflow-runs-wait-for-approval-by-default.md) |
+| 40 | Migrator work reaches the default branch only with a passing Verifier return committed after the migrator return's latest change; rework needs a fresh verification | [0040](adr/0040-migrator-work-merges-only-after-its-verifier-passes.md) |
+| 41 | Changes to agents, skills or their rules are measured against an end-to-end eval of real tickets (`afs-eval`), each affected case run at least twice; no must-pass case may flip; the eval repository runs Copilot workflows without approval | [0041](adr/0041-agent-changes-are-measured-against-an-end-to-end-eval.md) |
+| 42 | The Specialist Migrator folds into the Migrator: a ticket with `specialty:` loads the `afs-specialty` skill; the retired role's returns stay valid, and open tickets can't use it | [0042](adr/0042-the-specialist-migrator-folds-into-the-migrator.md) |
+| 43 | Layer contracts from the ADRs live in the profile (`layering`) and `check_layers.py` checks them in the idiom gate; a Verifier's verdict follows its findings, and every serious finding cites a failing test or run | [0043](adr/0043-layering-is-a-gate-and-a-verifier-verdict-follows-evidence.md) |
 
 ---
 
@@ -134,7 +162,7 @@ Agents live **only in the target repo**, as pinned copies installed by bootstrap
 │   ├── capabilities.yaml         # required-capability checklist and how each is met (§6)
 │   ├── ledger/                   # fidelity ledger, one file per capability (§9)
 │   ├── slices/<name>.yaml        # slice specs (seeds, depth, extras) for per-slice graph runs
-│   ├── graphs/source/<scope>/    # Understand Anything snapshot at the pinned SHA (`full` or a slice;
+│   ├── graphs/source/<scope>/    # enriched graph snapshot at the pinned SHA (`full` or a slice;
 │   │                             #   built by the generated afs-understand.yml workflow)
 │   ├── graphs/target/            # target graph, updated incrementally per slice
 │   ├── risk-map/                 # CRAP risk map of the source (§10.4)
@@ -158,8 +186,7 @@ Roles evolve from PR #6's seven agents. New roles are marked ★.
 | ★ **Characterizer** | L1 | Builds a harness around the source and records its observable behavior as characterization tests; inventories legacy tests and the behavior they assert; re-runs the risk map with characterization coverage. | `.migration/characterization/`, ledger |
 | **Planner** | L1 | Proposes vertical slices from the graph, ledger and risk map, with dependency edges and sizing; includes data-migration slices. | Draft slice plan |
 | ★ **Slice Coordinator** | L1 | Owns one slice end to end: sequences its tickets on the frontier, dispatches workers, runs slice acceptance, keeps the ledger in sync. | Tracker comments, evidence |
-| **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. | Target code (one PR per ticket) |
-| **Specialist Migrator** | L2 | Profile-defined specialists: **data migration** (§11), **UI** (rebuilds screens in the target front end following the chosen UI direction, with `ui-ux-pro-max`), messaging, etc. PR #6's DB Migrator becomes the data specialist. | Target code, data pipeline |
+| **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. A ticket with `specialty:` (**data migration** §11, **UI** in the chosen UI direction, messaging) loads the `afs-specialty` skill; the separate Specialist Migrator role was folded in (ADR-0042). | Target code (one PR per ticket), data pipeline |
 | **Verifier** | L2 | Fresh context, no builder reasoning. Runs the per-PR gates (§10.3), including CRAP and mutation on changed code; adds tests where coverage or mutation score is short. Reports, never fixes production code. | Tests, evidence |
 | **Auditor** | L1 / L0 | Read-only, first-principles. Per slice: capability coverage and differential checks. Final: full bidirectional audit and the A–G report. Ignores progress labels. | Evidence report |
 
@@ -224,7 +251,9 @@ front end** — tracker, data stores, and who takes production snapshots (usuall
    (run by the generated `afs-understand.yml` workflow through the Copilot SDK). The whole source is
    graphed once before slices are planned at scale; it costs premium requests in proportion to its size
    (spike M1-1: ~61 for a 31-file slice), so a pilot may graph one slice first
-   ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)).
+   ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)). The same workflow merges Graphify's
+   language layer, adds the framework enrichers' links and runs the graph gate before the snapshot is
+   committed (§8).
 2. Inventory every capability into the ledger: structural (from the graph), behavioral (side effects,
    error handling, config-driven branches, edge cases), **UI** (screens, flows, forms, states,
    bindings), **integrations**, and **data** (tables, schemas, stored procedures, reports).
@@ -345,6 +374,7 @@ under `skills/` by `tools/vendor_skills.py` with provenance, and patches to pinn
 | | `self-learning` (research a technology and bundle it as a skill) *(hackathon)* | code-migration-hackathon (local) |
 | Research | `research` | mattpocock/skills |
 | Code graph | `understand`, `understand-domain`, `understand-chat`, `understand-explain`, `understand-diff` | Understand Anything |
+| | Graphify (`graphify extract`, run by the graph workflow; hash-pinned in `tools/locks/graphify.lock`) | Graphify |
 | Harness | migration contract, ledger and evidence writers, quirk ticket | this repo |
 
 The harness **migration contract** is generalized from PR #6's `migrating-java-to-django` references
@@ -442,15 +472,29 @@ translation_rules: .migration/translation-rules.md
 
 ## 8. The code graph
 
-**Understand Anything is the single graph tool, used directly — no adapter**
-([ADR-0009](adr/0009-understand-anything-as-graph-tool.md)).
+**Three layers, built by one workflow** ([ADR-0009](adr/0009-understand-anything-as-graph-tool.md),
+[ADR-0020](adr/0020-graphs-enriched-and-gated-before-planning.md),
+[ADR-0025](adr/0025-graphify-is-the-language-layer.md)):
 
-Why it fits a migration: its graph has the node and edge types the ledger and slices are built from:
-endpoints, tables, services, schemas, screens, and domain → flow → step nodes with entry points
-(http, cli, event, cron) and business rules; edges include `calls`, `reads_from`, `writes_to`,
-`publishes`, `routes`, `triggers` and `tested_by`.
+| Layer | Tool | Adds | Deterministic |
+|-------|------|------|---------------|
+| Understanding | Understand Anything (an LLM, through the Copilot SDK) | files, types and functions with summaries and tags; the **domain graph**: domain → flow → step, with entry points | No; so the frozen source is graphed once and committed |
+| Language | Graphify (tree-sitter, offline) | `calls` (calls, instantiation, typed parameters), `implements`, `inherits`, and `Type.method` nodes | Yes; hash-pinned |
+| Framework | `enrich_graph.py` stack rules (`java-ee`, `django`) | endpoints, pages, tables, queues, timers, commands; `routes`, `reads_from`, `writes_to`, `publishes`, `triggers` | Yes; every added edge is tagged `afs-enriched:<rule>` |
 
-How it is used:
+Flow is followed at method level ([ADR-0028](adr/0028-graph-flow-is-method-level.md)): forward along
+`routes`, `calls`, `contains`, `inherits`, `reads_from`, `writes_to`, `publishes` and `triggers`, and
+backwards along `implements`, so an interface leads to its implementations. `graph_gate.py` then checks
+that the profile's required node and edge types are present, that every slice's anchors reach data,
+and that every target entry point is owned by a slice ([ADR-0026](adr/0026-every-target-entry-point-is-owned-by-a-slice.md)).
+`docs/operator-setup.md` lists what each layer contributes for each kind of graph content.
+
+Why Understand Anything stays on top: its graph has the node and edge types the ledger and slices are
+built from: endpoints, tables, services, schemas, screens, and domain → flow → step nodes with entry
+points (http, cli, event, cron) and business rules, plus `tested_by`. The other two layers make the
+links between them reliable.
+
+How Understand Anything is used:
 
 | When | Command | Output |
 |------|---------|--------|
@@ -459,11 +503,24 @@ How it is used:
 | Per slice | `/understand` on the target (incremental: only changed files re-analyzed) | `.migration/graphs/target/` |
 | Per PR | `/understand-diff` | Blast radius of the change |
 
-**Enrichment (spike M1-1).** For some stacks (e.g. Java EE) screens, entities and services arrive as
-tags and summaries on `file`/`class` nodes, with few `calls` edges. The Analyst maps tags and framework
-config to ledger kinds and builds screen → bean → service → entity chains from imports plus config;
-the domain graph's flows are the primary slice anchors. The harness pins Understand Anything with a
-one-line patch so its `understand` skill loads under Copilot. Agents run it through the Copilot SDK.
+The `afs-understand` workflow also accepts optional `domain_entry_points`: source-relative file paths,
+one per line. Each requested path must exist inside the analyzed source, and the graph is accepted only
+when the domain graph connects a domain to a flow whose exact entry-point marker matches the request
+and to a source-backed step structurally reachable from that path in the knowledge graph. With no
+requests, the existing generation and gates are unchanged. This structural check proves neither that
+the flow is semantically correct nor that its behavior is complete; independent review against source
+code is still required.
+Direct `understand.py` requests run the structural check before returning success. The generated workflow
+uses the explicit `--defer-domain-coverage` option because enrichment adds source links later; this mode
+still fails if the domain artifact is absent, reports the check as deferred, and the workflow must run
+`check_domain_coverage.py` after enrichment as a fatal gate. A deferred runner result alone is not a
+coverage pass.
+
+**Why the enrichers exist (spike M1-1).** For some stacks (e.g. Java EE) Understand Anything gives
+screens, entities and services only as tags and summaries on `file`/`class` nodes, with few `calls`
+edges. The domain graph's flows are the primary slice anchors; the enriched graph is what proves they
+reach data. The harness pins Understand Anything with a one-line patch so its `understand` skill loads
+under Copilot.
 
 Because the source is frozen, the source graph is built **once** and committed; its cost is paid
 once and its LLM-generated content does not drift. Understand Anything writes its data next to the
@@ -570,7 +627,7 @@ Re-architecting the domain usually changes the data model, so moving the data is
 workstream ([ADR-0010](adr/0010-data-migration-workstream.md)):
 
 - **Deliverable:** a repeatable pipeline that converts legacy data into the target schema, run by the
-  Data Specialist Migrator, tracked as its own slices and tickets.
+  Migrator on data-specialty tickets (`afs-specialty`), tracked as its own slices and tickets.
 - **Tests:** reconciliation checks (row counts, checksums, referential integrity) and business
   invariants that must hold after conversion, plus characterization of legacy stored procedures and
   reports that the target replaces.
@@ -582,6 +639,10 @@ workstream ([ADR-0010](adr/0010-data-migration-workstream.md)):
   `db-seed` generates realistic, foreign-key-ordered seed data.
 - **Masking:** nice to have. If a masking step is available it runs on the snapshot before the
   pipeline (`profile.data.masking`).
+- **How (ADR-0032):** the `afs-data-pipeline` skill fixes the snapshot format (CSV per table, NULL
+  marker, manifest) and one committed mapping that both the loader and `data_reconcile.py` read. The tool
+  checks the snapshot and reconciles it with the target's export: row counts, checksums, references.
+  Snapshots and exports are gitignored.
 
 ---
 
@@ -721,7 +782,7 @@ that pins the chosen behavior.
 | Risk | Mitigation |
 |------|------------|
 | No running legacy environment, and the source does not build outside the organization (seen in the pilot) | Characterization tiers B/C (ADR-0005); weaker evidence recorded and reviewed by humans |
-| Understand Anything cannot parse a legacy language (e.g. COBOL, VB6) | Spike per new source language; Graphify is the fallback as a **swap**, not an addition (ADR-0009) |
+| Understand Anything cannot parse a legacy language (e.g. COBOL, VB6) | Spike per new source language. Graphify's tree-sitter parsers cover about 40 languages, and the language layer comes from it either way (ADR-0025); a language neither parses needs a capability gap ticket |
 | Full source graph is slow/expensive on very large codebases | One-time cost (frozen source); budget it in Phase 2 |
 | Second legacy instance not available for write comparisons | Fall back to read-only replay + characterization + human check (§10.2) |
 | No CRAP or mutation tool for a stack | Capability gap → operator ticket; compute CRAP from complexity + coverage where possible |

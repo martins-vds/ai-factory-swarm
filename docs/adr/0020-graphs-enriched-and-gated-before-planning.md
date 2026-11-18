@@ -24,6 +24,11 @@ dashboard.xhtml → …`).
    queue → consumer. `django` covers models, ORM reads and writes, `urls.py` (with includes and factory
    views), templates, imports, and calls through annotated parameters and attributes. Every added node and
    edge is tagged `afs-enriched:<rule>`. Re-running is idempotent.
+   JSF local iframe `src` links add `contains` edges with `afs-enriched:jsf-iframe` provenance.
+   Paths resolve exactly relative to the parent page or from its containing `webapp` root, including
+   the literal `#{request.contextPath}/` prefix. Dynamic EL, external URLs, missing files, paths outside
+   that webapp, and suffix-only matches do not establish links. Pages with a base URL and frames with
+   `srcdoc` overrides are conservatively skipped.
    Django's explicit `require_GET`, `require_POST`, `require_safe`, and literal `require_http_methods`
    decorators produce verb-qualified endpoint names (for example `POST /reports`), including when a
    composition root returns a decorated factory view. Restrictions are intersected when stacked.

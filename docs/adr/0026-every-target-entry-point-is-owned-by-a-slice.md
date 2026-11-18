@@ -37,3 +37,10 @@ and the gate would have passed with nothing to check.
     and its spec lists them.
 - Removing a route is the honest fix for something nobody approved. Listing it requires a slice to
   claim it, in a reviewed file.
+
+## Amendment (2026-11-09, found by the synthetic target's LL-ACCEPT)
+Accepting the catalog slice failed on other slices' `entry_points.target` (the About pages, the new-loan
+form), which exist only once those slices are built. A slice's data paths were already exempt while its
+implementation tickets are open (`check_plan.unbuilt`). Its declared entry points now are too: a listed
+entry point that matches no node fails only once the slice is built. Ownership is unchanged: a built
+entry point that no slice owns still fails at acceptance.

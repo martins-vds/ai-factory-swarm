@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -36,7 +37,7 @@ class AfsMutationTest(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, 0, stdout="<testsuite/>", stderr="")
 
         with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(m.subprocess, "run", fake_run):
-            xml, _, failed = m.run_shard(1, d, ["src/a.py", "src/b.py"], {"src/a.py": "x", "src/b.py": "y"},
+            xml, _, failed, _ = m.run_shard(1, d, ["src/a.py", "src/b.py"], {"src/a.py": "x", "src/b.py": "y"},
                                          {"POSTGRES_DB": "cargotracker"})
         self.assertEqual([f for f, _ in failed], ["src/b.py"])
         self.assertIn("baseline tests failed", failed[0][1])
@@ -76,6 +77,65 @@ class AfsMutationTest(unittest.TestCase):
                     self.assertIsNone(m.write_survivors([], 1.0, 0.8, 1, 0, "main"), "no ticket: nothing to write")
             finally:
                 os.chdir(cwd)
+
+    def test_survivor_diffs_come_from_mutmut_show(self):
+        def fake_run(cmd, **kw):
+            if cmd[:2] == ["mutmut", "run"]:
+                return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
+            if cmd[:2] == ["mutmut", "junitxml"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=JUNIT, stderr="")
+            if cmd[:2] == ["mutmut", "show"]:
+                self.assertEqual(cmd[2], "3")
+                return subprocess.CompletedProcess(cmd, 0, stdout="--- src/a.py\n+++ src/a.py\n@@ -5 +5 @@\n"
+                                                   "-    return a + b\n+    return a - b\n", stderr="")
+            raise AssertionError(cmd)
+
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.object(m.subprocess, "run", fake_run):
+            _, _, _, diffs = m.run_shard(0, d, ["src/a.py"], {"src/a.py": "x"}, {})
+        self.assertEqual(diffs, {"src/a.py:5 Mutant #3": "@@ -5 +5 @@\n-    return a + b\n+    return a - b"})
+
+    def test_survivor_file_shows_each_mutants_diff(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            cwd = os.getcwd()
+            try:
+                os.chdir(d)
+                os.mkdir(".migration")
+                with unittest.mock.patch.dict(os.environ, {"AFS_TICKET": "DM-05C"}):
+                    path = m.write_survivors(["src/a.py:5 Mutant #3", "src/a.py:9 Mutant #4"], 0.5, 0.8, 2, 2, "main",
+                                             {"src/a.py:5 Mutant #3": "-    return a + b\n+    return a - b"})
+                text = path.read_text()
+            finally:
+                os.chdir(cwd)
+        self.assertIn("- `src/a.py:5 Mutant #3`\n\n  ```diff\n  -    return a + b\n  +    return a - b\n  ```", text)
+        self.assertIn("- `src/a.py:9 Mutant #4`", text, "a survivor without a diff is still listed")
+
+    def test_any_failing_test_run_is_a_kill(self):
+        # mutmut 2.x kills a mutant only on exit 1: pytest's 2 (collection error), 3 and 4 must map to 1
+        self.assertEqual(m.pytest_exit(0), 0)
+        self.assertEqual(m.pytest_exit(1), 1)
+        self.assertEqual(m.pytest_exit(2), 1)
+        self.assertEqual(m.pytest_exit(3), 1)
+        self.assertEqual(m.pytest_exit(4), 1)
+        self.assertEqual(m.pytest_exit(5), 5, "no tests ran: the mutant was not caught")
+
+    def test_mutant_that_breaks_an_import_is_killed(self):
+        # BK-05H: `view = None` / `include('XX…XX')` in urls.py broke the import, pytest exited 2, and
+        # mutmut counted all nine mutants as survivors. The narrowed runner must exit 1 instead.
+        with tempfile.TemporaryDirectory() as t:
+            root = pathlib.Path(t)
+            (root / "urls.py").write_text("def view():\n    return 1\nroutes = [view]\n")
+            (root / "test_urls.py").write_text("import urls\n\ndef test_routes():\n    assert urls.routes[0]() == 1\n")
+            runner = " ".join(m.base_cmd() + ["test_urls.py"])
+            ok = subprocess.run(runner, shell=True, cwd=t, capture_output=True, text=True)
+            self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+            (root / "urls.py").write_text("import XXmissingXX\nroutes = []\n")      # the mutant
+            broken = subprocess.run(runner, shell=True, cwd=t, capture_output=True, text=True)
+            self.assertEqual(broken.returncode, 1, broken.stdout + broken.stderr)
+            self.assertNotIn("AFS-TOOL", broken.stderr, "a mutant's test run is not a gate run")
+            plain = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_urls.py"],
+                                   cwd=t, capture_output=True, text=True)
+            self.assertEqual(plain.returncode, 2, "plain pytest exits 2 here: the case mutmut misread")
 
     def test_default_excludes(self):
         ex = m.DEFAULT_EXCLUDE
@@ -180,3 +240,72 @@ class AfsMutationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImportTimeSelectionTest(unittest.TestCase):
+    """Synthetic LL-04: 5 of 8 mutants "survived": removed `@require_GET` decorators and mutated `urlpatterns`.
+    Code that runs at import is under no test's coverage context, so coverage selection never ran the tests
+    that request those routes."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        import os
+        self.cwd = os.getcwd()
+        os.chdir(self.tmp.name)
+        self.addCleanup(os.chdir, self.cwd)
+        files = {
+            "src/library_info/views.py": ("from django.views.decorators.http import require_GET\n\n"
+                                          "@require_GET\ndef about(request):\n    return 1\n"),
+            "src/library_info/urls.py": "from . import views\n\nurlpatterns = [views.about]\n",
+            "src/library_info/services.py": '"""Docstring."""\nimport os\n\n\ndef text():\n    return os.sep\n',
+            "tests/library_info/test_about.py": "def test_x():\n    pass\n",
+        }
+        for name, text in files.items():
+            pathlib.Path(name).parent.mkdir(parents=True, exist_ok=True)
+            pathlib.Path(name).write_text(text)
+
+    def test_import_time_code_is_detected(self):
+        self.assertTrue(m.has_import_time_code("src/library_info/views.py"), "decorator")
+        self.assertTrue(m.has_import_time_code("src/library_info/urls.py"), "URL table")
+        self.assertFalse(m.has_import_time_code("src/library_info/services.py"), "imports, docstring, defs")
+
+    def test_a_context_folder_for_the_flat_src_layout(self):
+        self.assertEqual(m.context_tests("src/library_info/urls.py", "src"), "tests/library_info")
+
+    def test_files_with_import_time_code_also_run_their_context_tests(self):
+        mapping = {"src/library_info/views.py": ["tests/library_info/test_about.py::test_x"],
+                   "src/library_info/urls.py": [],
+                   "src/library_info/services.py": ["tests/library_info/test_about.py::test_x"]}
+        paths = sorted(mapping)
+        with mock.patch.object(m, "has_pytest_cov", return_value=True), \
+                mock.patch.object(m, "covering_tests", return_value=mapping):
+            runners, selection = m.runners_for(paths, "src", "coverage")
+        self.assertEqual(selection, "coverage")
+        self.assertIn("tests/library_info", runners["src/library_info/urls.py"], "nothing covers it at import")
+        self.assertIn("tests/library_info", runners["src/library_info/views.py"])
+        self.assertNotIn("::test_x", runners["src/library_info/views.py"], "the folder already includes it")
+        self.assertNotIn(" tests/library_info ", runners["src/library_info/services.py"] + " ")
+        self.assertIn("'tests/library_info/test_about.py::test_x'", runners["src/library_info/services.py"])
+
+
+class ShardWorkspaceTest(unittest.TestCase):
+    """A shard's workspace keeps the migration data tests read, not the migration machinery (eval base-r1, DM-05D)."""
+
+    def test_the_copy_keeps_characterization_data_and_leaves_machinery_and_caches_behind(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = pathlib.Path(d, "src")
+            for rel in (".migration/characterization/booking/observations.json", ".migration/profile.yaml",
+                        ".migration/data/snapshot.json", ".migration/harness/tools/validate.py",
+                        ".migration/runs/T/x.log", ".migration/evidence/runs/T.md", ".migration/costs/s.json",
+                        ".git/HEAD", "src/app/__pycache__/m.pyc", "src/app/m.py", ".source/README"):
+                p = src / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("x")
+            dst = pathlib.Path(d, "w0")
+            shutil.copytree(src, dst, ignore=m.COPY_IGNORE, symlinks=True)
+            for kept in (".migration/characterization/booking/observations.json", ".migration/profile.yaml",
+                         ".migration/data/snapshot.json", "src/app/m.py"):
+                self.assertTrue((dst / kept).exists(), kept)
+            for gone in (".migration/harness", ".migration/runs", ".migration/evidence", ".migration/costs",
+                         ".git", "src/app/__pycache__", ".source"):
+                self.assertFalse((dst / gone).exists(), gone)

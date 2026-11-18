@@ -23,6 +23,7 @@ Example:
 import argparse
 import collections
 import json
+import re
 import sys
 
 # What the ledger / slice planner rely on (architecture §8, §9).
@@ -167,12 +168,23 @@ FORWARD = {"routes", "calls", "contains", "inherits", "reads_from", "writes_to",
 BACKWARD = {"implements"}   # interface → implementation
 
 
+URL_PARAM = re.compile(r"<(?:[^<>:]+:)?([^<>:]+)>|\{([^{}:]+)(?::[^{}]*)?\}")
+
+
+def same_name(a, b):
+    """Names equal, URL parameters compared by name only: Django `<str:tracking_id>`, `<tracking_id>` and
+    JAX-RS `{tracking_id}` are one parameter (pilot BK-ACCEPT: a slice spec wrote `<tracking_id>` for
+    Django's `<str:tracking_id>`, and the gate found no node)."""
+    canon = lambda x: URL_PARAM.sub(lambda m: "<" + (m.group(1) or m.group(2)) + ">", x)
+    return a == b or canon(a) == canon(b)
+
+
 def anchor_nodes(anchor, nodes):
-    """Ids of the nodes an anchor names: TYPE=NAME matches a node of that type exactly; otherwise the end of
-    a node's file path or id, or its whole name."""
+    """Ids of the nodes an anchor names: TYPE=NAME matches a node of that type exactly (URL parameters by
+    name only); otherwise the end of a node's file path or id, or its whole name."""
     ntype, sep, exact = anchor.partition("=")
     if sep and ntype.isidentifier():          # TYPE=NAME: exact name of a node of that type, e.g. endpoint=/
-        return [n["id"] for n in nodes if n.get("type") == ntype and n.get("name") == exact]
+        return [n["id"] for n in nodes if n.get("type") == ntype and same_name(str(n.get("name")), exact)]
     al = anchor.lower()
     return [n["id"] for n in nodes if n.get("type") not in DATA_TYPES and (
         str(n.get("filePath", "")).lower().endswith(al) or str(n.get("name", "")).lower() == al
@@ -203,6 +215,13 @@ def reachable(starts, edges):
     return seen
 
 
+def data_reached(starts, edges, by_id):
+    """Every table/schema the directed flow reaches from the start nodes, by name. The path above is only the
+    shortest one: an anchor that writes six tables must not read as reaching one (pilot DM-AUDIT)."""
+    seen = reachable(starts, edges)
+    return sorted({by_id[n].get("name", n) for n in seen if by_id.get(n, {}).get("type") in DATA_TYPES})
+
+
 def data_path(anchor, nodes, edges, by_id):
     starts = anchor_nodes(anchor, nodes)
     if not starts:
@@ -220,7 +239,9 @@ def data_path(anchor, nodes, edges, by_id):
                 chain.append(f"{d}{et}")
                 cur = parent
             chain.append(f"`{by_id.get(cur, {}).get('name', cur)}`")
-            return " ".join(reversed(chain))
+            reached = data_reached(starts, edges, by_id)
+            more = f" — reaches {len(reached)} data node(s): {', '.join(reached)}" if len(reached) > 1 else ""
+            return " ".join(reversed(chain)) + more
         for nxt, et, d in adj[cur]:
             if nxt not in prev:
                 prev[nxt] = (cur, et, d)
@@ -231,4 +252,4 @@ def data_path(anchor, nodes, edges, by_id):
 
 if __name__ == "__main__":
     import afs_trace
-    afs_trace.run(main)
+    afs_trace.run(main, verdict=False)   # report only: the workflow never gates on it; graph_gate.py does

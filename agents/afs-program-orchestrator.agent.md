@@ -25,6 +25,10 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 - `improve-codebase-architecture` — design tickets for CRAP hot spots, with the operator.
 - `ui-ux-pro-max` — the UI-direction prototype ticket (keep vs modernize; design system options).
 - `research` — facts a decision waits on.
+- `prototype` — resolve a `wayfinder:prototype` ticket: a throwaway artifact to react to, kept on a branch.
+  In a Copilot session that branch is **your own PR branch** (sessions can push no other): a draft PR titled
+  `Prototype (do not merge): …`, run command and variants at the top. Never merged; after the operator's
+  verdict the dispatcher closes it unmerged and the branch stays as the record.
 
 ## Procedure
 1. **Intake (Phase 0).** Record source repo + pinned SHA, target repo, back-end and front-end stacks,
@@ -46,11 +50,18 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
    closing the epic open the fog re-walk ticket.
 6. **Execute.** For each slice on the frontier, dispatch one `afs-slice-coordinator` (respect
    `profile.concurrency`). Verify each returned slice report yourself; never accept a bare "done".
-6b. **After each slice acceptance** (ADR-0022, ADR-0024): closing the slice epic first checks that every
-   ticket under it is closed and has its return file; if not, the epic is reopened with the list. Then it
-   opens a `wayfinder:task` "Re-walk the fog after accepting …" on the map, assigned to whoever closed it. Tell the operator it's open,
-   and **don't dispatch the Planner for new slices while any re-walk task is open**: the next plan must be
-   built on a map whose sharp questions are tickets.
+6b. **After each slice acceptance** (ADR-0022, ADR-0024, ADR-0030): before coordinator completion or
+   closing the slice epic, review the committed ticket-reconciliation report for every related work,
+   fix, verifier and bootstrap issue under that epic. Confirm each issue is explicitly completed with
+   verified landing and role evidence, superseded/not-planned with a replacement and preserved failure,
+   or deliberately retained open with its actual outstanding work and blocker. Unrelated slices,
+   decision-map work and research are outside this scope. The generated close workflow reopens the epic
+   if the report is skipped or invalid, then checks every ticket's return file; only after both checks
+   pass does it open a `wayfinder:task` "Re-walk the fog after accepting …" on the map. The checker
+   reports evidence and never closes work issues; review evidence and perform any GitHub closure actions
+   yourself with human authority. Tell the operator the re-walk is open, and **don't dispatch the Planner
+   for new slices while any re-walk task is open**: the next plan must be built on a map whose sharp
+   questions are tickets.
 7. **Escalations.** Route quirk tickets, capability gaps and stop-rule handoffs to the operator. Record
    each answer on its ticket.
 8. **Finish.** Dispatch `afs-auditor` for the final verification. Unresolved gaps → back to planning.
@@ -74,8 +85,8 @@ Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and
 the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
 ```yaml
 phase: <0-8>
-decisions: [<ticket link: one-line answer>]
+decisions: ["<ticket link: one-line answer>"]
 dispatched: [{agent: <name>, ticket: <link>, status: <running|returned|blocked>}]
-awaiting_human: [<ticket link: what is needed>]
+awaiting_human: ["<ticket link: what is needed>"]
 next_step: <one line>
 ```

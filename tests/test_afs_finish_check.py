@@ -1,0 +1,270 @@
+"""tools/afs-finish-check: the ADR-0034 stop hook, on a throwaway git repo."""
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+import yaml
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+TOOL = ROOT / "tools/afs-finish-check"
+
+
+def git(cwd, *args):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+
+class FinishCheckTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = pathlib.Path(self.tmp.name)
+        self.origin, self.repo = base / "origin.git", base / "repo"
+        git(base, "init", "-q", "--bare", "-b", "main", str(self.origin))
+        git(base, "init", "-q", "-b", "main", str(self.repo))
+        r = self.repo
+        mig = r / ".migration"
+        (mig / "harness").mkdir(parents=True)
+        shutil.copytree(ROOT / "schemas", mig / "harness" / "schemas")
+        (mig / "plan").mkdir()
+        (mig / "plan" / "booking.md").write_text("# booking\n")
+        (mig / "plan" / "booking.tickets.yaml").write_text(yaml.safe_dump({"slice": "booking", "tickets": [
+            {"id": "BK-05D", "role": "afs-specialist-migrator", "files": ["src/wizard.py", "templates/wizard/"],
+             "blocked_by": []}]}))
+        self.profile(enabled=True)
+        (r / "README.md").write_text("x\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
+        git(r, "remote", "add", "origin", str(self.origin))
+        git(r, "push", "-q", "origin", "main")
+        git(r, "fetch", "-q", "origin")
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def profile(self, enabled, max_blocks=2):
+        (self.repo / ".migration" / "profile.yaml").write_text(
+            yaml.safe_dump({"self_heal": {"enabled": enabled, "max_blocks": max_blocks}}))
+
+    def write(self, rel, text="x\n"):
+        p = self.repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def run_hook(self, session="s1", prompt="Role: `afs-specialist-migrator`, ticket `BK-05D`"):
+        env = {**os.environ, "COPILOT_AGENT_PROMPT": prompt}
+        env.pop("AFS_TICKET", None)
+        r = subprocess.run([sys.executable, str(TOOL), "--hook"], cwd=self.repo, env=env, capture_output=True,
+                           text=True, input=json.dumps({"sessionId": session}))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return (json.loads(r.stdout) if r.stdout.strip() else None), r.stderr
+
+    def test_missing_return_file_blocks_with_the_fix(self):
+        self.write("src/wizard.py")
+        out, _ = self.run_hook()
+        self.assertEqual(out["decision"], "block")
+        self.assertIn(".migration/returns/BK-05D.afs-specialist-migrator.yaml", out["reason"])
+
+    def test_budget_then_self_check_failed_handoff(self):
+        self.write("src/wizard.py")
+        self.profile(enabled=True, max_blocks=1)
+        first, _ = self.run_hook()
+        self.assertEqual(first["decision"], "block")
+        second, err = self.run_hook()
+        self.assertIsNone(second, "the same failure twice: let it stop")
+        self.assertIn("allow (retry budget spent", err)
+        handoff = (self.repo / ".migration/handoffs/BK-05D.md").read_text()
+        self.assertIn("self-check failed", handoff)
+        self.assertIn("### Next step for the next session", handoff)
+
+    def test_disabled_only_reports(self):
+        self.write("src/wizard.py")
+        self.profile(enabled=False)
+        out, err = self.run_hook()
+        self.assertIsNone(out)
+        self.assertIn("would have blocked", err)
+
+    def test_scope_outside_the_plan_needs_a_handoff(self):
+        self.write("src/wizard.py")
+        self.write("src/settings.py")
+        out, _ = self.run_hook()
+        self.assertIn("`src/settings.py`", out["reason"])
+        self.assertIn("Don't widen your own scope", out["reason"])
+
+    def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):
+        self.write("src/wizard.py")
+        ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"
+        ret.parent.mkdir(parents=True, exist_ok=True)
+        for i, (value, refused) in enumerate(((None, True), ("n/a: no mutable code changed", False), (0.86, False))):
+            ret.write_text(yaml.safe_dump({"role": "afs-specialist-migrator", "ticket": "BK-05D",
+                                           "gates": {"mutation_changed": value}}))
+            out, _ = self.run_hook(session=f"s{i}")
+            self.assertEqual("has no `gates.mutation_changed`" in (out or {}).get("reason", ""), refused, value)
+
+    def test_shared_test_files_from_the_profile_are_in_every_tickets_scope(self):
+        (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({
+            "self_heal": {"enabled": True, "max_blocks": 2},
+            "target": {"shared_test_files": ["tests/conftest.py"]}}))
+        self.write("src/wizard.py")
+        self.write("tests/conftest.py", "import pytest\n")
+        self.write("tests/other/conftest.py", "import pytest\n")
+        out, _ = self.run_hook()
+        reason = (out or {}).get("reason", "")
+        self.assertNotIn("`tests/conftest.py`", reason)
+        self.assertIn("`tests/other/conftest.py`", reason, "only the listed files, not any conftest")
+
+    def test_operator_scope_line_in_the_issue_allows_a_file(self):
+        self.write("src/settings.py")
+        prompt = "Role: `afs-specialist-migrator`, ticket `BK-05D`\nAFS-SCOPE: `src/settings.py`\n"
+        out, _ = self.run_hook(prompt=prompt)
+        self.assertNotIn("src/settings.py", (out or {}).get("reason", ""))
+
+    def test_folder_scope_and_own_records_pass(self):
+        self.write("templates/wizard/origin.html")
+        self.write(".migration/evidence/runs/BK-05D.md", "| UTC | Gate |\n")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml",
+                   "role: afs-specialist-migrator\nticket: BK-05D\nissue: o/r#291\n")
+        out, err = self.run_hook()
+        reason = (out or {}).get("reason", "")
+        self.assertNotIn("outside", reason)
+        self.assertNotIn("No return file", reason)
+
+    def test_return_reporting_a_handoff_must_commit_it(self):
+        self.write("src/wizard.py")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml",
+                   "role: afs-specialist-migrator\nticket: BK-05D\nissue: o/r#291\nhandoff: .migration/handoffs/BK-05D.md\n")
+        out, _ = self.run_hook()
+        self.assertIn("reports a handoff", out["reason"])
+
+    def test_each_run_leaves_a_committed_trace(self):
+        self.write("src/wizard.py")
+        self.run_hook(session="abc")
+        trace = json.loads((self.repo / ".migration/evidence/finish-check/abc.json").read_text())
+        self.assertEqual(trace[0]["decision"], "block")
+        self.assertEqual(trace[0]["ticket"], "BK-05D")
+
+    def test_role_defaults_to_the_plans(self):
+        self.write("src/wizard.py")
+        self.write(".migration/evidence/runs/BK-05D.md", "| UTC | Gate |\n")
+        out, _ = self.run_hook(prompt="")
+        self.assertIn("BK-05D.afs-specialist-migrator.yaml", out["reason"])
+
+    def test_scope_lines_come_from_the_transcript_when_the_env_is_empty(self):
+        self.write("src/wizard.py")
+        self.write("src/settings.py")
+        log = self.repo.parent / "events.jsonl"
+        log.write_text(json.dumps({"type": "session.start", "data": {}}) + "\n" + json.dumps(
+            {"type": "user.message", "data": {"content": "ticket `BK-05D`\nAFS-SCOPE: src/settings.py\n"}}) + "\n")
+        env = {**os.environ, "COPILOT_AGENT_PROMPT": ""}
+        r = subprocess.run([sys.executable, str(TOOL), "--hook"], cwd=self.repo, env=env, capture_output=True,
+                           text=True, input=json.dumps({"sessionId": "t1", "transcriptPath": str(log)}))
+        out = json.loads(r.stdout)
+        self.assertNotIn("src/settings.py", out["reason"])
+        trace = json.loads((self.repo / ".migration/evidence/finish-check/t1.json").read_text())
+        self.assertEqual((trace[0]["prompt_from"], trace[0]["scope_lines"]), ("transcript", ["src/settings.py"]))
+
+    def test_verifier_on_a_stacked_branch_in_a_single_branch_clone(self):
+        # pilot DM-05F, 2026-11-07: the Migrator's commits on the base branch were charged to the Verifier,
+        # and the Migrator's return file made the hook take the Migrator's role.
+        r = self.repo
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-work")
+        self.write("src/wizard.py")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml",
+                   "role: afs-specialist-migrator\nticket: BK-05D\nissue: o/r#291\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "migrator work")
+        git(r, "push", "-q", "origin", "copilot/bk-05d-work")
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-verify")
+        git(r, "update-ref", "-d", "refs/remotes/origin/copilot/bk-05d-work")   # the clone doesn't track the base
+        self.write("tests/test_wizard_extra.py")
+        self.write(".migration/returns/BK-05D.afs-verifier.yaml", "role: afs-verifier\nticket: BK-05D\nissue: o/r#353\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "verifier work")
+        out, _ = self.run_hook(session="v1", prompt="**Role:** `afs-verifier`. Verify ticket #291 (`BK-05D`) after "
+                                                    "`afs-specialist-migrator` finished.")
+        trace = json.loads((r / ".migration/evidence/finish-check/v1.json").read_text())[0]
+        self.assertEqual(trace["role"], "afs-verifier")
+        self.assertNotIn("src/wizard.py", trace["changed"])
+        self.assertNotIn(".migration/returns/BK-05D.afs-specialist-migrator.yaml", trace["changed"])
+        self.assertNotIn("outside", (out or {}).get("reason", ""))
+
+    def test_another_roles_return_must_be_restored(self):
+        r = self.repo
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 343\n")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "migrator")
+        git(r, "push", "-q", "origin", "copilot/bk-05d")
+        git(r, "checkout", "-q", "-b", "copilot/bk-05d-verify")
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 999\n")
+        self.write(".migration/returns/BK-05D.afs-verifier.yaml", "role: afs-verifier\nticket: BK-05D\n")
+        out, _ = self.run_hook(session="o1", prompt="**Role:** `afs-verifier`. Verify `BK-05D`.")
+        self.assertIn("another role's or ticket's return", out["reason"])
+        self.assertIn("BK-05D.afs-specialist-migrator.yaml", out["reason"])
+        # put back exactly: no longer a finding, even though a commit touched it
+        self.write(".migration/returns/BK-05D.afs-specialist-migrator.yaml", "role: afs-specialist-migrator\npr: 343\n")
+        out, _ = self.run_hook(session="o2", prompt="**Role:** `afs-verifier`. Verify `BK-05D`.")
+        self.assertNotIn("another role", (out or {}).get("reason", ""))
+
+    def test_a_file_added_and_removed_again_is_not_a_change(self):
+        r = self.repo
+        self.write("notes/stray.md")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "stray")
+        (r / "notes/stray.md").unlink()
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "removed")
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="n1")
+        self.assertNotIn("stray.md", (out or {}).get("reason", ""))
+
+    def test_main_merged_into_a_stacked_branch_is_not_the_sessions_work(self):
+        r = self.repo
+        git(r, "checkout", "-q", "main")
+        self.write("src/other_slice.py")
+        git(r, "add", "-A")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "another slice on main")
+        git(r, "push", "-q", "origin", "main")
+        git(r, "checkout", "-q", "copilot/bk-05d")
+        git(r, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="m1")
+        self.assertNotIn("other_slice.py", (out or {}).get("reason", ""))
+
+    def test_main_moving_on_during_the_session_is_not_its_work(self):
+        # pilot 2026-11-08: BK-05F merged to main while DM-AUDIT ran; its return was charged to DM-AUDIT
+        r = self.repo
+        other = pathlib.Path(self.tmp.name) / "other"
+        git(r.parent, "clone", "-q", str(self.origin), str(other))
+        (other / ".migration/returns").mkdir(parents=True, exist_ok=True)
+        (other / ".migration/returns/BK-05F.afs-specialist-migrator.yaml").write_text("role: afs-specialist-migrator\n")
+        git(other, "add", "-A")
+        git(other, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "BK-05F lands on main")
+        git(other, "push", "-q", "origin", "main")
+        git(r, "fetch", "-q", "origin")          # the session's clone sees main's new tip, which it doesn't contain
+        self.write("src/wizard.py")
+        out, _ = self.run_hook(session="mm1")
+        trace = json.loads((r / ".migration/evidence/finish-check/mm1.json").read_text())[0]
+        self.assertNotIn(".migration/returns/BK-05F.afs-specialist-migrator.yaml", trace["changed"])
+        self.assertNotIn("another role", (out or {}).get("reason", ""))
+
+    def test_unknown_session_is_allowed(self):
+        self.write("notes.txt")
+        out, err = self.run_hook(prompt="fix a typo")
+        self.assertIsNone(out)
+        self.assertIn("no ticket/role", err)
+
+    def test_manual_run_exit_code(self):
+        self.write("src/wizard.py")
+        r = subprocess.run([sys.executable, str(TOOL), "--ticket", "BK-05D", "--role", "afs-specialist-migrator"],
+                           cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("[mechanical]", r.stdout)
+        self.assertIn("AFS-TOOL afs-finish-check exit=1", r.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

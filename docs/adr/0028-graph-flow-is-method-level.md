@@ -42,3 +42,24 @@ CDI event producers, repositories that read in one method and write in another, 
 - Paths name methods (`Type.method`), which makes them longer but says exactly what runs.
 - **Remaining imprecision is visible in the path:** it is a `contains` step after a type-level entry. A
   later refinement could resolve constructor-then-call chains.
+
+## Amendment (2026-11-09, found by the synthetic target's LC-ACCEPT)
+LL-02 moved its use cases behind ports: views call `loan_application.lend(...)` on an instance built in a
+composition module, and the use case calls a `LoanRepository` Protocol that `DjangoLoanRepository` satisfies
+without inheriting it. Every API route lost its path to data. Two rules close the gap:
+- **Module-level instances.** The Django enricher resolves `name = SomeClass(...)` at a module's top level, so
+  a call `name.method(...)` in a module that imports `name` calls `SomeClass.method` (the class when the graph
+  has no method node).
+- **Method dispatch for every type-level `implements`.** Each same-named method of the implementing type
+  `implements` the interface's method, whoever added the type-level edge. The Graphify merge already did this
+  for its own links; a structural match from the base graph didn't get it.
+
+## Amendment (2026-11-10, found by the synthetic target's LF-ACCEPT)
+The circulation run passed because the base graph's AI-assisted step happened to emit the `DjangoLoanRepository`
+implements `LoanRepository` edge and the calls through `self.repository`. The fees run's base graph had neither,
+and 10 routes lost their path to data with no code change. The graph's paths must not depend on that step, so
+the Python enricher now derives both from the code:
+- **Structural Protocols.** A project class that defines every method of a `typing.Protocol` class implements it.
+- **Injected dependencies.** In a class whose `__init__` stores an annotated parameter on `self`
+  (`self.repository = repository`, `repository: LoanRepository`), a call `self.repository.all()` calls
+  `LoanRepository.all` and, for a Protocol, each structural implementation's `all` directly.

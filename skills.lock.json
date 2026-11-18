@@ -97,7 +97,6 @@
         "planner",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ],
@@ -116,7 +115,6 @@
         "planner",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ],
@@ -135,7 +133,6 @@
         "planner",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ],
@@ -152,10 +149,31 @@
         "planner",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ]
+    },
+    {
+      "name": "afs-data-pipeline",
+      "category": "data",
+      "path": "skills/afs-data-pipeline",
+      "install": "harness",
+      "roles": [
+        "planner",
+        "verifier",
+        "auditor",
+        "migrator"
+      ]
+    },
+    {
+      "name": "afs-specialty",
+      "category": "build",
+      "path": "skills/afs-specialty",
+      "install": "harness",
+      "roles": [
+        "migrator"
+      ],
+      "notes": "What a ticket with specialty (data, ui, messaging) adds to the Migrator procedure; replaces the Specialist Migrator role (ADR-0042)."
     },
     {
       "name": "afs-evidence",
@@ -166,7 +184,6 @@
         "characterizer",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ]
@@ -181,7 +198,6 @@
         "characterizer",
         "slice-coordinator",
         "migrator",
-        "specialist-migrator",
         "verifier",
         "auditor"
       ]
@@ -347,10 +363,9 @@
       "install": "upstream",
       "roles": [
         "migrator",
-        "verifier",
-        "specialist-migrator"
+        "verifier"
       ],
-      "notes": "Maps legacy enterprise patterns (Table Module, Active Record, Unit of Work…) to their target equivalents."
+      "notes": "Maps legacy enterprise patterns (Table Module, Active Record, Unit of Work\u2026) to their target equivalents."
     },
     {
       "name": "refactoring",
@@ -392,7 +407,7 @@
       "roles": [
         "characterizer"
       ],
-      "notes": "Seams and characterization tests — the basis of tier B (ADR-0005)."
+      "notes": "Seams and characterization tests \u2014 the basis of tier B (ADR-0005)."
     },
     {
       "name": "tdd",
@@ -402,8 +417,7 @@
       "install": "upstream",
       "roles": [
         "migrator",
-        "characterizer",
-        "specialist-migrator"
+        "characterizer"
       ]
     },
     {
@@ -413,8 +427,7 @@
       "path": "skills/engineering/implement",
       "install": "vendored",
       "roles": [
-        "migrator",
-        "specialist-migrator"
+        "migrator"
       ]
     },
     {
@@ -426,8 +439,7 @@
       "roles": [
         "migrator",
         "verifier",
-        "slice-coordinator",
-        "specialist-migrator"
+        "slice-coordinator"
       ]
     },
     {
@@ -448,8 +460,7 @@
       "path": "skills/engineering/pr",
       "install": "upstream",
       "roles": [
-        "migrator",
-        "specialist-migrator"
+        "migrator"
       ]
     },
     {
@@ -459,8 +470,7 @@
       "path": "skills/receiving-code-review",
       "install": "upstream",
       "roles": [
-        "migrator",
-        "specialist-migrator"
+        "migrator"
       ]
     },
     {
@@ -471,8 +481,7 @@
       "install": "upstream",
       "roles": [
         "migrator",
-        "verifier",
-        "specialist-migrator"
+        "verifier"
       ]
     },
     {
@@ -535,8 +544,8 @@
       "install": "upstream",
       "roles": [
         "program-orchestrator",
-        "specialist-migrator",
-        "verifier"
+        "verifier",
+        "migrator"
       ],
       "notes": "Needs Python 3 for its search scripts (ADR-0014)."
     },
@@ -573,6 +582,18 @@
       ]
     },
     {
+      "name": "prototype",
+      "category": "design",
+      "source": "mattpocock-skills",
+      "path": "skills/engineering/prototype",
+      "install": "upstream",
+      "roles": [
+        "program-orchestrator",
+        "migrator"
+      ],
+      "notes": "Throwaway UI/logic prototypes that resolve wayfinder:prototype tickets (the wayfinder skill calls it)."
+    },
+    {
       "name": "find-skills",
       "category": "capability-gaps",
       "source": "vercel-skills",
@@ -601,8 +622,7 @@
       "roles": [
         "migrator",
         "characterizer",
-        "slice-coordinator",
-        "specialist-migrator"
+        "slice-coordinator"
       ],
       "license": "MIT",
       "licenseEvidence": ".agents/skills/lessons-learned/LICENSE"
@@ -627,7 +647,7 @@
       "install": "upstream",
       "roles": [
         "characterizer",
-        "specialist-migrator"
+        "migrator"
       ],
       "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps.",
       "license": "MIT",

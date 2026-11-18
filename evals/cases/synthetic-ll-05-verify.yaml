@@ -1,0 +1,97 @@
+id: synthetic-ll-05-verify
+kind: verifier
+must_pass: true
+agent: afs-verifier
+ticket: LL-05
+role: afs-verifier
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: 2e4b196fcb5682b957e4d4a8919d20efc97c45e1
+  work: 007072d18514f916a67c12e2dc076edb34b917fa
+reference: martins-vds/ai-factory-synthetic-target#123 (3211f9a)
+issue:
+  title: 'Verify LL-05 (PR {work_pr}): monthly report'
+  body: '**Role:** `afs-verifier`. Verify ticket #67 (`LL-05`: produce the specified monthly report) in PR {work_pr},
+    with a fresh context. Your base branch is the migrator''s branch: your PR goes into it, so LL-05 reaches `main`
+    verified (ADR-0040).
+
+
+    - Re-run every gate through `afs-run`, mutation on changed code included; the full suite must pass in default
+    order.
+
+
+    - This capability is tier C, `spec-derived`: only `legacy/docs/reports-spec.md` remains, and no runtime can
+    be compared. Check every rule of the spec has a test: the run date (the first of each month, over the prior
+    month), one row per member, loans started, late returns, late fees in cents, sorting by fees descending then
+    member id, and omitting members with no loans that month. Watch the month boundaries.
+
+
+    - Check the quirk rulings LL-05 cites, and that its ledger entry names code that exists and evidence that backs
+    it.
+
+
+    - Add tests where evidence is missing. Never change production code. Write **your** return `.migration/returns/LL-05.afs-verifier.yaml`
+    and journal.
+
+
+
+    **Done when:** your PR commits your return and journal, and the finish check passes.
+
+    '
+expect:
+  verdict: pass
+normalize:
+- yaml_set:
+    file: .migration/profile.yaml
+    key: target.shared_test_files
+    value:
+    - tests/conftest.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: layering
+    value:
+      source_root: .
+      contracts:
+      - name: use cases depend only on their ports
+        adr: synthetic LL-02 verify ruling (#79)
+        files:
+        - src/*/services.py
+        forbid:
+        - django
+        - src.*.models
+        - src.*.repository
+        - src.*.clock
+        - src.*.gateway
+        - src.*.views
+        - src.*.forms
+        - src.*.composition
+        - src.core
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.idiom
+    value:
+    - ruff check src config manage.py tests
+    - ruff format --check src config manage.py tests
+    - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css
+notes: 'The clean Verifier case since BK-05G and LL-04 were re-ruled as defect cases (2026-11-17): the eval keeps
+  at least one, so a Verifier that rejects everything can''t pass. LL-05 is the monthly report command (no UI).
+  The live Verifier returned pass (#123) and the work merged (#120); no later finding contradicts it. Phase 3e:
+  today''s layer contracts, idiom gate and self-healing, as in the other Verifier cases. The profile also gets `ui_checks`
+  (check_ui.py in the idiom gate).'

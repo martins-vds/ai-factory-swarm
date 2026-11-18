@@ -1,0 +1,32 @@
+{
+  "pilot-bk-05f": {
+    "base_branch": "eval/2026-11-16-fold-r2/pilot-bk-05f",
+    "dispatched_at": "2026-11-16T20:33:58+00:00",
+    "issue": 735,
+    "work_pr": null
+  },
+  "pilot-bk-05g": {
+    "base_branch": "eval/2026-11-16-fold-r2/pilot-bk-05g",
+    "dispatched_at": "2026-11-16T20:34:02+00:00",
+    "issue": 737,
+    "work_pr": null
+  },
+  "pilot-dm-05d": {
+    "base_branch": "eval/2026-11-16-fold-r2/pilot-dm-05d",
+    "dispatched_at": "2026-11-16T20:34:04+00:00",
+    "issue": 739,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "base_branch": "eval/2026-11-16-fold-r2/pilot-dm-05f",
+    "dispatched_at": "2026-11-16T20:34:07+00:00",
+    "issue": 741,
+    "work_pr": null
+  },
+  "synthetic-ll-03": {
+    "base_branch": "eval/2026-11-16-fold-r2/synthetic-ll-03",
+    "dispatched_at": "2026-11-16T20:34:10+00:00",
+    "issue": 743,
+    "work_pr": null
+  }
+}

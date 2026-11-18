@@ -41,3 +41,48 @@ converted reports into the harness's format, every conversion would be a chance 
   too slow for every PR, so the journal check is what keeps it honest.
 - Adding a stack means adding an adapter in the harness (and naming it in the stack pack's gate
   commands), not instructing agents.
+
+## PR attribution
+
+The offline return validator also requires a meaningful PR reference on a finished return when its
+generated role contract has a `pr` field. A `owner/repo#N` reference or canonical PR URL is sufficient;
+the validator does not resolve it over the network. A handoff remains partial and may keep `pr: null`,
+and roles without a `pr` contract are unaffected.
+
+The PR-event contract check compares finished returns changed against that PR's base with the event PR.
+It uses the event's `base.sha` and `head.sha`, not the Actions synthetic merge checkout's `HEAD`, to
+identify changed files, current return contents, and reachable history. It treats a return as inherited
+only when the event-head history shows its content arrived unchanged from a merged second parent and no
+later first-parent commit changed that path. Superseded-attribution evidence is limited to the same
+return path; one return cannot attest another. If required event SHAs or merge ancestry are unavailable,
+the check fails rather than assuming ownership or inheritance. These metadata checks do not prove that the
+worker completed the work, that a PR exists or is merged, or that merging is authorized.
+
+For rollout, an unchanged null-PR return whose last change predates the commit introducing this rule
+remains historical and is not rewritten or treated as current work. A later edit to that return is
+checked normally. Returns in `.migration/harness/legacy-returns.json` retain their existing exemption;
+older returns not covered by either history rule or that list are not silently grandfathered. Detecting
+the rule-introduction commit requires local Git history that contains it; if that history is unavailable,
+the validator fails closed and the return needs attribution.
+
+### Amendment (2026-11-08): a failing test run always kills the mutant
+
+mutmut 2.x reads a mutant as killed only when the test command exits 1. A mutant that breaks an
+import makes pytest exit 2 (collection error), and mutmut counted it as survived. On the pilot this
+held BK-05H at 0.763 for two sessions: all nine survivors were `x = None` or `include('XX…XX')` in
+`urls.py`, which existing tests already caught. The number came from a tool, but the tool misread the
+tests' result.
+
+`afs-mutation` now runs each mutant's narrowed tests in-process through `afs-mutation --pytest`, which
+exits 1 for any failing run (pytest 2, 3, 4) and passes 0 and 5 through. A baseline that can't import
+now fails as a mutmut error instead of passing silently. Scores recorded before this change may be
+too low, never too high. A `--runner` the operator passes is still used as given.
+
+## Amendment (2026-11-10, found when synthetic LL-03 merged)
+A ticket's run journal is shared by every session that works the ticket: migrator, Verifier, fix, and
+re-verification. A return's score must equal the **last mutation run of one session** in the journal as of
+the return's last commit. Sessions are delimited by the `setup-probe` row that `afs-setup-check` writes
+first. Before this, the score had to equal the journal's last mutation run. That held on the PR branch,
+where the migrator's return was committed before the Verifier's rows, but a squash merge lands both in one
+commit. LL-03's return (0.800) was then compared with the re-verification's last run (0.914), and `main`'s
+Migration state check went red. A score from the middle of a session still fails.

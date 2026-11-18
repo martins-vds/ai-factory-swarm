@@ -13,8 +13,7 @@ issue to the Copilot coding agent and pick the agent).
 | [`afs-characterizer`](afs-characterizer.agent.md) | L1 | 3 | characterization suite, ledger evidence |
 | [`afs-planner`](afs-planner.agent.md) | L1 | 4 | draft slice plan |
 | [`afs-slice-coordinator`](afs-slice-coordinator.agent.md) | L1 | 5–6 | tracker, slice evidence report |
-| [`afs-migrator`](afs-migrator.agent.md) | L2 | 5 | target code, one PR per ticket |
-| [`afs-specialist-migrator`](afs-specialist-migrator.agent.md) | L2 | 5 | data / UI / messaging, one PR per ticket |
+| [`afs-migrator`](afs-migrator.agent.md) | L2 | 5 | target code, one PR per ticket; data / UI / messaging tickets add the `afs-specialty` skill (ADR-0042) |
 | [`afs-verifier`](afs-verifier.agent.md) | L2 | 5 | tests and a verdict (never production code) |
 | [`afs-auditor`](afs-auditor.agent.md) | L1/L0 | 6–7 | audit reports and gap tickets (read-only) |
 

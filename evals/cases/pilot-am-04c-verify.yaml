@@ -1,0 +1,50 @@
+id: pilot-am-04c-verify
+kind: verifier
+must_pass: true
+agent: afs-verifier
+ticket: AM-04C
+role: afs-verifier
+source:
+  repo: martins-vds/ai-factory-pilot-target
+  base: ec243476d137d1fe4517ecf87ef1fa7390f26cd2
+  work: c777fd84ee3a23b1b0512fd67a380f981a183a5c
+reference: martins-vds/ai-factory-pilot-target#335 (90c27ce)
+issue:
+  title: 'Verify AM-04C (PR #328): admin map page'
+  body: "**Role:** `afs-verifier`. Verify ticket #282 (`AM-04C`: admin map page with htmx polling) with a fresh\
+    \ context. Your base branch is `copilot/am-04c-continue-map-view-poll-setting` (PR {work_pr}).\n\n- Re-run every\
+    \ gate through `afs-run`, mutation on changed code included.\n- Check against `.migration/design/admin-live-map.md`\
+    \ (#286) and the rulings:\n  - Leaflet and OpenStreetMap;\n  - `hx-trigger=\"every <CARGO_MAP_POLL_SECONDS>s\"\
+    ` from the setting, default 10, with a non-default value tested;\n  - markers swapped without a full reload;\n\
+    \  - no WebSocket and no online/offline label (#90).\n- Check that the view change (passing the setting to the\
+    \ template) is the minimum needed.\n- Add tests where evidence is missing. Never change production code.\n-\
+    \ Write **your** return file `.migration/returns/AM-04C.afs-verifier.yaml`.\n\n**Done when:** your PR (base:\
+    \ `copilot/am-04c-continue-map-view-poll-setting`) commits your return file and journal.\n\n---\n_Generated\
+    \ by [Claude Code](https://claude.ai/code)_"
+expect:
+  verdict: changes-required
+  findings:
+  - label: polling returns HTTP 500 (missing marker partial)
+    severity_min: major
+    any_of:
+    - '500'
+    - _live_map_markers
+    - marker partial
+    - templatedoesnotexist
+normalize:
+- replace:
+    file: .migration/ledger/handling.rest-report-contract.yaml
+    old: cargotracker.handling.interfaces.rest.submit_handling_report
+    new: cargotracker.handling.interfaces.rest.create_handling_report_view
+    optional: true
+- replace:
+    file: .migration/ledger/handling.rest-report-contract.yaml
+    old: cargotracker.handling.interfaces.urls.urlpatterns
+    new: cargotracker.urls.urlpatterns
+    optional: true
+notes: 'Normalization: the stale ledger references the live run fixed later (pilot #490). The plan ticket files
+  are left missing: copying later ones adds plan errors at this commit. Graded on verdict and findings, which those
+  pre-existing errors do not affect.'
+disabled: 'the case branch carries plan-validation errors (missing or later plan ticket files) that afs-setup-check
+  rightly refuses to start on, so the Verifier stops at setup (baseline r1, eval #10, #13, #17). Re-enable once
+  the plan files can be normalized without changing the plan''s meaning.'

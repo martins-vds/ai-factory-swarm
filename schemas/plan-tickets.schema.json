@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/plan-tickets.schema.json",
+  "title": "AI Factory Swarm plan tickets",
+  "description": "`.migration/plan/<slice>.tickets.yaml`: the machine-readable ticket list of `.migration/plan/<slice>.md`, written by the Planner and checked by tools/check_plan.py (harness #98, ADR-0034).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slice",
+    "tickets"
+  ],
+  "properties": {
+    "slice": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "tickets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "files",
+          "blocked_by"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*-[0-9A-Z-]+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "afs-analyst",
+              "afs-auditor",
+              "afs-characterizer",
+              "afs-migrator",
+              "afs-planner",
+              "afs-slice-coordinator",
+              "afs-specialist-migrator",
+              "afs-verifier"
+            ]
+          },
+          "specialty": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Paths the ticket may change, from the repo root. A path ending in / is a folder."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ledger ids this ticket proves; each needs .migration/ledger/<id>.yaml in files."
+          },
+          "blocked_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "done_before_returns": {
+            "type": "boolean",
+            "description": "Backfill only: the ticket finished before return files were required, so no return marks it done. The open-ticket checks skip it."
+          }
+        }
+      }
+    },
+    "cross_slice": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file",
+          "slices"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "slices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

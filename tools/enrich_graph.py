@@ -16,17 +16,19 @@ Two layers (ADR-0025):
 
 Framework enrichers (the stack pack names which ones a migration uses):
   java-ee   JPA @Entity/@Table → table; EntityManager queries/find → reads_from; persist/merge/remove →
-            writes_to; JAX-RS @Path + verbs → endpoint, routes; JSF *.xhtml → page, EL #{bean.x} →
+            writes_to; JAX-RS @Path + verbs → endpoint, routes; JSF *.xhtml, static HTML and JSP → page, EL #{bean.x} →
             routes to the @Named bean; CDI/EJB @Inject/@EJB fields → calls; JMS producers →
             publishes → queue → triggers → @MessageDriven; @ServerEndpoint → `WS` endpoint; CDI
             Event<T>.fire → publishes → `cdi-event` → triggers → @Observes; @Schedule → `timer` → triggers;
             JobOperator.start("J") → calls → `batch-job J` → calls → the job XML's ref="" beans
   django    urls.py path()/include() → endpoint, routes to the view; HTTP method decorators (including
             returned factory views) → verb-qualified endpoints; models.Model → table; ORM
-            Model.objects.* / .save() / .delete() → reads_from / writes_to; render(template) →
+            Model.objects.* / get_object_or_404(Model) / .save() / .delete() → reads_from / writes_to; render(template) →
             page; management/commands/<name>.py → `command`
             routes Command; @app.task/@shared_task → `task` triggers it, f.defer()/.delay() → publishes;
             {% include/extends %} → contains
+  data      --profile: the profile's data.load / data.export commands → writes_to / reads_from every
+            target table of the mapping they pass (ADR-0032; a mapping-driven loader picks models at run time)
   both      page/template scripts and htmx: fetch(url), new WebSocket(…"/path"), hx-get/post/…="url" or
             "{% url 'ns:name' %}" → routes to the matching endpoint (path suffix at a segment boundary,
             same verb; `/` only exactly)
@@ -34,11 +36,12 @@ Framework enrichers (the stack pack names which ones a migration uses):
 Usage:
   enrich_graph.py <knowledge-graph.json> --root <analysed folder> --graphify <graph.json> --enricher java-ee
                   [--out <path>]          (default: rewrite the graph in place)
-Prints one summary line per enricher and an `AFS-RESULT gate=graph-enrich …` line. Standard library only.
+Prints one summary line per enricher and an `AFS-RESULT gate=graph-enrich …` line. Standard library only, except PyYAML for --profile.
 """
 import argparse
 import ast
 import collections
+import html.parser
 import json
 import pathlib
 import re
@@ -154,6 +157,44 @@ JAVA_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 TYPE_DECL = re.compile(r"\b(?:class|interface|enum)\s+(\w+)(?:\s*<[^>{]*>)?(?:\s+extends\s+([\w.<>, ]+?))?"
                        r"(?:\s+implements\s+([\w.<>, ]+?))?\s*\{")
 ANNOT_ARG = r'(?:\(\s*(?:name\s*=\s*|value\s*=\s*)?"([^"]*)"[^)]*\)|\([^)]*\))?'
+
+
+class IframeLinks(html.parser.HTMLParser):
+    """Literal iframe src attributes, excluding comments and srcdoc overrides."""
+
+    def __init__(self, text):
+        super().__init__()
+        self.refs, self.has_base = [], False
+        self.feed(text)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "base" and any(k == "href" for k, _ in attrs):
+            self.has_base = True
+        if tag == "iframe" and not any(k == "srcdoc" for k, _ in attrs):
+            refs = [v for k, v in attrs if k == "src"]
+            if len(refs) == 1 and refs[0]:
+                self.refs.append(refs[0])
+
+
+def jsf_iframe_target(page, ref, root, pages):
+    """Resolve an exact local XHTML URL inside this page's webapp, never by suffix."""
+    ref = ref.strip()
+    prefix = "#{request.contextPath}"
+    if ref.startswith(prefix + "/"):
+        ref = ref[len(prefix):]
+    if re.search(r"[#$]\{|[\\%\x00-\x20]", ref) or ref.startswith("//") \
+            or re.match(r"[a-z][a-z0-9+.-]*:", ref, re.I):
+        return None
+    ref = re.split(r"[?#]", ref, maxsplit=1)[0]
+    if not ref or ref.endswith("/"):
+        return None
+    webapp = next((p for p in page.parents if p.name == "webapp" and p.is_relative_to(root)), None)
+    if webapp is None:
+        return None
+    target = ((webapp if ref.startswith("/") else page.parent) / ref.lstrip("/")).resolve()
+    if target.is_relative_to(webapp.resolve()) and target.is_relative_to(root.resolve()):
+        return pages.get(target)
+    return None
 
 
 class JavaType:
@@ -372,6 +413,7 @@ def enrich_java_ee(g, root):
     # JSF pages → page nodes; EL bean references → routes to the @Named bean
     eps = endpoint_index(g)
     xhtml = sorted(root.rglob("*.xhtml"))
+    pages = {f.resolve(): f for f in xhtml if f.is_file()}
     for f in xhtml:
         text = f.read_text(encoding="utf-8", errors="ignore")
         # Bean names may contain dots (@Named("public.track")): match each known name inside an EL expression.
@@ -385,12 +427,43 @@ def enrich_java_ee(g, root):
         for b in sorted(refs):
             g.edge(pid, class_id(g, beans[b], "jsf-el"), "routes", "jsf-el", description=f"#{{{b}…}}")
         link_page(g, pid, text, eps, "page-script")
+        frames = IframeLinks(text)
+        for ref in frames.refs if not frames.has_base else []:
+            hit = jsf_iframe_target(f, ref, root, pages)
+            if hit:
+                sub = rel(hit, root)
+                g.edge(pid, g.node("page", sub, sub, "jsf-page", f"JSF page {sub}"),
+                       "contains", "jsf-iframe", description=f"iframe src={ref}")
         # Facelets composition: ui:include src / ui:composition|ui:decorate template → the page contains it
         for ref in re.findall(r"<ui:(?:include|composition|decorate)\b[^>]*\b(?:src|template)\s*=\s*\"([^\"#$]+)\"", text):
             hit = next((x for x in xhtml if x.as_posix().endswith("/" + ref.lstrip("/"))), None)
             if hit:
                 sub = rel(hit, root)
                 g.edge(pid, g.node("page", sub, sub, "jsf-page", f"JSF page {sub}"), "contains", "jsf-include")
+
+    # Pages beyond JSF: static HTML and JSP views. A JAX-RS resource that serves one (a string literal naming
+    # its path, e.g. getResourceAsStream("/static/about.html")) routes to it (synthetic target: the
+    # stack pack requires `page`, and an app whose UI is static HTML had none).
+    skip = {"target", "build", "node_modules", "test", "tests", ".git"}
+    views = sorted(f for f in root.rglob("*") if f.is_file() and f.suffix.lower() in (".html", ".htm", ".jsp")
+                   and not skip & set(f.relative_to(root).parts[:-1]))
+    for f in views:
+        path = rel(f, root)
+        kind = "jsp-page" if f.suffix.lower() == ".jsp" else "static-page"
+        pid = g.node("page", path, path, kind, f"{'JSP' if kind == 'jsp-page' else 'Static'} page {path}")
+        fid = f"file:{path}"
+        if fid in g.nodes:
+            g.edge(fid, pid, "contains", kind)
+        link_page(g, pid, f.read_text(encoding="utf-8", errors="ignore"), eps, "page-script")
+        parts = f.relative_to(root).parts
+        anchor_dirs = [i for i, x in enumerate(parts) if x in ("resources", "webapp", "static", "public")]
+        served = "/".join(parts[anchor_dirs[0] + 1:]) if anchor_dirs else f.name   # path as the app names it
+        for fq, t in types.items():
+            if not re.search(rf"\"/?{re.escape(served)}\"", t.text):
+                continue
+            for n in list(g.nodes.values()):
+                if n.get("type") == "endpoint" and n.get("filePath") == t.path:
+                    g.edge(n["id"], pid, "routes", "serves-page", description=f"serves {served}")
 
 
 # ---------------------------------------------------------------------------------------------- Django
@@ -560,6 +633,18 @@ def django_view_methods(view, m, defs, seen=frozenset(), local=None):
     return methods[0] if methods and methods[0] is not None and all(x == methods[0] for x in methods) else None
 
 
+def module_binding(m, name):
+    """The call a module-level name is bound to (`v = f()` or `a, v = f()`), else None."""
+    for node in m.tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        for t in node.targets:
+            names = [t] if isinstance(t, ast.Name) else list(t.elts) if isinstance(t, (ast.Tuple, ast.List)) else []
+            if any(isinstance(n, ast.Name) and n.id == name for n in names):
+                return node.value
+    return None
+
+
 def enrich_django(g, root):
     mods = py_index(root)
     if not mods:
@@ -617,6 +702,75 @@ def enrich_django(g, root):
     # A class's methods get their own node when the graph knows them (Graphify, ADR-0028); the class body
     # outside methods stays the class's.
     known = {(n.get("filePath"), n.get("name")): n["id"] for n in g.nodes.values() if n.get("type") == "method"}
+    # Module-level instances (`loan_application = LoanApplication(DjangoLoanRepository(), SystemClock())`, a
+    # composition root): a call `loan_application.lend(...)` anywhere that imports it calls LoanApplication.lend.
+    # Graphify links calls through types it sees; an imported instance has none (synthetic LC-ACCEPT).
+    # Structural Protocols: `class LoanRepository(Protocol)` is implemented by any project class defining all its
+    # methods, without inheriting it. The base graph's AI step sometimes infers that `implements` edge and
+    # sometimes doesn't (synthetic LF-ACCEPT lost every path through a port); make it deterministic.
+    protocols, classes = {}, []
+    for cname, (cm, cnode) in defs.items():
+        if not isinstance(cnode, ast.ClassDef):
+            continue
+        methods = {n.name for n in cnode.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and not n.name.startswith("__")}
+        classes.append((cname, cm, cnode, methods))
+        if any((dotted_of(b, cm) or "").rsplit(".", 1)[-1] == "Protocol" for b in cnode.bases) and methods:
+            protocols[cname] = (cm, cnode, methods)
+    for pname, (pm, pnode, wanted) in protocols.items():
+        for cname, cm, cnode, have in classes:
+            if cname != pname and cname not in protocols and wanted <= have:
+                g.edge(py_node(g, cm, cnode, "python-protocol"), py_node(g, pm, pnode, "python-protocol"),
+                       "implements", "python-protocol", description="satisfies the Protocol structurally")
+    # Calls through injected dependencies: `self.repository.all()`, where `__init__(self, repository: LoanRepository)`
+    # stores `self.repository = repository`. Calls on a Protocol go to its method and straight to every
+    # structural implementation's method, so the path doesn't depend on the Protocol's `...` methods having
+    # nodes. The base graph resolves these only sometimes (synthetic LF-ACCEPT).
+    implementers = collections.defaultdict(list)
+    for pname, (pm, pnode, wanted) in protocols.items():
+        for cname, cm, cnode, have in classes:
+            if cname != pname and cname not in protocols and wanted <= have:
+                implementers[pname].append((cm, cnode))
+    for cname, cm, cnode, _ in classes:
+        attr_types = {}
+        for fn in cnode.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name == "__init__":
+                params = {a.arg: dotted_of(a.annotation, cm) for a in fn.args.args if a.annotation is not None}
+                for st in ast.walk(fn):
+                    if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.value, ast.Name):
+                        t = st.targets[0]
+                        if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self" \
+                                and params.get(st.value.id) in defs:
+                            attr_types[t.attr] = params[st.value.id]
+        if not attr_types:
+            continue
+        for fn in cnode.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            caller = known.get((cm.path, f"{cnode.name}.{fn.name}"))
+            if caller is None:
+                continue
+            for call in ast.walk(fn):
+                f = getattr(call, "func", None) if isinstance(call, ast.Call) else None
+                if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Attribute)
+                        and isinstance(f.value.value, ast.Name) and f.value.value.id == "self"
+                        and f.value.attr in attr_types):
+                    continue
+                tname = attr_types[f.value.attr]
+                targets = [defs[tname]] + implementers.get(tname, [])
+                for tm, tnode in targets:
+                    callee = known.get((tm.path, f"{tnode.name}.{f.attr}"))
+                    if callee is not None:
+                        g.edge(caller, callee, "calls", "python-injected")
+    instances = {}
+    for im in mods.values():
+        for st in im.tree.body:
+            target = st.targets[0] if isinstance(st, ast.Assign) and len(st.targets) == 1 else \
+                st.target if isinstance(st, ast.AnnAssign) else None
+            if isinstance(target, ast.Name) and isinstance(st.value, ast.Call):
+                cls = dotted_of(st.value.func, im)
+                if cls in defs and isinstance(defs[cls][1], ast.ClassDef):
+                    instances[f"{im.dotted}.{target.id}"] = cls
     for name, (m, top) in defs.items():
         top_id = py_node(g, m, top, "django-code")
         if isinstance(top, ast.ClassDef):
@@ -636,6 +790,12 @@ def enrich_django(g, root):
                 if not isinstance(node, ast.Call):
                     continue
                 f = node.func
+                if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) \
+                        and dotted_of(f.value, m) in instances:
+                    cm, cnode = defs[instances[dotted_of(f.value, m)]]
+                    callee = known.get((cm.path, f"{cnode.name}.{f.attr}")) or py_node(g, cm, cnode, "python-instance")
+                    g.edge(owner, callee, "calls", "python-instance")
+                    continue
                 # Model.objects.<method>(...) (also chained: Model.objects.filter(...).first())
                 chain, base = [], f
                 while isinstance(base, ast.Attribute):
@@ -653,6 +813,16 @@ def enrich_django(g, root):
                         if meths & WRITE_METHODS:
                             g.edge(owner, models[mt], "writes_to", "django-orm")
                     continue
+                # get_object_or_404(Model, ...) / get_list_or_404(Model, ...) read Model's table (synthetic
+                # LL-ACCEPT: the catalog's detail page had no data path). A queryset first argument
+                # (Model.objects.filter(...)) is matched by the `objects` rule as its own call.
+                shortcut = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+                if shortcut in ("get_object_or_404", "get_list_or_404") and node.args \
+                        and isinstance(node.args[0], ast.Name):
+                    mt = model_of(node.args[0], m)
+                    if mt:
+                        g.edge(owner, models[mt], "reads_from", "django-orm")
+                        continue
                 if isinstance(f, ast.Attribute) and f.attr in ("save", "delete") and isinstance(f.value, ast.Name) \
                         and f.value.id in local_types:
                     g.edge(owner, models[local_types[f.value.id]], "writes_to", "django-orm")
@@ -707,6 +877,8 @@ def enrich_django(g, root):
                     space = kw.get("namespace") or app_name(sub)
                     walk(sub, route, ns + ((space,) if space else ()))
                 continue
+            if isinstance(view, ast.Name) and dotted_of(view, m) not in defs:
+                view = module_binding(m, view.id) or view   # `a, b = compose_views()` then path('', a)
             methods = django_view_methods(view, m, defs)
             if isinstance(view, ast.Call) and isinstance(view.func, ast.Attribute) and view.func.attr == "as_view":
                 view = view.func.value
@@ -852,7 +1024,72 @@ def merge_graphify(g, doc):
                 g.edge(im, methods[iface][name], "implements", "graphify", description="method of an implemented type")
 
 
+def dispatch_methods(g):
+    """Method-level dispatch for every type-level `implements` edge, whoever added it: an implementing type's
+    method `implements` the same-named method of the interface, so a call to an interface method reaches
+    its implementations. The Graphify merge already did this for the links it brought; a structural match
+    from the base graph (a Python Protocol a class satisfies without inheriting it) didn't get it
+    (synthetic LC-ACCEPT: calls through `LoanRepository` stopped at the protocol)."""
+    by_id = g.nodes
+    methods = collections.defaultdict(dict)       # type node id → {method name: method node id}
+    for e in g.doc["edges"]:
+        child = by_id.get(e["target"], {})
+        if e["type"] == "contains" and child.get("type") == "method":
+            methods[e["source"]][child["name"].rsplit(".", 1)[-1]] = e["target"]
+    for e in list(g.doc["edges"]):
+        if e["type"] != "implements" or by_id.get(e["source"], {}).get("type") == "method":
+            continue
+        for name, im in methods.get(e["source"], {}).items():
+            if name in methods.get(e["target"], {}):
+                g.edge(im, methods[e["target"]][name], "implements", "method-dispatch",
+                       description="method of an implemented type")
+
+
 ENRICHERS = {"java-ee": enrich_java_ee, "django": enrich_django}
+
+MANAGE_CMD = re.compile(r"\bmanage\.py\s+([A-Za-z_][\w-]*)")
+MAPPING_ARG = re.compile(r"--mapping[=\s]+(\S+)")
+
+
+def enrich_data_mapping(g, profile_path):
+    """ADR-0032: the load and export commands move every table the committed data mapping names.
+
+    A mapping-driven loader picks its models by name at run time, so no parser sees which tables it writes.
+    The profile's `data.load` / `data.export` commands and the mapping they pass are the declared contract:
+    `command <name>` writes_to (load) / reads_from (export) each mapped target table that the graph has."""
+    try:
+        profile = yaml_load(pathlib.Path(profile_path))
+    except OSError:
+        return
+    data = (profile or {}).get("data") or {}
+    tables = {}
+    for n in g.nodes.values():
+        if n.get("type") == "table":
+            tables.setdefault(str(n.get("name", "")).lower(), []).append(n["id"])
+    commands = {}
+    for n in g.nodes.values():
+        if n.get("type") == "command":
+            commands.setdefault(n.get("name"), []).append(n["id"])
+    for key, etype in (("load", "writes_to"), ("export", "reads_from")):
+        for cmd in data.get(key) or []:
+            name, mapping = MANAGE_CMD.search(cmd or ""), MAPPING_ARG.search(cmd or "")
+            path = pathlib.Path(mapping.group(1) if mapping else data.get("mapping") or "")
+            if not name or not path.is_file():
+                continue
+            doc = yaml_load(path) or {}
+            for entry in doc.get("tables") or []:
+                for tid in tables.get(str(entry.get("target", "")).lower(), []):
+                    for cid in commands.get(name.group(1), []):
+                        g.edge(cid, tid, etype, "data-mapping", description=f"{path} → {entry.get('target')}")
+
+
+def yaml_load(path):
+    """YAML when PyYAML is available (it is wherever the harness runs), else nothing."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def main(argv=None):
@@ -862,6 +1099,8 @@ def main(argv=None):
     ap.add_argument("--enricher", action="append", default=[], choices=sorted(ENRICHERS))
     ap.add_argument("--graphify", metavar="GRAPH_JSON", help="Graphify's graph.json for the same folder: merged "
                     "first, as the language-level layer (ADR-0025)")
+    ap.add_argument("--profile", help="the target's profile.yaml: its data.load/export commands and mapping add "
+                    "the data-mapping edges (ADR-0032)")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
     path = pathlib.Path(a.graph)
@@ -882,7 +1121,14 @@ def main(argv=None):
         before = sum(g.added.values())
         ENRICHERS[name](g, root)
         print(f"{name}: +{sum(g.added.values()) - before}")
-    used = (["graphify"] if a.graphify else []) + a.enricher
+    before = sum(g.added.values())
+    dispatch_methods(g)
+    print(f"method-dispatch: +{sum(g.added.values()) - before}")
+    if a.profile:
+        before = sum(g.added.values())
+        enrich_data_mapping(g, a.profile)
+        print(f"data-mapping: +{sum(g.added.values()) - before}")
+    used = (["graphify"] if a.graphify else []) + a.enricher + (["data-mapping"] if a.profile else [])
     doc.setdefault("project", {})["afsEnrichment"] = {"enrichers": used, "added": dict(sorted(g.added.items())),
                                                       **({"graphify": gmeta} if a.graphify else {})}
     pathlib.Path(a.out or path).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
