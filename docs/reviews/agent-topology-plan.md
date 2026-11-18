@@ -352,7 +352,7 @@ in an ADR whether the fold is kept or rejected.
   evidence predicts A.
 - **ADR:** "The Verifier stays an independent session", with the numbers, or the fold.
 - **Status (2026-11-18): inconclusive; the Verifier stays (ADR-0044).** Neither configuration let a defect reach a merge candidate. B cost 23% fewer minutes. Re-run once the cases start clean (`evals/results/2026-11-18-4a-summary.md`).
-- **Status (2026-11-18, round 2): the rule is met; proposed fold (ADR-0045).** On clean-start cases, A's
+- **Status (2026-11-18, round 2): the rule is met; the Verifier folds (ADR-0045, accepted).** On clean-start cases, A's
   Verifier caught two major LL-02 defects (one per round); B had none on any merge candidate, confirmed by an
   independent audit, at about 32% fewer minutes (`evals/results/2026-11-18-4a-round2-summary.md`).
 - **How it runs** (operator decisions, 2026-11-17: hidden oracle checks; two runs per case):

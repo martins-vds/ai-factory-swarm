@@ -1,7 +1,7 @@
 # ADR-0040: Migrator work merges only after its Verifier passes it
 
-- Status: Proposed (merging the harness PR that adds it accepts it); amended by ADR-0045 (proposed: for
-  Migrator tickets, the Migrator's own self-verification replaces the Verifier's pass)
+- Status: Proposed (merging the harness PR that adds it accepts it); amended by ADR-0045: for Migrator
+  tickets, the Migrator's own self-verification replaces the Verifier's pass
 - Date: 2026-11-09
 - Enforces: the slice coordinator's ticket loop (`agents/afs-slice-coordinator.agent.md`, step 3)
 

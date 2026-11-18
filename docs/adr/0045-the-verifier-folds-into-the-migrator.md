@@ -1,6 +1,6 @@
 # ADR-0045: The Verifier folds into the Migrator for Migrator tickets (phase 4a, round 2)
 
-- Status: Proposed (merging the harness PR that adds it accepts it)
+- Status: Accepted (2026-11-18, operator decision)
 - Date: 2026-11-18
 - Supersedes: ADR-0044 (the Verifier stays; 4a was inconclusive)
 - Amends: ADR-0040 (Migrator work merges only after its Verifier passes it)
@@ -29,11 +29,17 @@ Across both rounds:
 ## Decision
 1. **The plan's rule is met, not vacuously.** B catches every real-defect case A catches, on both runs: no
    major defect reaches a merge candidate in B.
-2. **Fold for Migrator tickets.** The Migrator's procedure gains the self-verification step from
-   `evals/variants/afs-migrator-selfverify.agent.md`, and the dispatcher stops chaining a Verifier after a
-   Migrator.
-   - It lands as its own harness PR, measured against this round's B results.
-   - The `afs-verifier` agent stays in the harness for audits and evals.
+2. **Fold for Migrator tickets.**
+   - The Migrator's procedure gains the self-verification step from
+     `evals/variants/afs-migrator-selfverify.agent.md` (step 6), plus a check of each behavior against the
+     legacy source.
+   - Its return lists every business rule with a use-case test (`rules`, `no_rules`), and `validate.py`
+     holds it to that as it holds the Verifier (`MIGRATOR_SELF_VERIFY_RULE_V1`). A rule its use case
+     doesn't enforce is its to move, not to report.
+   - The Slice Coordinator stops dispatching a Verifier on Migrator work.
+   - `check_verified_merge.py` no longer needs a Verifier return for an `afs-migrator` return. If an audit
+     of the current work exists, it must pass.
+   - The `afs-verifier` agent stays for audits the operator asks for and for evals.
 3. **What only a reviewer found becomes a check.** `check_ui.py` now fails on response rules that match a code
    htmx 2 doesn't define. Each later reviewer-only finding class gets a tool check or an oracle where one can
    be written.

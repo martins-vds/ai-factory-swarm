@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Migrator work merges into the default branch only after its Verifier passes it (ADR-0040).
+"""Migrator work merges into the default branch only once it is verified (ADR-0040, amended by ADR-0045).
 
   python .migration/harness/tools/check_verified_merge.py --base origin/<default branch>
 
 For every `.migration/returns/<T>.afs-migrator.yaml` or `<T>.afs-specialist-migrator.yaml` that this PR
-adds or changes against --base, `.migration/returns/<T>.afs-verifier.yaml` must, at HEAD:
-  - be a valid Verifier return for ticket T with verdict `pass`;
-  - have been committed after the migrator return's latest change, by a different commit: the latest
-    commit that changed the Verifier return descends from the latest commit that changed the migrator
-    return. A migrator re-run after verification needs a fresh verification.
+adds or changes against --base:
+  - **afs-migrator (ADR-0045):** the Migrator verifies its own work; validate.py checks its return's
+    use-case tests for every rule. No Verifier return is needed. If one exists at HEAD (an audit) and was
+    committed after the migrator return's latest change, it must pass.
+  - **afs-specialist-migrator (retired, ADR-0042):** `.migration/returns/<T>.afs-verifier.yaml` must, at HEAD,
+    be a valid Verifier return for ticket T with verdict `pass`, committed after the migrator return's
+    latest change by a different commit (the latest commit that changed the Verifier return descends from
+    the latest commit that changed the migrator return). A re-run after verification needs a fresh one.
 
 PRs into any other branch (a Verifier's PR into the migrator's branch, a stacked PR) are out of scope:
 the rule applies where work reaches the default branch. Exit 0 pass or out of scope, 1 fail, 2 usage.
@@ -38,13 +41,24 @@ def last_change(path, root="."):
     return git("log", "-1", "--format=%H", "HEAD", "--", path, root=root)
 
 
+def newer(migrator_path, verifier_path, root="."):
+    """The Verifier return's latest change is a later commit than the migrator return's, and descends from it."""
+    migrated, verified = last_change(migrator_path, root), last_change(verifier_path, root)
+    return verified != migrated and subprocess.run(
+        ["git", "-C", root, "merge-base", "--is-ancestor", migrated, verified], capture_output=True).returncode == 0
+
+
 def problems_for(ticket, migrator_path, root="."):
     from ticket_guard import _role_outcome_problem, _valid_return
     verifier_path = f".migration/returns/{ticket}.afs-verifier.yaml"
     shown = subprocess.run(["git", "-C", root, "--no-replace-objects", "show", f"HEAD:{verifier_path}"],
                            capture_output=True, text=True)
+    self_verified = migrator_path.endswith(".afs-migrator.yaml")
     if shown.returncode != 0:
-        return [f"{ticket}: no Verifier return {verifier_path}; verify this work before it merges"]
+        return [] if self_verified else [f"{ticket}: no Verifier return {verifier_path}; verify this work before "
+                                         "it merges"]
+    if self_verified and not newer(migrator_path, verifier_path, root):
+        return []                                   # an audit of earlier work says nothing about this change
     doc = _valid_return(shown.stdout, verifier_path)
     if doc is None:
         return [f"{ticket}: {verifier_path} is not a valid return"]
@@ -54,10 +68,8 @@ def problems_for(ticket, migrator_path, root="."):
     outcome = _role_outcome_problem(doc)
     if outcome:
         problems.append(f"{ticket}: Verifier hasn't passed it: {outcome}")
-    migrated, verified = last_change(migrator_path, root), last_change(verifier_path, root)
-    ancestor = subprocess.run(["git", "-C", root, "merge-base", "--is-ancestor", migrated, verified],
-                              capture_output=True).returncode == 0
-    if verified == migrated or not ancestor:
+    if not newer(migrator_path, verifier_path, root):
+        migrated, verified = last_change(migrator_path, root), last_change(verifier_path, root)
         problems.append(f"{ticket}: {migrator_path} changed at {migrated[:7]}, after (or with) the Verifier "
                         f"return's latest change {verified[:7]}; re-verify the current work")
     return problems
@@ -86,9 +98,10 @@ def main(argv=None):
         return 2
     for problem in problems:
         print(f"::error title=Migrator work is not verified::{problem}")
-    for ticket, _ in tickets:
+    for ticket, path in tickets:
         if not any(p.startswith(f"{ticket}:") for p in problems):
-            print(f"{ticket}: verified by its passing Verifier return")
+            print(f"{ticket}: verified" + (" by its own return (ADR-0045)" if path.endswith(".afs-migrator.yaml")
+                                           else " by its passing Verifier return"))
     print(f"AFS-RESULT gate=verified-merge verdict={'fail' if problems else 'pass'} "
           f"tickets={len(tickets)} failures={len(problems)}")
     return 1 if problems else 0

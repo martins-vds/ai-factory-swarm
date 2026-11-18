@@ -1,7 +1,7 @@
 # ADR-0044: The Verifier stays an independent session (phase 4a was inconclusive)
 
-- Status: Accepted (2026-11-18); superseded by [ADR-0045](0045-the-verifier-folds-into-the-migrator.md) once that
-  is accepted (phase 4a round 2).
+- Status: Accepted (2026-11-18); superseded by [ADR-0045](0045-the-verifier-folds-into-the-migrator.md) (phase 4a
+  round 2).
 - Source: [plan](../reviews/agent-topology-plan.md), phase 4a; [results](../../evals/results/2026-11-18-4a-summary.md)
 
 ## Context
