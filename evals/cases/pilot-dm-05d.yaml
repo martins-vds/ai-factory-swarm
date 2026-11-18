@@ -57,6 +57,12 @@ normalize:
     - .migration/plan/data-migration.tickets.yaml
     - .migration/plan/handling-registration.tickets.yaml
     - .migration/plan/track-cargo.tickets.yaml
+- replace:
+    file: .migration/plan/data-migration.tickets.yaml
+    old: "  - src/cargotracker/data_migration/management/commands/export_data_snapshot.py\n  - tests/data_migration/test_export.py\n"
+    new: "  - src/cargotracker/data_migration/management/commands/export_data_snapshot.py\n  - src/cargotracker/data_migration/exporter.py\n\
+      \  - tests/data_migration/test_export.py\n"
+    optional: true
 - yaml_set:
     file: .migration/profile.yaml
     key: target.shared_test_files
@@ -64,4 +70,6 @@ normalize:
     - tests/conftest.py
 notes: 'A data ticket: setup steps fetch the newest data snapshot artifact, so the eval repo needs one afs-snapshot
   run first (README). Normalization: the two stale ledger references and the plan ticket lists the live run added
-  later (pilot #490, b6852cd), each only where this commit lacks them.'
+  later (pilot #490, b6852cd), each only where this commit lacks them. DM-05D''s plan ticket gains src/cargotracker/data_migration/exporter.py,
+  the exporter module its issue asks for (the live run added it the same way). Without it, b3c, fold and m3j sessions
+  rightly stopped on the scope question.'
