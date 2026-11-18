@@ -41,6 +41,7 @@ PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for r
 VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns committed before this rule are exempt.
 VERIFIER_RULES_RULE_V1 = "VERIFIER_RULES_RULE_V1"  # Phase 3e (rules checked): earlier returns are exempt.
 LEDGER_RULES_RULE_V1 = "LEDGER_RULES_RULE_V1"  # Phase 3e (rules in the ledger): earlier returns are exempt.
+MIGRATOR_SELF_VERIFY_RULE_V1 = "MIGRATOR_SELF_VERIFY_RULE_V1"  # ADR-0045: earlier Migrator returns are exempt.
 
 
 def load_schema(schemas, name):
@@ -236,7 +237,8 @@ def test_exists(repo, test_id):
 
 def check_verifier_rules(folder, path, doc, errors):
     """Phase 3e: the Verifier proves where each business rule is enforced (eval v3h: BK-05F's eligibility rule
-    sat in the view, and no run wrote the use-case test that shows it).
+    sat in the view, and no run wrote the use-case test that shows it). ADR-0045: the Migrator, which now
+    verifies its own work, proves it the same way, and a rule its use case doesn't enforce is its to fix.
 
     - `rules` lists, for each capability the plan gives the ticket, the business rules it carries: `capability`,
       `rule`, `use_case` (what the test calls), `test` (a test that calls the use case directly, with no view or
@@ -244,9 +246,10 @@ def check_verifier_rules(folder, path, doc, errors):
     - A capability with no business rule (a static page) goes in `no_rules: {<capability>: <why>}`.
     - `enforced: false` is a defect in the rule's layer: a blocker or major finding cites that test as evidence.
     - Each test must exist in the repository."""
-    if doc.get("role") != "afs-verifier" or doc.get("handoff") not in (None, "", "none") \
+    if doc.get("role") not in ("afs-verifier", "afs-migrator") or doc.get("handoff") not in (None, "", "none") \
             or doc.get("verdict") == "blocked":
         return
+    migrator = doc["role"] == "afs-migrator"
     caps = ticket_capabilities(folder, doc.get("ticket"))
     if caps is None:
         return
@@ -271,7 +274,11 @@ def check_verifier_rules(folder, path, doc, errors):
         if not test_exists(repo, r["test"]):
             errors.append(f"{path}: rules[{i}] cites test '{r['test']}', which isn't in the repository; write the "
                           "test that calls the use case directly")
-        if r["enforced"] is False and str(r["test"]) not in serious_evidence:
+        if r["enforced"] is False and migrator:
+            errors.append(f"{path}: rules[{i}] ('{r['rule']}') isn't enforced by {r['use_case']}: move the rule into "
+                          "the use case or domain (ADR-0045: no Verifier follows you), keep the test, and set "
+                          "`enforced: true`")
+        elif r["enforced"] is False and str(r["test"]) not in serious_evidence:
             errors.append(f"{path}: rules[{i}] ('{r['rule']}') isn't enforced by {r['use_case']}: report it as a "
                           f"blocker or major finding with `evidence: {r['test']}`")
     for cap in caps:
@@ -632,7 +639,8 @@ def main():
                 check_tier_attempt(path, doc, errors)
                 if not predates_rule(path, folder, VERIFIER_VERDICT_RULE_V1):
                     check_verifier_return(folder, path, doc, errors)
-                if not predates_rule(path, folder, VERIFIER_RULES_RULE_V1):
+                marker = MIGRATOR_SELF_VERIFY_RULE_V1 if doc.get("role") == "afs-migrator" else VERIFIER_RULES_RULE_V1
+                if not predates_rule(path, folder, marker):
                     check_verifier_rules(folder, path, doc, errors)
                 if not predates_rule(path, folder, LEDGER_RULES_RULE_V1):
                     check_migrator_ledger_rules(folder, path, doc, errors)

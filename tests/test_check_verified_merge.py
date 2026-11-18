@@ -25,6 +25,7 @@ quirk_tickets: []
 
 
 class VerifiedMergeTest(unittest.TestCase):
+    """The Verifier rule as it still applies to retired specialist-migrator returns, and ADR-0045's Migrator."""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -48,7 +49,7 @@ class VerifiedMergeTest(unittest.TestCase):
         self.git("add", "-A")
         self.git("commit", "-qm", message)
 
-    def migrate(self, ticket="LL-01", role="afs-migrator", note="first"):
+    def migrate(self, ticket="LL-01", role="afs-specialist-migrator", note="first"):
         (self.root / f"src_{ticket}.py").write_text(f"# {note}\n")
         (self.root / f".migration/returns/{ticket}.{role}.yaml").write_text(f"role: {role}\nnote: {note}\n")
         self.commit(f"migrate {ticket} ({note})")
@@ -71,11 +72,22 @@ class VerifiedMergeTest(unittest.TestCase):
         self.assertEqual(result, 0, output)
         self.assertIn("LL-01: verified by its passing Verifier return", output)
 
-    def test_specialist_migrator_work_is_covered_too(self):
-        self.migrate(role="afs-specialist-migrator")
+    def test_migrator_work_is_self_verified(self):
+        # ADR-0045: the Migrator verifies its own work; validate.py checks its rules' use-case tests.
+        self.migrate(role="afs-migrator")
+        result, output = self.run_check()
+        self.assertEqual(result, 0, output)
+        self.assertIn("LL-01: verified by its own return (ADR-0045)", output)
+
+    def test_an_audit_of_the_current_migrator_work_must_pass(self):
+        self.migrate(role="afs-migrator")
+        self.verify(verdict="changes-required")
         result, output = self.run_check()
         self.assertEqual(result, 1, output)
-        self.assertIn("no Verifier return", output)
+        self.assertIn("Verifier hasn't passed it", output)
+        self.migrate(role="afs-migrator", note="fix")       # a later fix isn't held to the earlier audit
+        result, output = self.run_check()
+        self.assertEqual(result, 0, output)
 
     def test_unverified_migrator_work_cannot_merge(self):
         self.migrate()
@@ -106,7 +118,8 @@ class VerifiedMergeTest(unittest.TestCase):
         self.assertIn("re-verify the current work", output)
 
     def test_one_commit_writing_both_returns_is_not_verification(self):
-        (self.root / ".migration/returns/LL-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+        (self.root / ".migration/returns/LL-01.afs-specialist-migrator.yaml").write_text(
+            "role: afs-specialist-migrator\n")
         (self.root / ".migration/returns/LL-01.afs-verifier.yaml").write_text(
             VERIFIER.format(ticket="LL-01", verdict="pass"))
         self.commit("migrator writes its own verification")

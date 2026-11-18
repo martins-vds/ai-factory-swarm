@@ -69,6 +69,20 @@ class UiTest(unittest.TestCase):
                 self.assertEqual(code, 0, out)
                 (self.root / where).unlink()
 
+    def test_response_handling_that_matches_no_default_rule_fails(self):
+        # Phase 4a round 2: LL-02 A r2 matched code '4..' and '5..'; htmx 2's rule is '[45]..', so nothing changed.
+        script = ("<script>htmx.config.responseHandling.forEach((r) => {\n"
+                  "  if (r.code === '{c}' || r.code === '5..') { r.swap = true; }\n});</script>\n")
+        self.write("templates/loans/list.html", '<form hx-post="/loans"></form>\n' + script.replace("{c}", "4.."))
+        code, out = self.run_gate(self.HTMX)
+        self.assertEqual(code, 1, out)
+        self.assertIn("templates/loans/list.html:3", out)
+        self.assertIn("'4..'", out)
+        self.write("templates/loans/list.html", '<form hx-post="/loans"></form>\n'
+                   + script.replace("{c}", "[45]..").replace("'5..'", "'204'"))
+        code, out = self.run_gate(self.HTMX)
+        self.assertEqual(code, 0, out)
+
     def test_only_changed_templates_are_checked(self):
         self.write("templates/old.html", '<button hx-get="/x"></button>\n')
         self.git("add", "-A")

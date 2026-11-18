@@ -295,6 +295,19 @@ class VerifierRulesTest(unittest.TestCase):
                            no_rules={"booking.screen-route": "renders only"})
         self.assertTrue(any("isn't in the repository" in e for e in errs), errs)
 
+    def test_the_migrator_proves_its_own_rules(self):
+        # ADR-0045: no Verifier follows the Migrator, so its return carries the use-case tests itself.
+        nr = {"booking.screen-route": "renders only"}
+        errs = self.errors(role="afs-migrator")
+        self.assertTrue(any("list `rules`" in e for e in errs), errs)
+        self.assertEqual(self.errors(role="afs-migrator", rules=[self.rule()], no_rules=nr), [])
+
+    def test_the_migrator_moves_an_unenforced_rule_instead_of_reporting_it(self):
+        errs = self.errors(role="afs-migrator", rules=[self.rule(enforced=False)],
+                           no_rules={"booking.screen-route": "renders only"},
+                           findings=[{"severity": "major", "evidence": self.TEST}])
+        self.assertTrue(any("move the rule into the use case" in e for e in errs), errs)
+
     def test_blocked_handoff_and_unplanned_tickets_are_not_checked(self):
         self.assertEqual(self.errors(verdict="blocked"), [])
         self.assertEqual(self.errors(handoff=".migration/handoffs/BK-05F.md"), [])

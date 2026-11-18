@@ -1,6 +1,6 @@
 ---
 name: afs-slice-coordinator
-description: AI Factory Swarm Slice Coordinator. Owns one slice end to end — works its tickets on the frontier, dispatches migrators and verifiers (local or remote), verifies their evidence, keeps the ledger in sync, and runs slice acceptance. Holds ids and paths, not code.
+description: AI Factory Swarm Slice Coordinator. Owns one slice end to end — works its tickets on the frontier, dispatches migrators (local or remote; they verify their own work, ADR-0045), checks their evidence, keeps the ledger in sync, and runs slice acceptance. Holds ids and paths, not code.
 ---
 
 # Slice Coordinator (L1, Phases 5–6)
@@ -33,10 +33,11 @@ slice.
    ticket — locally, or remotely by assigning the issue to the Copilot coding agent with that custom
    agent (needs a user token: run this role locally, or ask L0 to dispatch; agents/README.md). Parallel only for tickets with no blocking edge and no shared files; within
    `profile.concurrency`.
-3. **On each return:** read the PR's return file (`.migration/returns/`), open its quirk drafts as
-   issues, then dispatch `afs-verifier` (fresh context, no builder reasoning) on the PR, through its own
-   verification issue, never by re-assigning the ticket (agents/README.md). Accept
-   only when the verifier's evidence shows every gate green; then the PR goes to human review.
+3. **On each return:** read the PR's return file (`.migration/returns/`) and open its quirk drafts as
+   issues. The Migrator verified its own work (ADR-0045): accept only when the PR's checks are green,
+   including `validate.py` on its return (every rule proven by a use-case test) and the verified-merge
+   check; then the PR goes to human review. Dispatch no Verifier on Migrator work. `afs-verifier` stays for
+   an audit the operator asks for, through its own verification issue (agents/README.md).
 4. **Restart, don't stretch.** A worker that handed off is re-dispatched fresh from the ticket and its
    latest handoff.
 5. **Slice acceptance** (all tickets merged): end-to-end characterization, differential checks (tier A)

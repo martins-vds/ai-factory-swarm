@@ -58,10 +58,22 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    capability's **business rules** under `rules` (`id`, `rule`, `source`): every check that refuses input
    or must hold (an eligibility check, a limit, a state transition), from the legacy code, a quirk ruling
    or the plan. Include each one your code enforces, wherever it enforces it, a view included. A
-   capability with none (a static page, a layout) gets `no_rules: <why>`. The Verifier proves each rule is
+   capability with none (a static page, a layout) gets `no_rules: <why>`. Step 6 proves each rule is
    enforced in the layer the ADRs name, so a rule you leave out goes unchecked. The finish check refuses
    your return while a ticket capability has neither.
-6. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
+6. **Verify your own work, as an independent reviewer would.** No Verifier session follows you (ADR-0045).
+   - Re-run every gate from a clean state through `afs-run`, mutation on changed code included, and the
+     full suite in default order.
+   - Review your diff against the target ADRs (gate 3): layers, dependency direction, idiom.
+   - For every rule under `rules` in your ledger entries, write a test that calls the use case directly,
+     with no view and no request, using input the rule must refuse. If the use case accepts it, the rule
+     sits in the wrong layer: move it into the use case or domain, and keep the test. List each in your
+     return's `rules` (below); the finish check refuses a return whose rules aren't all enforced.
+   - Check each behavior against the legacy source, not only the characterization: a change to what the
+     legacy stores or shows (trimming values, a new input limit) needs a quirk ruling, or it is a defect.
+   - For every request your pages send, check each error response renders.
+   - Strengthen tests where coverage or mutation fall short. Fix what you find, then re-run the gates.
+7. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
 
 ## Rules
 - Mutation per ticket = `gates.mutation_changed` only (files you changed, via `afs-mutation`). Never run
@@ -86,4 +98,15 @@ ledger_updated: [<ids>]
 quirk_tickets: [<link>]
 new_tickets: [<link: why>]
 handoff: <none | .migration/handoffs/<ticket>.md>
+```
+Unless you hand off, add the rules you proved (step 6):
+```yaml
+rules:
+  - capability: <one of the ticket's capabilities>
+    rule: <the business rule, one line>
+    use_case: <the use case the test calls, e.g. CargoRouting.assign_route>
+    test: <path::test id; a test that calls the use case directly with input the rule must refuse>
+    enforced: true             # false fails validation: move the rule into the use case first
+    ledger_rule: <the rule's id in the capability's ledger entry>
+no_rules: {<capability>: <why it carries no business rule>}
 ```

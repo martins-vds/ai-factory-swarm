@@ -13,8 +13,8 @@ issue to the Copilot coding agent and pick the agent).
 | [`afs-characterizer`](afs-characterizer.agent.md) | L1 | 3 | characterization suite, ledger evidence |
 | [`afs-planner`](afs-planner.agent.md) | L1 | 4 | draft slice plan |
 | [`afs-slice-coordinator`](afs-slice-coordinator.agent.md) | L1 | 5–6 | tracker, slice evidence report |
-| [`afs-migrator`](afs-migrator.agent.md) | L2 | 5 | target code, one PR per ticket; data / UI / messaging tickets add the `afs-specialty` skill (ADR-0042) |
-| [`afs-verifier`](afs-verifier.agent.md) | L2 | 5 | tests and a verdict (never production code) |
+| [`afs-migrator`](afs-migrator.agent.md) | L2 | 5 | target code, one PR per ticket, self-verified (ADR-0045); data / UI / messaging tickets add the `afs-specialty` skill (ADR-0042) |
+| [`afs-verifier`](afs-verifier.agent.md) | L2 | 5 | tests and a verdict (never production code); audits and evals only since ADR-0045 |
 | [`afs-auditor`](afs-auditor.agent.md) | L1/L0 | 6–7 | audit reports and gap tickets (read-only) |
 
 ## Where each role can run
@@ -29,7 +29,8 @@ edit its PR description after opening it, and it has no user token. So:
 - **Everything a remote agent must leave behind is a committed file** — return file, handoff, quirk
   drafts, run journal (`afs-migration-contract` → Durable outputs). The dispatcher reads those files,
   turns quirk drafts into issues, and links them.
-- **Verifier on someone else's PR:** open a **verification issue** for it, "Verify <ticket> (PR #N)", as a
+- **Verifier on someone else's PR** (an audit the operator asks for; Migrator work is self-verified,
+  ADR-0045): open a **verification issue** for it, "Verify <ticket> (PR #N)", as a
   sub-issue of the ticket, and assign *that* to the Copilot coding agent with `afs-verifier` and
   `base_branch` set to the PR's head branch. Its PR targets that branch and carries its tests, run journal
   and `<ticket>.afs-verifier.yaml`. Never re-assign the work ticket itself. Copilot connects every PR to

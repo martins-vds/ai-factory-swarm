@@ -1,0 +1,93 @@
+{
+  "cases": {
+    "pilot-bk-05f-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g-fresh": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1486,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "blocked",
+      "work_pr": 1423
+    },
+    "pilot-dm-05f": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1490,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1427
+    },
+    "synthetic-ll-02": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1497,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1428
+    },
+    "synthetic-ll-03": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1496,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1430
+    },
+    "synthetic-ll-04": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1492,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1431
+    },
+    "synthetic-ll-05": {
+      "chained_from": "2026-11-18-4rb-r2",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1500,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1432
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-18T16:54:44+00:00",
+  "run": "2026-11-18-4rx-r2"
+}

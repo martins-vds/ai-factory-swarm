@@ -65,7 +65,9 @@ A case runs one session, so even a chain whose roles all have cases can drop a h
 
 **Phase 4a (Verifier or not).** `chain --from-run M --run V` starts a Verifier on each finished Migrator PR of run
 M. `oracle --run M` adds hidden ground truth to M's graded results: the layering and UI tools, plus the case's
-`oracle.forbid_calls`. `evals/variants/` holds the configuration-B agent (`afs-migrator-selfverify`), which is
+`oracle.forbid_calls` and `oracle.forbid_stripped_args` (a stripped value stored, or a Django form field that
+strips by default). Chaining from a B run (`chain --from-run <B run>`) audits B's heads with a Verifier that is
+not part of B. `evals/variants/` holds the configuration-B agent (`afs-migrator-selfverify`), which is
 copied to the eval repo only.
 
 **Which roles to merge.** `coupling` reads the live targets' return history. Each slice is one trace, with

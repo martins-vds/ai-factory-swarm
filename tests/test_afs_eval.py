@@ -223,6 +223,34 @@ class OracleTest(unittest.TestCase):
         self.assertEqual([(p, n) for p, n, _ in found],
                          [("src/cargotracker/booking/interfaces/route_selection/views.py", 2)])
 
+    def test_stripped_args_find_a_stored_strip_but_not_a_blank_check(self):
+        # Phase 4a: LL-02 A r2 stored stripped member and ISBN values; the legacy stores them as given.
+        with tempfile.TemporaryDirectory() as d:
+            svc = pathlib.Path(d, "src/loans/services.py")
+            svc.parent.mkdir(parents=True)
+            svc.write_text("def a(repo, member, isbn):\n    if not member.strip():\n        raise ValueError\n"
+                           "    return repo.lend(member, isbn)\n"
+                           "def b(repo, member, isbn):\n    return repo.lend(member.strip(), isbn)\n"
+                           "def c(repo, member, isbn):\n    m = member.strip()\n    return repo.lend(member=m, isbn=isbn)\n")
+            spec = [{"files": ["src/loans/**/*.py"], "calls": ["lend"], "why": "w"}]
+            found = ev.stripped_args(d, spec)
+        self.assertEqual([n for _, n, _ in found], [6, 9])
+
+    def test_stripped_args_find_a_model_form_that_strips(self):
+        # The live LL-02 and A r2 lend through a ModelForm, whose generated CharFields strip by default.
+        with tempfile.TemporaryDirectory() as d:
+            forms = pathlib.Path(d, "src/loans/forms.py")
+            forms.parent.mkdir(parents=True)
+            pathlib.Path(d, "src/loans/models.py").write_text(
+                "from django.db import models\nclass Loan(models.Model):\n    member = models.CharField()\n")
+            forms.write_text("from django import forms\n"
+                             "class A(forms.ModelForm):\n    class Meta:\n        fields = ('member', 'isbn')\n"
+                             "class B(forms.Form):\n    member = forms.CharField(strip=False)\n"
+                             "    isbn = forms.CharField()\n")
+            spec = [{"files": ["src/loans/**/*.py"], "calls": ["lend"], "fields": ["member", "isbn"], "why": "w"}]
+            found = ev.stripped_args(d, spec)
+        self.assertEqual([(p, n) for p, n, _ in found], [("src/loans/forms.py", 4)] * 2 + [("src/loans/forms.py", 7)])
+
     def test_chain_body_names_the_ticket_and_pr(self):
         body = ev.CHAIN_BODY.format(ticket="BK-05F", pr=1186)
         self.assertIn("PR #1186", body)

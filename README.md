@@ -19,7 +19,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
    migration.
 4. **Plan** — chart open decisions on a Wayfinder map; break the work, including data migration, into
    vertical slices with dependency edges. A human approves the slice plan.
-5. **Execute** — slice coordinators dispatch migrator and verifier agents (local, or the Copilot
+5. **Execute** — slice coordinators dispatch migrator agents, which verify their own work (local, or the Copilot
    coding agent), one ticket and one PR at a time. Gates include CRAP and mutation testing. Humans
    merge every PR and answer every quirk.
 6. **Accept each slice** — automated differential checks, then a human side-by-side check.
@@ -132,7 +132,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `check_stack_base.py`: a stacked PR's base contains the default branch
 - `stack_refresh.py`: merge the default branch into open stacked PRs bottom-up when it moves (ADR-0038)
 - `close_gap_issues.py`: on main, close capability-gap issues whose checklist entry is met, waived or not applicable
-- `check_verified_merge.py`: a PR into the default branch that changes a migrator return needs a later, passing Verifier return for that ticket (ADR-0040)
+- `check_verified_merge.py`: a PR into the default branch that changes a migrator return is verified: self-verified for `afs-migrator` (an audit of the current work must pass), a later passing Verifier return for the retired specialist role (ADR-0040, ADR-0045)
 - `fog_rewalk.py`: re-walk the decision map's fog after a slice
 
 **Costs and coverage**

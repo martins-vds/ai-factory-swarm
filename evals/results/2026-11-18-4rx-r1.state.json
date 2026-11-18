@@ -1,0 +1,51 @@
+{
+  "pilot-bk-05f-fresh": {
+    "base_branch": "copilot/bk-05f-build-route-selection-itinerary-screens",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:21+00:00",
+    "issue": 1463,
+    "work_pr": 1388
+  },
+  "pilot-bk-05g": {
+    "base_branch": "copilot/bk-05g-open-dialogs-from-table",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:28+00:00",
+    "issue": 1465,
+    "work_pr": 1392
+  },
+  "pilot-bk-05g-fresh": {
+    "base_branch": "copilot/bk-05g-build-destination-deadline-dialogs-again",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:24+00:00",
+    "issue": 1464,
+    "work_pr": 1390
+  },
+  "pilot-dm-05f": {
+    "base_branch": "copilot/dm-05f-business-invariants-on-loaded-data-c4be70fd-8f86-43fc-b87c-0b3f462d3af0",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:31+00:00",
+    "issue": 1466,
+    "work_pr": 1394
+  },
+  "synthetic-ll-02": {
+    "base_branch": "copilot/ll-02-lend-and-return-books-dae3dcc2-56f0-4916-94cd-bccb2b5359fe",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:35+00:00",
+    "issue": 1467,
+    "work_pr": 1396
+  },
+  "synthetic-ll-04": {
+    "base_branch": "copilot/ll-04-modernize-library-info-again",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:39+00:00",
+    "issue": 1468,
+    "work_pr": 1399
+  },
+  "synthetic-ll-05": {
+    "base_branch": "copilot/ll-05-produce-monthly-report-3cedc88a-f1ee-4a16-a66d-c77f0d2a8b6b",
+    "chained_from": "2026-11-18-4rb-r1",
+    "dispatched_at": "2026-11-18T15:40:43+00:00",
+    "issue": 1469,
+    "work_pr": 1400
+  }
+}

@@ -79,4 +79,20 @@ normalize:
       htmx_errors: true
       built_css: static/css/tailwind.css
 notes: 'Normalization: stale ledger references the live run fixed later (synthetic #98), as they apply to this commit.
-  Phase 4a: the profile gets today''s layering, UI checks and self-healing, as live targets have them.'
+  Phase 4a: the profile gets today''s layering, UI checks and self-healing, as live targets have them. Phase 4a,
+  second round: the oracle flags a stripped member or ISBN being stored. The legacy (`LoanResource.lend`, `LoanRepository.lend`)
+  stores both as given and ruling #39 only rejects blanks, so trimming valid values is an unruled divergence (A
+  r2''s Verifier finding, settled from the legacy code). Django CharFields strip by default, so a ModelForm or CharField
+  without `strip=False` counts too.'
+oracle:
+  forbid_stripped_args:
+  - files:
+    - src/**/*.py
+    calls:
+    - lend
+    - create
+    - Loan
+    fields:
+    - member
+    - isbn
+    why: 'the legacy stores member and ISBN as given; ruling #39 only rejects blank values'

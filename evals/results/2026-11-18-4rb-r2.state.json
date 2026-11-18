@@ -1,0 +1,58 @@
+{
+  "pilot-bk-05f-fresh": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/pilot-bk-05f-fresh",
+    "dispatched_at": "2026-11-18T12:54:25+00:00",
+    "issue": 1417,
+    "work_pr": null
+  },
+  "pilot-bk-05g": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/pilot-bk-05g",
+    "dispatched_at": "2026-11-18T12:54:30+00:00",
+    "issue": 1419,
+    "work_pr": null
+  },
+  "pilot-bk-05g-fresh": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/pilot-bk-05g-fresh",
+    "dispatched_at": "2026-11-18T12:54:27+00:00",
+    "issue": 1418,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/pilot-dm-05f",
+    "dispatched_at": "2026-11-18T12:54:32+00:00",
+    "issue": 1420,
+    "work_pr": null
+  },
+  "synthetic-ll-02": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/synthetic-ll-02",
+    "dispatched_at": "2026-11-18T12:54:34+00:00",
+    "issue": 1422,
+    "work_pr": null
+  },
+  "synthetic-ll-03": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/synthetic-ll-03",
+    "dispatched_at": "2026-11-18T12:54:37+00:00",
+    "issue": 1425,
+    "work_pr": null
+  },
+  "synthetic-ll-04": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/synthetic-ll-04",
+    "dispatched_at": "2026-11-18T12:54:39+00:00",
+    "issue": 1426,
+    "work_pr": null
+  },
+  "synthetic-ll-05": {
+    "agent": "afs-migrator-selfverify",
+    "base_branch": "eval/2026-11-18-4rb-r2/synthetic-ll-05",
+    "dispatched_at": "2026-11-18T12:54:42+00:00",
+    "issue": 1429,
+    "work_pr": null
+  }
+}

@@ -56,7 +56,7 @@ Each item is one of: a committed file (`.migration/evidence/runs/<ticket>.md`, a
 1. **Discover** (Analyst, Characterizer, anyone): create the entry with `status: pending`.
 2. **Characterize:** add evidence and tier; set `verification`.
 3. **Migrate** (Migrator): set `target.components`, add the target test as evidence, `status: migrated`,
-   and record the capability's business `rules` (or `no_rules`). The Verifier proves each is enforced in the
+   and record the capability's business `rules` (or `no_rules`). The Migrator (step 6, ADR-0045) proves each is enforced in the
    right layer.
 4. **Quirk:** add the quirk ticket to `quirks`; the entry stays blocked until the human answers.
 5. **Validate before every commit:**

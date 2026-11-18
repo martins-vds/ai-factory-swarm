@@ -395,11 +395,13 @@ def dispatch(a, cases):
         gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
             "assignees": [COPILOT],
             "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
-                                 "custom_agent": case["agent"], "custom_instructions": ""}})
+                                 "custom_agent": getattr(a, "agent", None) or case["agent"],
+                                 "custom_instructions": ""}})
         state[case["id"]] = {"issue": issue, "work_pr": work_pr, "base_branch": base_branch,
-                             "dispatched_at": now()}
+                             "agent": getattr(a, "agent", None) or case["agent"], "dispatched_at": now()}
         save_state(a, state)
-        print(f"{case['id']}: issue #{issue} assigned to Copilot ({case['agent']}, base {base_branch})")
+        print(f"{case['id']}: issue #{issue} assigned to Copilot ({getattr(a, 'agent', None) or case['agent']}, "
+              f"base {base_branch})")
 
 
 def state_path(a):
@@ -508,6 +510,87 @@ def forbidden_calls(tree, specs):
     return found
 
 
+def stripped_args(tree, specs):
+    """[(path, line, message)] for each call a case's oracle names whose arguments carry a stripped value: a
+    `.strip()` (or `lstrip`/`rstrip`) in the argument, or a name the same function assigned from one. A strip used
+    only to test for blanks (`not value.strip()`) passes the original on, so it isn't flagged."""
+    import ast
+    strips = {"strip", "lstrip", "rstrip"}
+
+    def has_strip(node, tainted):
+        for n in ast.walk(node):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in strips:
+                return True
+            if isinstance(n, ast.Name) and n.id in tainted:
+                return True
+        return False
+
+    found = []
+    for spec in specs or []:
+        regs = [re.compile(fnmatch_translate(g)) for g in spec["files"]]
+        for path in sorted(pathlib.Path(tree).rglob("*.py")):
+            rel = path.relative_to(tree).as_posix()
+            if rel.startswith(".migration/") or not any(r.match(rel) for r in regs):
+                continue
+            try:
+                module = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            scopes = [n for n in ast.walk(module) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            for scope in scopes or [module]:
+                tainted = set()
+                for n in ast.walk(scope):
+                    if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None and has_strip(n.value, tainted):
+                        for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                            tainted |= {x.id for x in ast.walk(t) if isinstance(x, ast.Name)}
+                for n in ast.walk(scope):
+                    if not isinstance(n, ast.Call):
+                        continue
+                    name = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+                    if name in spec["calls"] and any(has_strip(a, tainted)
+                                                     for a in [*n.args, *(k.value for k in n.keywords)]):
+                        found.append((rel, n.lineno, f"passes a stripped value to {name}: {spec['why']}"))
+            found += [(rel, line, f"{msg}: {spec['why']}") for line, msg in form_strips(module, spec.get("fields"))]
+    return sorted(set(found))
+
+
+def form_strips(module, fields):
+    """[(line, message)] for Django form fields named in `fields` that strip their value: Django's CharField
+    strips by default, so a field needs `strip=False`, declared or (for a ModelForm) generated from the model."""
+    import ast
+    fields, found = set(fields or []), []
+
+    def keeps(call):
+        return any(k.arg == "strip" and isinstance(k.value, ast.Constant) and k.value.value is False
+                   for k in call.keywords)
+
+    for cls in (n for n in ast.walk(module) if isinstance(n, ast.ClassDef)):
+        bases = [b.attr if isinstance(b, ast.Attribute) else getattr(b, "id", "") for b in cls.bases]
+        if not any(b.endswith("Form") for b in bases):
+            continue  # a model's CharField doesn't strip; only form fields do
+        declared = {}
+        for st in cls.body:
+            if isinstance(st, ast.Assign) and isinstance(st.value, ast.Call):
+                for t in st.targets:
+                    if isinstance(t, ast.Name):
+                        declared[t.id] = st.value
+        for name, call in declared.items():
+            callee = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
+            if name in fields and callee == "CharField" and not keeps(call):
+                found.append((call.lineno, f"form field {name} strips its value (CharField without strip=False)"))
+        meta = next((st for st in cls.body if isinstance(st, ast.ClassDef) and st.name == "Meta"), None)
+        if "ModelForm" not in bases or meta is None:
+            continue
+        for st in meta.body:
+            if isinstance(st, ast.Assign) and any(getattr(t, "id", "") == "fields" for t in st.targets):
+                names = [e.value for e in ast.walk(st.value) if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                for name in names:
+                    if name in fields and name not in declared:
+                        found.append((st.lineno, f"ModelForm field {name} strips its value (a model CharField "
+                                                 f"becomes a form CharField with strip=True)"))
+    return found
+
+
 def fnmatch_translate(glob):
     out, i = "", 0
     while i < len(glob):
@@ -522,7 +605,8 @@ def fnmatch_translate(glob):
 
 def oracle(a, cases):
     """Phase 4a ground truth, hidden from the agents: on each Migrator PR's head, the layering and UI tools with
-    the case's own profile, plus the case's `oracle.forbid_calls`. Writes `oracle` into the run's results."""
+    the case's own profile, plus the case's `oracle.forbid_calls` and `oracle.forbid_stripped_args`. Writes
+    `oracle` into the run's results."""
     out = pathlib.Path(a.results_dir) / f"{a.run}.json"
     results = json.loads(out.read_text())
     sources = pathlib.Path(a.sources)
@@ -547,6 +631,8 @@ def oracle(a, cases):
                                      and "known, not failing" not in ln]
                 findings += [f"{p}:{n}: {m}" for p, n, m in
                              forbidden_calls(wt, (case.get("oracle") or {}).get("forbid_calls"))]
+                findings += [f"{p}:{n}: {m}" for p, n, m in
+                             stripped_args(wt, (case.get("oracle") or {}).get("forbid_stripped_args"))]
             finally:
                 git(src, "worktree", "remove", "--force", str(wt), check=False)
         row["oracle"] = {"clean": not findings, "findings": findings}
@@ -1075,6 +1161,9 @@ def main(argv=None):
         if name in ("prepare", "dispatch", "grade"):
             p.add_argument("--role-map", action="append", metavar="OLD=NEW",
                            help="dispatch and grade a case's role as another (a folded role)")
+        if name == "dispatch":
+            p.add_argument("--agent", help="assign this custom agent instead of the case's, keeping the case's role "
+                                           "and return file (a variant such as phase 4a's afs-migrator-selfverify)")
         if name == "prepare":
             p.add_argument("--harness", default=str(ROOT))
             p.add_argument("--allow-unreleased", action="store_true")

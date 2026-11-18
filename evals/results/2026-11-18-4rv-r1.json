@@ -1,0 +1,131 @@
+{
+ "cases": {
+  "pilot-bk-05f-fresh": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "pilot-bk-05g": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "pilot-bk-05g-fresh": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1436,
+   "serious_findings": [
+    "src/cargotracker/booking/application/specification.py:24-31: The use case accepts a destination excluded from the offered options, so callers can bypass the dialog restriction."
+   ],
+   "status": "graded",
+   "verdict": "changes-required",
+   "work_pr": 1374,
+   "usage": {
+    "sessions": 1,
+    "requests": 149,
+    "output_tokens": 0,
+    "minutes": 51.8
+   }
+  },
+  "pilot-dm-05f": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1439,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "blocked",
+   "work_pr": 1378,
+   "usage": {
+    "sessions": 1,
+    "requests": 194,
+    "output_tokens": 0,
+    "minutes": 52.0
+   }
+  },
+  "synthetic-ll-02": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1442,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "pass",
+   "work_pr": 1380,
+   "usage": {
+    "sessions": 1,
+    "requests": 115,
+    "output_tokens": 0,
+    "minutes": 9.8
+   }
+  },
+  "synthetic-ll-03": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1444,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "pass",
+   "work_pr": 1382,
+   "usage": {
+    "sessions": 1,
+    "requests": 110,
+    "output_tokens": 0,
+    "minutes": 19.4
+   }
+  },
+  "synthetic-ll-04": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1447,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "pass",
+   "work_pr": 1383,
+   "usage": {
+    "sessions": 1,
+    "requests": 114,
+    "output_tokens": 0,
+    "minutes": 18.1
+   }
+  },
+  "synthetic-ll-05": {
+   "chained_from": "2026-11-18-4ra-r1",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1450,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "pass",
+   "work_pr": 1384,
+   "usage": {
+    "sessions": 1,
+    "requests": 144,
+    "output_tokens": 0,
+    "minutes": 18.2
+   }
+  }
+ },
+ "eval_repo": "martins-vds/ai-factory-eval",
+ "graded_at": "2026-11-18T15:31:50+00:00",
+ "run": "2026-11-18-4rv-r1"
+}
