@@ -45,6 +45,10 @@ HX_REQUEST = re.compile(r"\bhx-(get|post|put|patch|delete)\s*=", re.I)
 HX_ERROR_HANDLING = re.compile(
     r"responseHandling|htmx:beforeSwap|htmx:responseError|hx-on:{1,2}(htmx:)?(before-swap|response-error)"
     r"|hx-target-(error|[45])", re.I)
+# A script that edits htmx 2's default rules by matching their `code` strings. htmx 2 ships exactly these codes;
+# a match on any other string (e.g. '4..', the regex for 4xx, isn't how the default is spelled) changes nothing.
+HX_DEFAULT_CODES = {"204", "[23]..", "[45]..", "..."}
+HX_CODE_MATCH = re.compile(r"""\.code\s*(?:===?|!==?)\s*(["'])([^"']*)\1|(["'])([^"']*)\3\s*(?:===?|!==?)\s*\w+\.code\b""")
 CLASS_ATTR = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
 DJANGO_TAG = re.compile(r"{%.*?%}|{{.*?}}|{#.*?#}", re.S)
 
@@ -153,12 +157,30 @@ def class_tokens(text):
     return out
 
 
+def unknown_codes(text):
+    """[(line, code)] for each comparison against a `code` htmx 2's default response rules don't have."""
+    out = []
+    for m in HX_CODE_MATCH.finditer(text):
+        code = m.group(2) if m.group(2) is not None else m.group(4)
+        if code not in HX_DEFAULT_CODES:
+            out.append((text.count("\n", 0, m.start()) + 1, code))
+    return out
+
+
 def htmx_findings(root, templates, scripts, targets):
-    handled = any(HX_ERROR_HANDLING.search((root / f).read_text(encoding="utf-8", errors="ignore"))
-                  for f in templates + scripts)
+    found, handled = [], False
+    for f in templates + scripts:
+        text = (root / f).read_text(encoding="utf-8", errors="ignore")
+        if not HX_ERROR_HANDLING.search(text):
+            continue
+        bad = unknown_codes(text) if "responseHandling" in text else []
+        for line, code in bad:
+            found.append((f, line, f"edits htmx's response rules by matching `code` '{code}', but htmx 2's default "
+                          f"rules are {', '.join(sorted(HX_DEFAULT_CODES))}: nothing matches, so error responses "
+                          "still aren't swapped. Match '[45]..', or assign a whole `htmx.config.responseHandling`"))
+        handled = handled or not bad
     if handled:
-        return []
-    found = []
+        return found
     for rel in targets:
         text = (root / rel).read_text(encoding="utf-8", errors="ignore")
         for m in HX_REQUEST.finditer(text):
