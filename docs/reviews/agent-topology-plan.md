@@ -351,6 +351,22 @@ in an ADR whether the fold is kept or rejected.
 - **Decision rule:** keep A unless B catches every real-defect case A catches, on both runs. The review's
   evidence predicts A.
 - **ADR:** "The Verifier stays an independent session", with the numbers, or the fold.
+- **How it runs** (operator decisions, 2026-11-17: hidden oracle checks; two runs per case):
+  - **Cases:** seven Migrator tickets: BK-05F, BK-05G, DM-05F, LL-02, LL-03, LL-04 and LL-05. They get today's
+    layering, UI checks and self-healing, as live targets have them.
+  - **A:** `afs-migrator` runs; then `afs-eval chain` starts an `afs-verifier` session on each finished
+    Migrator PR, based on the PR's branch as on a live target.
+  - **B:** the same tickets dispatched to `afs-migrator-selfverify` (`evals/variants/`). It is the Migrator
+    with one more step: verify your own work as an independent reviewer would.
+  - **Ground truth:** `afs-eval oracle` runs checks on each Migrator head that the agents never see:
+    - the layering and UI tools with the case's profile;
+    - the case's `oracle.forbid_calls`. BK-05F's forbids `is_satisfied_by` in any `interfaces/` module: the
+      route-specification rule in the view, which BK-05F's base already contains.
+  - **Defects that reach the merge candidate:**
+    - in B, an oracle finding on a Migrator head with green Gates;
+    - in A, the same, and the chained Verifier returned `pass`.
+  - **A false `changes-required`** is A's Verifier asking for changes on a head the oracle finds clean, with
+    green Gates.
 
 ### 4b: Analyst + Characterizer (finding 6, part 2)
 
