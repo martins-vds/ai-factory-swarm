@@ -1,6 +1,11 @@
 # ADR-0043: Layering is a gate, and a Verifier's verdict follows evidence-backed findings
 
-- Status: Proposed. It is accepted once the Verifier cases meet phase 3e's done condition (ADR-0041).
+- Status: Accepted (2026-11-18). In eval run v3j, all seven Verifier cases pass by majority (21 sessions:
+  six cases 3/3, LL-02 2/3); b3c passed 1 of 6
+  ([summary](../../evals/results/2026-11-17-v3j-summary.md)). Caveat on decision 9: BK-05F verify passes on
+  ledger rules a Migrator recorded, but only 1 of 3 BK-05F Migrators did the ticket and recorded them (m3j).
+  The Migrator measurement (m3j) was still grading when this was accepted; a regression there reopens
+  decision 9.
 - Date: 2026-11-17
 - Source: [plan](../reviews/agent-topology-plan.md), phase 3e; baseline b3c
   ([summary](../../evals/results/2026-11-16-b3c-summary.md))

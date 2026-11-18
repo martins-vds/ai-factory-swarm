@@ -273,6 +273,11 @@ hasn't dropped.
 
 ## Phase 3e: make the Verifier reliable before it's measured (finding 5)
 
+**Status: done (2026-11-18).** The Verifier went from 1 of 6 cases (b3c) to 7 of 7 (v3j) by majority. ADR-0043 records
+what it took: the layering and UI checks in the idiom gate, verdicts that follow evidence-backed findings,
+inherited defects reported apart, and business rules recorded in the ledger and covered by the Verifier. See
+`evals/results/2026-11-17-v3*-summary.md`.
+
 *Added 2026-11-16 by the operator's decision after baseline b3c (`evals/results/2026-11-16-b3c-summary.md`).*
 
 Phase 4a compares the Verifier against a Migrator-only topology. In baseline b3c the Verifier passed only one of
