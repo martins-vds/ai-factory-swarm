@@ -27,3 +27,48 @@ normalize:
     key: target.shared_test_files
     value:
     - tests/conftest.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: layering
+    value:
+      source_root: .
+      contracts:
+      - name: use cases depend only on their ports
+        adr: synthetic LL-02 verify ruling (#79)
+        files:
+        - src/*/services.py
+        forbid:
+        - django
+        - src.*.models
+        - src.*.repository
+        - src.*.clock
+        - src.*.gateway
+        - src.*.views
+        - src.*.forms
+        - src.*.composition
+        - src.core
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.idiom
+    value:
+    - ruff check src config manage.py tests
+    - ruff format --check src config manage.py tests
+    - python .migration/harness/tools/check_layers.py
+    - python .migration/harness/tools/check_ui.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+- yaml_set:
+    file: .migration/profile.yaml
+    key: ui_checks
+    value:
+      templates:
+      - templates/**/*.html
+      scripts:
+      - static/**/*.js
+      htmx_errors: true
+      built_css: static/css/tailwind.css
+notes: ' Phase 4a: the profile gets today''s layering, UI checks and self-healing, as live targets have them.'
