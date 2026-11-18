@@ -1,0 +1,275 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05E.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: view bypasses the application layer",
+          "detail": "major: The dashboard web adapter imports CargoRepository directly instead of calling a use case, violating the profile's inward",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Capability gap issues follow the checklist": "skipped",
+        "Human sign-off is an approver's review": "success",
+        "Stacked PR base is current": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1122,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "clean-architecture": 1,
+        "clean-code": 1,
+        "code-review": 1,
+        "domain-driven-design": 1,
+        "patterns-of-enterprise-application-architecture": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 24.4,
+        "output_tokens": 0,
+        "requests": 180,
+        "sessions": 1
+      }
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1126,
+      "status": "running"
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05G.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required or blocked)",
+          "ok": true
+        },
+        {
+          "check": "finds: htmx 2 doesn't swap the dialogs' 404 responses (an unknown tracking ID leaves the dialog loading)",
+          "detail": "major: HTMX requests lack 4xx/5xx response handling, so cargo-not-found or server-error responses are ignored instead of shown ",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Capability gap issues follow the checklist": "skipped",
+        "Human sign-off is an approver's review": "success",
+        "Stacked PR base is current": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1130,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "ui-ux-pro-max": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 28.7,
+        "output_tokens": 0,
+        "requests": 213,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-02.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: use cases coupled to the framework clock and the ORM",
+          "detail": "major: The lending and return use cases depend on Django's clock and concrete ORM repository, violating the profile's ports-onl",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": null,
+        "Migration state and pinned harness files": null,
+        "Migrator work is verified before it merges": null,
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1134,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 16.9,
+        "output_tokens": 0,
+        "requests": 175,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-03.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: htmx 2 doesn't swap the 4xx/5xx error fragments (the 502 alert never shows)",
+          "detail": "major: HTMX 2 does not swap the payment form's 404/502 responses by default, so users never see the returned error fragment.",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Capability gap issues follow the checklist": "skipped",
+        "Human sign-off is an approver's review": null,
+        "Stacked PR base is current": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1138,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "clean-architecture": 1,
+        "clean-code": 1,
+        "code-review": 1,
+        "domain-driven-design": 1,
+        "patterns-of-enterprise-application-architecture": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 32.2,
+        "output_tokens": 0,
+        "requests": 194,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-04.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: about.html uses Tailwind utilities (py-8, mt-8, leading-relaxed) the committed CSS lacks",
+          "detail": "major: The changed template uses `py-8`, `leading-relaxed`, and `mt-8`, but the built stylesheet lacks all three utilities, so ",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Capability gap issues follow the checklist": "skipped",
+        "Human sign-off is an approver's review": null,
+        "Stacked PR base is current": null
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1142,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 7.5,
+        "output_tokens": 0,
+        "requests": 72,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-05-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1144,
+      "status": "running"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-17T20:13:57+00:00",
+  "run": "2026-11-17-v3i-r3"
+}
