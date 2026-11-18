@@ -421,6 +421,139 @@ def now():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
+# ---------------------------------------------------------------- phase 4a: chain and oracle
+
+CHAIN_BODY = """**Role:** `afs-verifier`. Verify ticket `{ticket}` in PR #{pr}, with a fresh context. Your base branch is the
+Migrator's branch: your PR goes into it, so `{ticket}` reaches `main` verified (ADR-0040).
+
+- Re-run every gate through `afs-run`, mutation on changed code included; the full suite must pass in default order.
+- Review the work against the target's ADRs. Cover every business rule the ticket's ledger entries record
+  (`rules`) with a test that calls the use case directly, and add any rule you find in the code.
+- Add tests where evidence is missing. Never change production code. Write **your** return
+  `.migration/returns/{ticket}.afs-verifier.yaml` and journal.
+
+**Done when:** your PR commits your return and journal, and the finish check passes.
+"""
+
+
+def chain(a, cases):
+    """Phase 4a, configuration A: a Verifier session on each finished Migrator PR of run `--from-run`.
+
+    The Verifier's base is the Migrator's PR branch, as on a live target (ADR-0040). Cases the Migrator handed
+    off, or that have no PR, are skipped: there is nothing to verify."""
+    source = load_state(argparse.Namespace(results_dir=a.results_dir, run=a.from_run))
+    state = load_state(a)
+    for case in cases:
+        st = source.get(case["id"])
+        if case["kind"] != "migrator" or not st or case["id"] in state:
+            continue
+        head = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
+        if not head or head["title"].startswith("[WIP]"):
+            print(f"{case['id']}: no finished Migrator PR in {a.from_run}; skipped")
+            continue
+        pr = head
+        ret_path = f".migration/returns/{case['ticket']}.afs-migrator.yaml"
+        r = sh(["gh", "api", f"repos/{a.eval_repo}/contents/{ret_path}?ref={head['head']['sha']}",
+                "-H", "Accept: application/vnd.github.raw"], check=False)
+        ret = yaml.safe_load(r.stdout) if r.returncode == 0 else None
+        if not isinstance(ret, dict) or ret.get("handoff") not in (None, "", "none"):
+            print(f"{case['id']}: the Migrator committed no return or handed off; skipped")
+            continue
+        body = CHAIN_BODY.format(ticket=case["ticket"], pr=pr["number"]) + eval_note(a.run, case)
+        issue = gh_api(f"repos/{a.eval_repo}/issues", "POST", {
+            "title": f"[eval {a.run}] Verify {case['ticket']} (PR #{pr['number']})", "body": body})["number"]
+        gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
+            "assignees": [COPILOT],
+            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": head["head"]["ref"],
+                                 "custom_agent": "afs-verifier", "custom_instructions": ""}})
+        state[case["id"]] = {"issue": issue, "work_pr": pr["number"], "base_branch": head["head"]["ref"],
+                             "chained_from": a.from_run, "dispatched_at": now()}
+        save_state(a, state)
+        print(f"{case['id']}: issue #{issue} assigned to Copilot (afs-verifier, base {head['head']['ref']})")
+
+
+def chain_row(src, case, st):
+    """A chained Verifier's outcome, judged later against the Migrator head's oracle (phase 4a report)."""
+    shown = git(src, "show", f"refs/afs-eval/head:.migration/returns/{case['ticket']}.afs-verifier.yaml", check=False)
+    try:
+        ret = yaml.safe_load(shown.stdout) if shown.returncode == 0 else None
+    except yaml.YAMLError:
+        ret = None
+    ret = ret if isinstance(ret, dict) else {}
+    serious = [f for f in ret.get("findings") or [] if isinstance(f, dict) and f.get("severity") in ("blocker", "major")]
+    return {"status": "graded" if ret else "no-return", "passed": None, "kind": "chain",
+            "chained_from": st["chained_from"], "work_pr": st["work_pr"], "verdict": ret.get("verdict"),
+            "serious_findings": [f"{f.get('where')}: {f.get('what')}" for f in serious]}
+
+
+def forbidden_calls(tree, specs):
+    """[(path, line, message)] for each call a case's oracle forbids in the files it names."""
+    import ast
+    found = []
+    for spec in specs or []:
+        regs = [re.compile(fnmatch_translate(g)) for g in spec["files"]]
+        for path in sorted(pathlib.Path(tree).rglob("*.py")):
+            rel = path.relative_to(tree).as_posix()
+            if rel.startswith(".migration/") or not any(r.match(rel) for r in regs):
+                continue
+            try:
+                module = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(module):
+                if isinstance(node, ast.Call):
+                    name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+                    if name == spec["call"]:
+                        found.append((rel, node.lineno, f"calls {name}: {spec['why']}"))
+    return found
+
+
+def fnmatch_translate(glob):
+    out, i = "", 0
+    while i < len(glob):
+        if glob.startswith("**/", i):
+            out, i = out + "(?:.*/)?", i + 3
+        elif glob[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        else:
+            out, i = out + re.escape(glob[i]), i + 1
+    return out + r"\Z"
+
+
+def oracle(a, cases):
+    """Phase 4a ground truth, hidden from the agents: on each Migrator PR's head, the layering and UI tools with
+    the case's own profile, plus the case's `oracle.forbid_calls`. Writes `oracle` into the run's results."""
+    out = pathlib.Path(a.results_dir) / f"{a.run}.json"
+    results = json.loads(out.read_text())
+    sources = pathlib.Path(a.sources)
+    for case in cases:
+        row = results["cases"].get(case["id"])
+        if case["kind"] != "migrator" or not row or not row.get("pr"):
+            continue
+        src = source_clone(sources, case["source"]["repo"])
+        st = load_state(a)[case["id"]]
+        git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
+            f"+refs/pull/{row['pr']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
+        with tempfile.TemporaryDirectory() as tmp:
+            wt = pathlib.Path(tmp) / "head"
+            git(src, "worktree", "add", "-q", "--detach", str(wt), "refs/afs-eval/head")
+            try:
+                base = git(src, "rev-parse", "refs/afs-eval/base").stdout.strip()
+                findings = []
+                for tool, extra in (("check_layers.py", []), ("check_ui.py", ["--changed-since", base])):
+                    r = sh([sys.executable, str(HERE / tool), "--root", str(wt), *extra], check=False)
+                    if r.returncode == 1:
+                        findings += [ln for ln in r.stdout.splitlines() if re.match(r"^[^ ].*:\d+: ", ln)
+                                     and "known, not failing" not in ln]
+                findings += [f"{p}:{n}: {m}" for p, n, m in
+                             forbidden_calls(wt, (case.get("oracle") or {}).get("forbid_calls"))]
+            finally:
+                git(src, "worktree", "remove", "--force", str(wt), check=False)
+        row["oracle"] = {"clean": not findings, "findings": findings}
+        print(f"{case['id']}: oracle {'clean' if not findings else str(len(findings)) + ' defect(s)'}")
+    out.write_text(json.dumps(results, indent=2) + "\n")
+
+
 # ---------------------------------------------------------------- refresh
 
 def refresh(a, cases):
@@ -587,6 +720,9 @@ def grade(a, cases):
         git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
             f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
         checks = []
+        if st.get("chained_from"):                # phase 4a, configuration A: the Verifier on a Migrator's PR
+            row.update(chain_row(src, case, st))
+            continue
         ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
         shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
         ret, why = None, ret_path
@@ -947,6 +1083,18 @@ def main(argv=None):
     p.add_argument("--results", required=True)
     p.add_argument("--baseline")
     p.add_argument("--out")
+    p = sub.add_parser("chain")
+    p.add_argument("--run", required=True)
+    p.add_argument("--from-run", required=True, help="the Migrator run whose PRs the Verifiers verify")
+    p.add_argument("--eval-repo", required=True)
+    p.add_argument("--case", action="append")
+    p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+    p = sub.add_parser("oracle")
+    p.add_argument("--run", required=True)
+    p.add_argument("--eval-repo", required=True)
+    p.add_argument("--case", action="append")
+    p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
+    p.add_argument("--sources", default=str(pathlib.Path.home() / ".cache/afs-eval/sources"))
     p = sub.add_parser("compare")
     p.add_argument("--runs", nargs="+", required=True, help="graded results of the changed variant")
     p.add_argument("--baseline", nargs="+", required=True, help="graded results of the baseline")
@@ -974,6 +1122,12 @@ def main(argv=None):
             print(f"afs-eval: must-pass case(s) flipped to fail: {', '.join(regressions)}", file=sys.stderr)
         print(f"AFS-TOOL afs-eval exit={1 if regressions else 0}")
         return 1 if regressions else 0
+    if a.cmd == "chain":
+        chain(a, load_cases(ROOT / "evals/cases", a.case))
+        return 0
+    if a.cmd == "oracle":
+        oracle(a, load_cases(ROOT / "evals/cases", a.case))
+        return 0
     if a.cmd == "compare":
         load = lambda paths: [json.loads(pathlib.Path(x).read_text()) for x in paths]  # noqa: E731
         text, broken = compare(load(a.runs), load(a.baseline))

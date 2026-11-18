@@ -63,6 +63,11 @@ python $H/tools/afs-eval coverage --target /path/to/pilot --target /path/to/synt
 Run it before changing a role. A change to a role without a case can't be measured until a case covers it.
 A case runs one session, so even a chain whose roles all have cases can drop a handoff unseen.
 
+**Phase 4a (Verifier or not).** `chain --from-run M --run V` starts a Verifier on each finished Migrator PR of run
+M. `oracle --run M` adds hidden ground truth to M's graded results: the layering and UI tools, plus the case's
+`oracle.forbid_calls`. `evals/variants/` holds the configuration-B agent (`afs-migrator-selfverify`), which is
+copied to the eval repo only.
+
 **Which roles to merge.** `coupling` reads the live targets' return history. Each slice is one trace, with
 its roles in the order they first committed a return (`--by ticket` makes each ticket a trace instead):
 

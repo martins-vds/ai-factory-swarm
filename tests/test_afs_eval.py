@@ -207,6 +207,28 @@ class WorkCheckTest(unittest.TestCase):
         self.assertTrue(ev.work_check([".migration/returns/X.yaml", "src/a.py"])[1])
 
 
+class OracleTest(unittest.TestCase):
+    def test_forbidden_calls_find_a_rule_in_a_web_adapter(self):
+        # Phase 4a: BK-05F's route-specification check in the view is the defect the oracle looks for.
+        with tempfile.TemporaryDirectory() as d:
+            view = pathlib.Path(d, "src/cargotracker/booking/interfaces/route_selection/views.py")
+            view.parent.mkdir(parents=True)
+            view.write_text("def post(cargo, it):\n    if not cargo.route_specification.is_satisfied_by(it):\n"
+                            "        return 400\n")
+            use_case = pathlib.Path(d, "src/cargotracker/booking/application/routing.py")
+            use_case.parent.mkdir(parents=True)
+            use_case.write_text("def assign(spec, it):\n    return spec.is_satisfied_by(it)\n")
+            spec = [{"files": ["src/cargotracker/*/interfaces/**/*.py"], "call": "is_satisfied_by", "why": "w"}]
+            found = ev.forbidden_calls(d, spec)
+        self.assertEqual([(p, n) for p, n, _ in found],
+                         [("src/cargotracker/booking/interfaces/route_selection/views.py", 2)])
+
+    def test_chain_body_names_the_ticket_and_pr(self):
+        body = ev.CHAIN_BODY.format(ticket="BK-05F", pr=1186)
+        self.assertIn("PR #1186", body)
+        self.assertIn("BK-05F.afs-verifier.yaml", body)
+
+
 class RetiredRoleTest(unittest.TestCase):
     def test_prepare_always_re_plans_retired_roles(self):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.
