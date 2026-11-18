@@ -395,11 +395,13 @@ def dispatch(a, cases):
         gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
             "assignees": [COPILOT],
             "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
-                                 "custom_agent": case["agent"], "custom_instructions": ""}})
+                                 "custom_agent": getattr(a, "agent", None) or case["agent"],
+                                 "custom_instructions": ""}})
         state[case["id"]] = {"issue": issue, "work_pr": work_pr, "base_branch": base_branch,
-                             "dispatched_at": now()}
+                             "agent": getattr(a, "agent", None) or case["agent"], "dispatched_at": now()}
         save_state(a, state)
-        print(f"{case['id']}: issue #{issue} assigned to Copilot ({case['agent']}, base {base_branch})")
+        print(f"{case['id']}: issue #{issue} assigned to Copilot ({getattr(a, 'agent', None) or case['agent']}, "
+              f"base {base_branch})")
 
 
 def state_path(a):
@@ -1075,6 +1077,9 @@ def main(argv=None):
         if name in ("prepare", "dispatch", "grade"):
             p.add_argument("--role-map", action="append", metavar="OLD=NEW",
                            help="dispatch and grade a case's role as another (a folded role)")
+        if name == "dispatch":
+            p.add_argument("--agent", help="assign this custom agent instead of the case's, keeping the case's role "
+                                           "and return file (a variant such as phase 4a's afs-migrator-selfverify)")
         if name == "prepare":
             p.add_argument("--harness", default=str(ROOT))
             p.add_argument("--allow-unreleased", action="store_true")
