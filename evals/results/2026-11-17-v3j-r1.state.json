@@ -1,0 +1,44 @@
+{
+  "pilot-bk-05e-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/pilot-bk-05e-verify-work",
+    "dispatched_at": "2026-11-17T22:33:13+00:00",
+    "issue": 1202,
+    "work_pr": 1201
+  },
+  "pilot-bk-05f-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/pilot-bk-05f-verify-work",
+    "dispatched_at": "2026-11-17T22:33:18+00:00",
+    "issue": 1204,
+    "work_pr": 1203
+  },
+  "pilot-bk-05g-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/pilot-bk-05g-verify-work",
+    "dispatched_at": "2026-11-17T22:33:22+00:00",
+    "issue": 1208,
+    "work_pr": 1207
+  },
+  "synthetic-ll-02-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/synthetic-ll-02-verify-work",
+    "dispatched_at": "2026-11-17T22:33:26+00:00",
+    "issue": 1212,
+    "work_pr": 1210
+  },
+  "synthetic-ll-03-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/synthetic-ll-03-verify-work",
+    "dispatched_at": "2026-11-17T22:33:31+00:00",
+    "issue": 1216,
+    "work_pr": 1214
+  },
+  "synthetic-ll-04-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/synthetic-ll-04-verify-work",
+    "dispatched_at": "2026-11-17T22:33:35+00:00",
+    "issue": 1220,
+    "work_pr": 1218
+  },
+  "synthetic-ll-05-verify": {
+    "base_branch": "eval/2026-11-17-v3j-r1/synthetic-ll-05-verify-work",
+    "dispatched_at": "2026-11-17T22:33:40+00:00",
+    "issue": 1224,
+    "work_pr": 1222
+  }
+}
