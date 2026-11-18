@@ -565,6 +565,9 @@ def form_strips(module, fields):
                    for k in call.keywords)
 
     for cls in (n for n in ast.walk(module) if isinstance(n, ast.ClassDef)):
+        bases = [b.attr if isinstance(b, ast.Attribute) else getattr(b, "id", "") for b in cls.bases]
+        if not any(b.endswith("Form") for b in bases):
+            continue  # a model's CharField doesn't strip; only form fields do
         declared = {}
         for st in cls.body:
             if isinstance(st, ast.Assign) and isinstance(st.value, ast.Call):
@@ -575,7 +578,6 @@ def form_strips(module, fields):
             callee = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
             if name in fields and callee == "CharField" and not keeps(call):
                 found.append((call.lineno, f"form field {name} strips its value (CharField without strip=False)"))
-        bases = [b.attr if isinstance(b, ast.Attribute) else getattr(b, "id", "") for b in cls.bases]
         meta = next((st for st in cls.body if isinstance(st, ast.ClassDef) and st.name == "Meta"), None)
         if "ModelForm" not in bases or meta is None:
             continue

@@ -241,13 +241,15 @@ class OracleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             forms = pathlib.Path(d, "src/loans/forms.py")
             forms.parent.mkdir(parents=True)
+            pathlib.Path(d, "src/loans/models.py").write_text(
+                "from django.db import models\nclass Loan(models.Model):\n    member = models.CharField()\n")
             forms.write_text("from django import forms\n"
                              "class A(forms.ModelForm):\n    class Meta:\n        fields = ('member', 'isbn')\n"
-                             "class B(forms.ModelForm):\n    member = forms.CharField(strip=False)\n"
-                             "    isbn = forms.CharField()\n    class Meta:\n        fields = ('member', 'isbn')\n")
+                             "class B(forms.Form):\n    member = forms.CharField(strip=False)\n"
+                             "    isbn = forms.CharField()\n")
             spec = [{"files": ["src/loans/**/*.py"], "calls": ["lend"], "fields": ["member", "isbn"], "why": "w"}]
             found = ev.stripped_args(d, spec)
-        self.assertEqual([n for _, n, _ in found], [4, 4, 7])
+        self.assertEqual([(p, n) for p, n, _ in found], [("src/loans/forms.py", 4)] * 2 + [("src/loans/forms.py", 7)])
 
     def test_chain_body_names_the_ticket_and_pr(self):
         body = ev.CHAIN_BODY.format(ticket="BK-05F", pr=1186)
