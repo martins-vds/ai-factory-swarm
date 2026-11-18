@@ -143,6 +143,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `data_snapshot.py`: make a snapshot over JDBC (`java/JdbcSnapshot.java`), describe one, or fetch the newest (ADR-0032)
 - `data_reconcile.py`: check a data snapshot, and reconcile it with the target's loaded data (ADR-0032)
 - `afs-eval`: the end-to-end eval: prepare, dispatch and grade real tickets in the eval repo; report flips against a baseline (ADR-0041)
+- `afs-dashboard`: data for the operator dashboard: what waits on the operator (GitHub API), and the eval trend per run family
 - `afs-drill`: break one thing on a throwaway branch and confirm the right check catches it
 - `drills.json`: the drills `afs-drill` runs (data: operations, trigger, expected check)
 
