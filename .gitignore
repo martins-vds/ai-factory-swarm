@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .migration/runs/
+/.afs-dashboard/
+/tests/dashboard-bdd/node_modules/

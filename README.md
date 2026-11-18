@@ -37,6 +37,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 - [Roadmap](docs/roadmap.md) — milestones M0–M7
 - [Architecture decision records](docs/adr/)
 - [Glossary](GLOSSARY.md)
+- [Operator dashboard](docs/operator-dashboard.md)
 
 ## Repository layout
 
