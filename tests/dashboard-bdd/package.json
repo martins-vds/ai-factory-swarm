@@ -1,0 +1,12 @@
+{
+  "name": "afs-dashboard-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "cucumber-js --import steps.mjs --format progress features"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0",
+    "playwright": "1.65.1"
+  }
+}

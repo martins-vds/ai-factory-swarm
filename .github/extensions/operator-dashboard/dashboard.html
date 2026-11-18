@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operator dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script type="module" src="dashboard.mjs"></script>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">AI FACTORY / OPERATOR VIEW</p>
+    <h1>Operator dashboard</h1>
+    <p>See what needs you, what Copilot is running, and how the eval has moved.</p>
+    <span class="pill">Read-only · 4 repositories</span>
+  </header>
+  <nav aria-label="Dashboard sections">
+    <a href="#sessions">Sessions</a><a href="#needs">Needs</a><a href="#families">Eval trend</a>
+    <a href="#cases">Cases</a><a href="#coverage">Coverage</a>
+  </nav>
+  <p id="connection" role="status">Loading dashboard data…</p>
+  <section id="sessions" aria-labelledby="sessions-title">
+    <div class="section-head">
+      <h2 id="sessions-title">Remote sessions</h2>
+      <label class="filter"><input type="checkbox" id="group-run"> Group by eval run</label>
+    </div>
+    <div id="sessions-meta"></div>
+    <div id="summary" class="summary"></div>
+    <div id="session-groups"></div>
+    <h3>Active sessions</h3>
+    <div id="active"></div>
+    <h3>Finished in the last 24 hours</h3>
+    <div id="finished"></div>
+  </section>
+  <section id="needs" aria-labelledby="needs-title">
+    <h2 id="needs-title">Needs your attention</h2>
+    <div id="needs-meta"></div>
+    <div id="needs-data"></div>
+  </section>
+  <section id="families" aria-labelledby="families-title">
+    <h2 id="families-title">Eval trend</h2>
+    <div id="families-meta"></div>
+    <div id="chart"></div>
+    <div id="families-data"></div>
+  </section>
+  <section id="cases" aria-labelledby="cases-title">
+    <h2 id="cases-title">Case results</h2>
+    <div id="cases-meta"></div>
+    <div class="filters">
+      <label>Family <select id="family"><option value="">All families</option></select></label>
+      <label>Kind <select id="kind"><option value="">All kinds</option><option>migrator</option><option>verifier</option></select></label>
+      <label>Majority <select id="passed"><option value="">Any outcome</option><option value="true">Passed</option><option value="false">Not passed</option></select></label>
+    </div>
+    <div id="cases-data"></div>
+    <h3>Case history</h3>
+    <label class="filter">Case <select id="case-id"><option value="">Select a case</option></select></label>
+    <div id="history"></div>
+  </section>
+  <section id="coverage" aria-labelledby="coverage-title">
+    <h2 id="coverage-title">Live role coverage</h2>
+    <div id="coverage-meta"></div>
+    <div id="coverage-data"></div>
+  </section>
+</main>
+</body>
+</html>

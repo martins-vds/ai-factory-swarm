@@ -52,7 +52,8 @@ slices; the ticket's own ledger entries alone may not contain the whole behavior
      let a failing test be the evidence:
      - **Where each rule is enforced** (required: the finish check refuses your return without it). For
        each capability the plan gives the ticket, list its business rules (an eligibility check, a limit, a
-       state transition) under `rules`. For each rule, write a test that calls the use case directly, with
+       state transition) under `rules`. Every rule its ledger entry records must be there, with
+       `ledger_rule: <its id>`; add any other rule you find in the code, a guard in a view above all. For each rule, write a test that calls the use case directly, with
        no view and no request, using input the rule must refuse. Record `enforced: true` when the use case
        refuses it. When it accepts it, record `enforced: false`: the rule lives in the wrong layer (often the
        view), and that failing test is a major finding's evidence. A capability with no business rule (a
@@ -118,5 +119,6 @@ rules:
     use_case: <the use case the test calls, e.g. CargoRouting.assign_route>
     test: <path::test id; a test that calls the use case directly with input the rule must refuse>
     enforced: <true | false>   # false needs a blocker/major finding with this test as evidence
+    ledger_rule: <the rule's id in the capability's ledger entry, when it has one>
 no_rules: {<capability>: <why it carries no business rule>}
 ```

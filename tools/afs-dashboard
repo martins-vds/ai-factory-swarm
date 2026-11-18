@@ -2,6 +2,7 @@
 """Data for the operator's dashboard: what waits on the operator, and how the eval has moved.
 
     afs-dashboard needs --repo OWNER/REPO [--repo ...] --out needs.json
+    afs-dashboard sessions --repo OWNER/REPO [--repo ...] --out sessions.json
     afs-dashboard trend [--results evals/results] [--target DIR ...] --out trend.json
 
 `needs` lists what only the operator can do, from the GitHub REST API:
@@ -22,65 +23,208 @@ and `<out stem>-coverage`.
 """
 import argparse
 import collections
+import concurrent.futures
 import datetime as dt
-import importlib.machinery
-import importlib.util
 import json
+import os
 import pathlib
 import re
+import runpy
+import shlex
 import statistics
 import subprocess
 import sys
+import tempfile
+import urllib.parse
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 FAMILY = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-(?P<name>.+)-r(?P<n>\d+)\.json$")
 
 
-def gh(path):
-    r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+def gh(path, *args):
+    try:
+        r = subprocess.run(["gh", "api", "--hostname", "github.com", "--method", "GET", path, *args],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemExit(f"afs-dashboard: gh api {path}: {exc}") from exc
     if r.returncode != 0:
         raise SystemExit(f"afs-dashboard: gh api {path}: {r.stderr.strip()}")
+    if "Accept: application/vnd.github.raw" in args:
+        return r.stdout
     return json.loads(r.stdout or "null")
+
+
+def pages(path, key=None, *, cache=None):
+    documents = gh(path, "--paginate", "--slurp", *(("--cache", cache) if cache else ()))
+    return [row for page in documents for row in (page[key] if key else page)]
+
+
+def timestamp(value):
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def approval_needs(repo, pulls=()):
+    runs = pages(f"repos/{repo}/actions/runs?status=action_required&per_page=100", "workflow_runs")
+    by_branch = collections.defaultdict(list)
+    for run in runs:
+        by_branch[run.get("head_branch") or "?"].append(run)
+    rows = []
+    for branch, items in by_branch.items():
+        prs = [p["number"] for r in items for p in r.get("pull_requests") or []]
+        number = next(iter(prs), None)
+        if number is None and branch != "?":
+            heads = {r.get("head_repository", {}).get("id") for r in items if r.get("head_repository")}
+            matching = [p["number"] for p in pulls if p["head"]["ref"] == branch
+                        and (not heads or (p["head"].get("repo") or {}).get("id") in heads)]
+            number = matching[0] if len(matching) == 1 else None
+        rows.append({"kind": "Approve workflow runs", "repo": repo, "number": number,
+                     "branch": branch, "title": f"{len(items)} run(s) on {branch}",
+                     "id": f"approval:{repo}:{branch}",
+                     "url": f"https://github.com/{repo}/pull/{number}" if number
+                     else f"https://github.com/{repo}/actions",
+                     "waiting_since": min(r["created_at"] for r in items)})
+    return rows
 
 
 def needs(repos):
     rows = []
     for repo in repos:
-        runs = gh(f"repos/{repo}/actions/runs?status=action_required&per_page=100").get("workflow_runs") or []
-        by_branch = collections.defaultdict(list)
-        for run in runs:
-            by_branch[run.get("head_branch") or "?"].append(run)
-        for branch, items in by_branch.items():
-            oldest = min(r["created_at"] for r in items)
-            prs = [p["number"] for r in items for p in r.get("pull_requests") or []]
-            number = prs[0] if prs else None
-            rows.append({"kind": "Approve workflow runs", "repo": repo, "number": number,
-                         "title": f"{len(items)} run(s) on {branch}",
-                         "url": f"https://github.com/{repo}/pull/{number}" if number
-                         else f"https://github.com/{repo}/actions",
-                         "waiting_since": oldest})
-        for pr in gh(f"repos/{repo}/pulls?state=open&per_page=100"):
+        pulls = pages(f"repos/{repo}/pulls?state=open&per_page=100")
+        rows.extend(approval_needs(repo, pulls))
+        for pr in pulls:
             base = {"repo": repo, "number": pr["number"], "title": pr["title"], "url": pr["html_url"],
                     "waiting_since": pr["created_at"]}
             if not pr.get("draft"):
                 rows.append({"kind": "Merge pull request", **base})
-            files = gh(f"repos/{repo}/pulls/{pr['number']}/files?per_page=100")
+            files = pages(f"repos/{repo}/pulls/{pr['number']}/files?per_page=100")
             for f in files:
                 if f["filename"].endswith(".afs-slice-coordinator.yaml") and f.get("status") != "removed":
-                    text = subprocess.run(["gh", "api", f"repos/{repo}/contents/{f['filename']}?ref={pr['head']['sha']}",
-                                           "-H", "Accept: application/vnd.github.raw"],
-                                          capture_output=True, text=True).stdout
+                    file = urllib.parse.quote(f["filename"])
+                    head_repo = (pr["head"].get("repo") or {}).get("full_name", repo)
+                    text = gh(f"repos/{head_repo}/contents/{file}?ref={pr['head']['sha']}",
+                              "-H", "Accept: application/vnd.github.raw")
                     if re.search(r"^human_check:\s*requested\b", text, re.M):
                         rows.append({"kind": "Side-by-side check", **base})
+                        break
     for r in rows:
-        r["id"] = f"{r['kind']}: {r['repo'].split('/')[-1]} " + (f"#{r['number']}" if r["number"] else r["title"])
+        r.setdefault("id", f"{r['kind']}: {r['repo']} #{r['number']}")
     rows.sort(key=lambda r: r["waiting_since"])
     now = dt.datetime.now(dt.timezone.utc)
     for r in rows:
-        since = dt.datetime.fromisoformat(r["waiting_since"].replace("Z", "+00:00"))
+        since = timestamp(r["waiting_since"])
         r["waiting_days"] = round((now - since).total_seconds() / 86400, 1)
     return rows
+
+
+def copilot(user):
+    return (user or {}).get("login", "").lower() in {"copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
+
+
+def session_metadata(issue, pr):
+    body = issue.get("body") or ""
+    evaluation = re.search(r"Eval case `([^`]+)` \(run `([^`]+)`\)", body, re.I)
+    case, run = evaluation.groups() if evaluation else (None, None)
+    if not evaluation:
+        for side in ("head", "base"):
+            evaluation = re.fullmatch(r"eval/([^/]+)/([^/]+)", (pr or {}).get(side, {}).get("ref", ""))
+            if evaluation:
+                run, case = evaluation.groups()
+                break
+    role = re.search(r"(?:\*\*)?(?:Role|Custom agent):(?:\*\*)?\s*`?(afs-[\w-]+)", body, re.I)
+    ticket = re.search(r"\b(?:[A-Z]{2,}-)+\d+[A-Z]?\b", issue["title"] + "\n" + body, re.I)
+    return {"agent": issue.get("custom_agent") or (role[1] if role else None),
+            "ticket": ticket[0].upper() if ticket else None, "run": run, "case": case}
+
+
+def timeline(repo, number, *, cache=None):
+    return pages(f"repos/{repo}/issues/{number}/timeline?per_page=100", cache=cache)
+
+
+def session_end(repo, pr, cutoff):
+    changes = [e["created_at"] for e in timeline(repo, pr["number"], cache="90s")
+               if e["event"] == "renamed" and e.get("rename", {}).get("from", "").startswith("[WIP]")
+               and not e["rename"].get("to", "").startswith("[WIP]")]
+    ended = max(changes, default=pr.get("closed_at"))
+    return ended if ended and timestamp(ended) >= cutoff else None
+
+
+def repo_sessions(repo, now):
+    cutoff = now - dt.timedelta(hours=24)
+    prefix = f"repos/{repo}"
+    assigned = f"{prefix}/issues?assignee=copilot-swe-agent%5Bbot%5D&per_page=100"
+    issues = pages(f"{assigned}&state=open")
+    issues += pages(f"{assigned}&state=closed&since={urllib.parse.quote(cutoff.isoformat())}")
+    pulls = pages(f"{prefix}/pulls?state=open&per_page=100")
+    open_pulls = {p["number"]: p for p in pulls}
+    approvals = approval_needs(repo, pulls)
+    by_branch = {a["branch"]: a for a in approvals}
+    issues = {i["number"]: i for i in issues
+              if "pull_request" not in i and any(copilot(a) for a in i.get("assignees", []))}
+
+    def collect(issue):
+        number = issue["number"]
+        recent = timestamp(issue["updated_at"]) >= cutoff
+        events = timeline(repo, number, cache=None if recent else "30m")
+        assignments = sorted(e["created_at"] for e in events if e["event"] == "assigned" and copilot(e.get("assignee")))
+        related = {}
+        for event in events:
+            source = (event.get("source") or {}).get("issue") or {}
+            if "pull_request" in source and source.get("repository_url") == f"https://api.github.com/{prefix}":
+                related[source["number"]] = source
+        linked = []
+        historic = []
+        for pr_number, source in related.items():
+            if pr_number not in open_pulls and source["state"] == "closed" and timestamp(source["updated_at"]) < cutoff:
+                historic.append(source["created_at"])
+                continue
+            pr = open_pulls.get(pr_number) or gh(f"{prefix}/pulls/{pr_number}")
+            # Some Copilot-created PRs are attributed to the dispatcher in REST.
+            if copilot(pr.get("user")) or pr["head"]["ref"].startswith("copilot/"):
+                linked.append(pr)
+        active = [p for p in linked if p["state"] == "open" and p["title"].startswith("[WIP]")]
+        selected = active + [p for p in linked if not p["title"].startswith("[WIP]")
+                             and timestamp(p["updated_at"]) >= cutoff]
+        latest = assignments[-1] if assignments else None
+        previous = historic + [p["created_at"] for p in linked]
+        if issue["state"] == "open" and not active and latest and (
+            not previous or len(assignments) > 1 and latest > max(previous)
+        ):
+            selected.append(None)
+        rows = []
+        for pr in selected:
+            start = pr["created_at"] if pr else latest
+            active_pr = pr in active
+            if active_pr and len(assignments) > 1 and timestamp(latest) > timestamp(start):
+                start = latest
+            elif pr is None and not start:
+                continue
+            ended = session_end(repo, pr, cutoff) if pr and not active_pr else None
+            if pr and not active_pr and not ended:
+                continue
+            last_commit_at = None
+            if active_pr and now - timestamp(start) >= dt.timedelta(minutes=45):
+                head = pr["head"]
+                commit = gh(f"{prefix}/commits/{head['sha']}", "--cache", "30m")
+                last_commit_at = (commit.get("commit", {}).get("committer") or {}).get("date")
+            rows.append({"repo": repo, "issue": number, "pr": pr["number"] if pr else None,
+                         "url": pr["html_url"] if pr else issue["html_url"],
+                         "base": pr["base"]["ref"] if pr else None,
+                         "started_at": start, "finished_at": ended, "last_commit_at": last_commit_at,
+                         "status": "finished" if ended else "running" if pr else "starting",
+                         "approval": by_branch.get(pr["head"]["ref"]) if active_pr else None,
+                         **session_metadata(issue, pr)})
+        return rows
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        return [row for rows in executor.map(collect, issues.values()) for row in rows]
+
+
+def sessions(repos):
+    now = dt.datetime.now(dt.timezone.utc)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        return sorted((row for rows in executor.map(lambda repo: repo_sessions(repo, now), repos)
+                       for row in rows), key=lambda row: row["started_at"])
 
 
 def families(results):
@@ -101,8 +245,9 @@ def trend(results):
                 c = per_case[cid]
                 c["runs"] += 1
                 c["passes"] += 1 if row.get("passed") else 0
-                if (row.get("usage") or {}).get("minutes"):
-                    c["minutes"].append(row["usage"]["minutes"])
+                usage = (row.get("usage") or {}).get("minutes")
+                if isinstance(usage, (float, int)) and not isinstance(usage, bool):
+                    c["minutes"].append(usage)
         passed = 0
         minutes = []
         by_kind = collections.Counter()
@@ -124,16 +269,26 @@ def trend(results):
     return fams, cases
 
 
-def coverage(targets):
-    loader = importlib.machinery.SourceFileLoader("afs_eval", str(HERE / "afs-eval"))
-    spec = importlib.util.spec_from_loader("afs_eval", loader)
-    ev = importlib.util.module_from_spec(spec)
-    loader.exec_module(ev)
-    sys.path.insert(0, str(HERE))
-    from check_plan import FOLDED_INTO
-    _, no_case = ev.coverage(ev.load_cases(ROOT / "evals/cases"), targets, FOLDED_INTO)
-    used = sorted({r for roles in ev.chains(targets, FOLDED_INTO) for r in roles})
-    return [{"role": r, "has_case": r not in no_case} for r in used]
+def coverage(targets, eval_root=ROOT):
+    import yaml
+
+    eval_root = pathlib.Path(eval_root)
+    folded = runpy.run_path(str(eval_root / "tools/check_plan.py"))["FOLDED_INTO"]
+    cases = set()
+    for path in sorted((eval_root / "evals/cases").glob("*.yaml")):
+        case = yaml.safe_load(path.read_text())
+        role = case.get("role") or case.get("agent")
+        if not role:
+            raise ValueError(f"{path}: missing role or agent")
+        if not case.get("disabled"):
+            cases.add(folded.get(role, role))
+    used = set()
+    for target in targets:
+        for path in pathlib.Path(target, ".migration/returns").glob("*.y*ml"):
+            ticket, _, role = path.stem.rpartition(".")
+            if ticket and role.startswith("afs-"):
+                used.add(folded.get(role, role))
+    return [{"role": role, "has_case": role in cases} for role in sorted(used)]
 
 
 def write(path, rows, source):
@@ -142,33 +297,59 @@ def write(path, rows, source):
              "lang": "python"},
             {"label": "Input", "value": source},
             {"label": "Generated", "value": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}]
-    pathlib.Path(path).write_text(json.dumps({"rows": rows, "meta": meta}, indent=1) + "\n")
+    data = json.dumps({"rows": rows, "meta": meta}, indent=1) + "\n"
+    if path == "-":
+        sys.stdout.write(data)
+        return
+    path = pathlib.Path(path)
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as file:
+        temp = pathlib.Path(file.name)
+        try:
+            file.write(data)
+            file.close()
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("needs")
-    p.add_argument("--repo", action="append", required=True)
-    p.add_argument("--out", required=True)
+    for cmd in ("needs", "sessions"):
+        p = sub.add_parser(cmd)
+        p.add_argument("--repo", action="append", required=True)
+        p.add_argument("--out", required=True)
     p = sub.add_parser("trend")
-    p.add_argument("--results", default=str(ROOT / "evals/results"))
+    p.add_argument("--results", type=pathlib.Path)
     p.add_argument("--target", action="append", default=[])
+    p.add_argument("--eval-root", type=pathlib.Path, default=ROOT)
     p.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    if a.cmd == "needs":
-        rows = needs(a.repo)
-        write(a.out, rows, "GitHub REST API: " + ", ".join(a.repo))
-        print(f"{len(rows)} item(s) wait on the operator -> {a.out}")
+    source = shlex.join(["tools/afs-dashboard", *(sys.argv[1:] if argv is None else argv)])
+    if a.cmd in ("needs", "sessions"):
+        for repo in a.repo:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+", repo) or repo.endswith(("/.", "/..")):
+                ap.error(f"invalid GitHub repository: {repo}")
+        rows = (needs if a.cmd == "needs" else sessions)(a.repo)
+        write(a.out, rows, source)
+        if a.out != "-":
+            print(f"{len(rows)} {a.cmd} row(s) -> {a.out}")
         return 0
-    fams, cases = trend(a.results)
+    results = a.results or a.eval_root / "evals/results"
+    if not results.is_dir():
+        ap.error(f"results directory does not exist: {results}")
+    if a.target and (not (a.eval_root / "evals/cases").is_dir() or not (a.eval_root / "tools/check_plan.py").is_file()):
+        ap.error(f"--eval-root must point at a harness checkout with tools/check_plan.py and evals/cases: {a.eval_root}")
+    for target in a.target:
+        if not pathlib.Path(target, ".migration/returns").is_dir():
+            ap.error(f"target return directory does not exist: {target}/.migration/returns")
+    fams, cases = trend(results)
     out = pathlib.Path(a.out)
-    src = f"graded runs in {pathlib.Path(a.results).name}/ (<date>-<family>-r<N>.json)"
-    write(out, fams, src)
-    write(out.with_name(out.stem + "-cases.json"), cases, src)
+    roles = coverage(a.target, a.eval_root) if a.target else None
+    write(out, fams, source)
+    write(out.with_name(out.stem + "-cases.json"), cases, source)
     if a.target:
-        write(out.with_name(out.stem + "-coverage.json"), coverage(a.target),
-              "returns in " + ", ".join(pathlib.Path(t).name for t in a.target) + "; evals/cases/")
+        write(out.with_name(out.stem + "-coverage.json"), roles, source)
     print(f"{len(fams)} run families, {len(cases)} case rows -> {out}")
     return 0
 

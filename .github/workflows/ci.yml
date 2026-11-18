@@ -37,6 +37,26 @@ jobs:
           python tools/check_lock.py
           for p in stacks/*.json; do python tools/check_lock.py --lock "$p" --base skills.lock.json; done
 
+  operator-dashboard:
+    name: Operator dashboard acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tests/dashboard-bdd/package-lock.json
+      - run: python -m pip install pyyaml
+      - run: npm ci
+        working-directory: tests/dashboard-bdd
+      - run: npx --no-install playwright install --with-deps --only-shell chromium
+        working-directory: tests/dashboard-bdd
+      - run: npm test
+        working-directory: tests/dashboard-bdd
+
   upstream:
     name: Pinned upstream (paths and vendored copies)
     runs-on: ubuntu-latest

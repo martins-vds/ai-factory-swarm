@@ -134,6 +134,16 @@ normalize:
       - static/**/*.js
       - assets/**/*.js
       htmx_errors: true
+- yaml_set:
+    file: .migration/ledger/booking.routing-assign.yaml
+    key: rules
+    value:
+    - id: route-candidate-valid
+      rule: Assignment requires a submitted, valid signed candidate token associated with the requested cargo.
+      source: src/cargotracker/booking/interfaces/route_selection/views.py:93-100
+    - id: route-specification-satisfied
+      rule: The selected itinerary must satisfy the cargo's current route specification before assignment.
+      source: src/cargotracker/booking/interfaces/route_selection/views.py:35-38
 notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in eval b3b-r3 a Verifier found two
   major layering defects: the application use case raises Django Http404, and route eligibility is checked in the
   view instead of being enforced by the use case. The operator confirmed both as real violations. The work under
@@ -141,4 +151,7 @@ notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in 
   run in the idiom gate) and self-healing, so the Verifier''s verdict and evidence rules are enforced as on a live
   target. Operator ruling 2026-11-17 (option 3): a defect from an earlier ticket is reported apart (`inherited`),
   never as a finding. The use case''s Http404 comes from BK-05C, so it left the expected findings; the eligibility
-  check in the view is BK-05F''s own. The profile also gets `ui_checks` (check_ui.py in the idiom gate).'
+  check in the view is BK-05F''s own. The profile also gets `ui_checks` (check_ui.py in the idiom gate). Ledger
+  rules (harness #195, operator go-ahead 2026-11-17): booking.routing-assign carries exactly the rules a BK-05F
+  Migrator under the ledger-rules prompt recorded, in eval run 2026-11-17-m3j-r3 (eval PR #1186). Only that run
+  of three did the ticket; the operator chose to run this step anyway.'

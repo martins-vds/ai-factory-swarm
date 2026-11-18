@@ -41,6 +41,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
 - [Operator setup](docs/operator-setup.md) — repo settings, what the code graph contains, costs
 - [Architecture decision records](docs/adr/)
 - [Glossary](GLOSSARY.md)
+- [Operator dashboard](docs/operator-dashboard.md)
 
 ## Repository layout
 
