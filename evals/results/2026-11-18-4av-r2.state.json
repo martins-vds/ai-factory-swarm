@@ -1,0 +1,30 @@
+{
+  "synthetic-ll-02": {
+    "base_branch": "copilot/ll-02-lend-and-return-books-be6aeaa9-1433-4759-bbd5-a72f7ff17827",
+    "chained_from": "2026-11-18-4aa-r2",
+    "dispatched_at": "2026-11-18T04:07:45+00:00",
+    "issue": 1354,
+    "work_pr": 1324
+  },
+  "synthetic-ll-03": {
+    "base_branch": "copilot/ll-03-view-and-pay-late-fees-29872aa6-a2e9-40d8-b688-822bbe3d7178",
+    "chained_from": "2026-11-18-4aa-r2",
+    "dispatched_at": "2026-11-18T04:07:47+00:00",
+    "issue": 1357,
+    "work_pr": 1325
+  },
+  "synthetic-ll-04": {
+    "base_branch": "copilot/ll-04-modernize-library-info-page-bd88497a-7ce3-490f-91a6-0a907fa9dc3c",
+    "chained_from": "2026-11-18-4aa-r2",
+    "dispatched_at": "2026-11-18T04:07:50+00:00",
+    "issue": 1359,
+    "work_pr": 1326
+  },
+  "synthetic-ll-05": {
+    "base_branch": "copilot/ll-05-produce-monthly-report-acb7c382-37ff-4e93-bd17-574139576de4",
+    "chained_from": "2026-11-18-4aa-r2",
+    "dispatched_at": "2026-11-18T04:49:13+00:00",
+    "issue": 1366,
+    "work_pr": 1327
+  }
+}

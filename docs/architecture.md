@@ -106,6 +106,7 @@ humans, and approved for cutover.
 | 41 | Changes to agents, skills or their rules are measured against an end-to-end eval of real tickets (`afs-eval`), each affected case run at least twice; no must-pass case may flip; the eval repository runs Copilot workflows without approval | [0041](adr/0041-agent-changes-are-measured-against-an-end-to-end-eval.md) |
 | 42 | The Specialist Migrator folds into the Migrator: a ticket with `specialty:` loads the `afs-specialty` skill; the retired role's returns stay valid, and open tickets can't use it | [0042](adr/0042-the-specialist-migrator-folds-into-the-migrator.md) |
 | 43 | Layer contracts from the ADRs live in the profile (`layering`) and `check_layers.py` checks them in the idiom gate; a Verifier's verdict follows its findings, and every serious finding cites a failing test or run | [0043](adr/0043-layering-is-a-gate-and-a-verifier-verdict-follows-evidence.md) |
+| 44 | The Verifier stays an independent session: phase 4a found no defect reaching a merge candidate in either configuration, so it was inconclusive; re-run on cases that start clean | [0044](adr/0044-the-verifier-stays-phase-4a-was-inconclusive.md) |
 
 ---
 

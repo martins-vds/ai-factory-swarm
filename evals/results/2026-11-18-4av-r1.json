@@ -1,0 +1,77 @@
+{
+  "cases": {
+    "pilot-bk-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1345,
+      "status": "session-timed-out"
+    },
+    "pilot-dm-05f": {
+      "chained_from": "2026-11-18-4aa-r1",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1348,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1294
+    },
+    "synthetic-ll-02": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "synthetic-ll-03": {
+      "chained_from": "2026-11-18-4aa-r1",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1351,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1297
+    },
+    "synthetic-ll-04": {
+      "chained_from": "2026-11-18-4aa-r1",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1353,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1298
+    },
+    "synthetic-ll-05": {
+      "chained_from": "2026-11-18-4aa-r1",
+      "checks": [],
+      "kind": "chain",
+      "must_pass": true,
+      "passed": null,
+      "pr": 1356,
+      "serious_findings": [],
+      "status": "graded",
+      "verdict": "pass",
+      "work_pr": 1299
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-18T06:03:05+00:00",
+  "run": "2026-11-18-4av-r1"
+}

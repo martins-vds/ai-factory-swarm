@@ -1,0 +1,37 @@
+{
+  "pilot-bk-05g": {
+    "base_branch": "copilot/bk-05g-continue-dialogs-from-not-routed-table-one-more-time",
+    "chained_from": "2026-11-18-4aa-r1",
+    "dispatched_at": "2026-11-18T04:07:29+00:00",
+    "issue": 1342,
+    "work_pr": 1291
+  },
+  "pilot-dm-05f": {
+    "base_branch": "copilot/dm-05f-business-invariants-on-loaded-data-d7e21eca-f7f6-4088-a2d5-01dac756229c",
+    "chained_from": "2026-11-18-4aa-r1",
+    "dispatched_at": "2026-11-18T04:07:31+00:00",
+    "issue": 1343,
+    "work_pr": 1294
+  },
+  "synthetic-ll-03": {
+    "base_branch": "copilot/ll-03-view-and-pay-late-fees-2373935d-eb66-46ac-b604-c76b2738ad57",
+    "chained_from": "2026-11-18-4aa-r1",
+    "dispatched_at": "2026-11-18T04:07:35+00:00",
+    "issue": 1344,
+    "work_pr": 1297
+  },
+  "synthetic-ll-04": {
+    "base_branch": "copilot/ll-04-modernize-library-info-page-6db3d3f5-e043-46aa-985b-ff64bbbf2fc5",
+    "chained_from": "2026-11-18-4aa-r1",
+    "dispatched_at": "2026-11-18T04:07:38+00:00",
+    "issue": 1347,
+    "work_pr": 1298
+  },
+  "synthetic-ll-05": {
+    "base_branch": "copilot/ll-05-produce-monthly-report-0c0d91b6-373c-4e97-946e-7fef13e3d13a",
+    "chained_from": "2026-11-18-4aa-r1",
+    "dispatched_at": "2026-11-18T04:07:40+00:00",
+    "issue": 1350,
+    "work_pr": 1299
+  }
+}
