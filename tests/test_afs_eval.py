@@ -200,6 +200,13 @@ class CouplingTest(unittest.TestCase):
             self.assertEqual(traces, {"BK": ["afs-characterizer", "afs-analyst", "afs-migrator", "afs-verifier"]})
 
 
+class WorkCheckTest(unittest.TestCase):
+    def test_a_migrator_must_change_more_than_migration_state(self):
+        # m3j: BK-05F r1/r2 changed only their return and passed on the base's work.
+        self.assertFalse(ev.work_check([".migration/returns/BK-05F.afs-migrator.yaml"])[1])
+        self.assertTrue(ev.work_check([".migration/returns/X.yaml", "src/a.py"])[1])
+
+
 class RetiredRoleTest(unittest.TestCase):
     def test_prepare_always_re_plans_retired_roles(self):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.

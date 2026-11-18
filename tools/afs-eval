@@ -666,6 +666,14 @@ def grade_migrator(ret, gates_conclusion, threshold):
     return checks
 
 
+def work_check(changed):
+    """A Migrator case passes only on work: a change outside `.migration/`. m3j: two BK-05F sessions changed only
+    their return, pointing at the base's old handoff, and passed because the base already held the work."""
+    code = [f for f in changed if not f.startswith(".migration/")]
+    return ("changes the ticket's code or tests", bool(code),
+            f"{len(code)} file(s) outside .migration/" if code else "only .migration/ changed")
+
+
 def new_errors(base_errors, head_errors):
     return sorted(set(head_errors) - set(base_errors))
 
@@ -745,6 +753,9 @@ def grade(a, cases):
                 profile = yaml.safe_load((trees["head"] / ".migration/profile.yaml").read_text()) or {}
                 threshold = (profile.get("thresholds") or {}).get("mutation_score_min")
                 checks += grade_migrator(ret, gates, threshold)
+                changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
+                              check=False).stdout.split()
+                checks.append(work_check(changed))
             elif case["kind"] == "verifier":
                 checks += grade_verifier(ret, case["expect"])
                 gate = blocked_gate(ret, case["expect"])
