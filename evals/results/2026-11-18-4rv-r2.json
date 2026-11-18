@@ -1,0 +1,106 @@
+{
+ "cases": {
+  "pilot-bk-05f-fresh": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "pilot-bk-05g": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "pilot-bk-05g-fresh": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "pr": 1454,
+   "status": "session-timed-out",
+   "usage": {
+    "sessions": 1,
+    "requests": 223,
+    "output_tokens": 0,
+    "minutes": 50.3
+   }
+  },
+  "pilot-dm-05f": {
+   "chained_from": "2026-11-18-4ra-r2",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1456,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "blocked",
+   "work_pr": 1410,
+   "usage": {
+    "sessions": 1,
+    "requests": 162,
+    "output_tokens": 0,
+    "minutes": 23.1
+   }
+  },
+  "synthetic-ll-02": {
+   "chained_from": "2026-11-18-4ra-r2",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1458,
+   "serious_findings": [
+    "src/loans/services.py:30-31: lend_loan accepts empty and whitespace-only member or ISBN values when called directly; the required-fields rule is enforced only by the form/view.",
+    "templates/loans/list.html:55-58; templates/loans/detail.html:28-31: The htmx handler compares response.code to '4..'/'5..', but htmx 2.0.11 uses '[45]..'; 4xx/5xx responses remain unswapped, hiding the browser's not-found message."
+   ],
+   "status": "graded",
+   "verdict": "changes-required",
+   "work_pr": 1412,
+   "usage": {
+    "sessions": 1,
+    "requests": 113,
+    "output_tokens": 0,
+    "minutes": 14.1
+   }
+  },
+  "synthetic-ll-03": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "synthetic-ll-04": {
+   "checks": [],
+   "kind": "migrator",
+   "must_pass": true,
+   "passed": false,
+   "status": "not-dispatched"
+  },
+  "synthetic-ll-05": {
+   "chained_from": "2026-11-18-4ra-r2",
+   "checks": [],
+   "kind": "chain",
+   "must_pass": true,
+   "passed": null,
+   "pr": 1461,
+   "serious_findings": [],
+   "status": "graded",
+   "verdict": "pass",
+   "work_pr": 1416,
+   "usage": {
+    "sessions": 1,
+    "requests": 139,
+    "output_tokens": 0,
+    "minutes": 26.6
+   }
+  }
+ },
+ "eval_repo": "martins-vds/ai-factory-eval",
+ "graded_at": "2026-11-18T15:32:01+00:00",
+ "run": "2026-11-18-4rv-r2"
+}

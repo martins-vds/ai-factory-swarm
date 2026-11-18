@@ -1,0 +1,44 @@
+{
+  "pilot-bk-05g-fresh": {
+    "base_branch": "copilot/bk-05g-build-destination-deadline-dialogs-yet-again",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:40:47+00:00",
+    "issue": 1470,
+    "work_pr": 1423
+  },
+  "pilot-dm-05f": {
+    "base_branch": "copilot/dm-05f-business-invariants-on-loaded-data-305c5685-5057-4d08-a341-3384dd5ea4db",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:40:51+00:00",
+    "issue": 1473,
+    "work_pr": 1427
+  },
+  "synthetic-ll-02": {
+    "base_branch": "copilot/ll-02-lend-and-return-books-c1ded41c-b94f-4b46-ae50-a2fefc25661c",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:40:54+00:00",
+    "issue": 1476,
+    "work_pr": 1428
+  },
+  "synthetic-ll-03": {
+    "base_branch": "copilot/ll-03-view-and-pay-late-fees-c0ac3640-8549-4695-9c62-86f578bf02ec",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:40:57+00:00",
+    "issue": 1477,
+    "work_pr": 1430
+  },
+  "synthetic-ll-04": {
+    "base_branch": "copilot/ll-04-modernize-library-info-page-a59f744a-99d8-475c-a5a9-c584c1b7b5e4",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:41:01+00:00",
+    "issue": 1478,
+    "work_pr": 1431
+  },
+  "synthetic-ll-05": {
+    "base_branch": "copilot/ll-05-produce-monthly-report-c22228eb-cd5d-4143-978e-f58c35540a46",
+    "chained_from": "2026-11-18-4rb-r2",
+    "dispatched_at": "2026-11-18T15:41:04+00:00",
+    "issue": 1485,
+    "work_pr": 1432
+  }
+}
