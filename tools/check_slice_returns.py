@@ -255,12 +255,15 @@ def problems(repo, subs, returned, since):
 
 
 def human_check_problems(repo, subs, current):
-    """ADR-0036: a slice epic closes only once its Slice Coordinator's human check is `passed`. A
-    requested, deferred or failed check under the epic keeps it open (no Coordinator return: nothing to check)."""
+    """ADR-0036: a slice epic closes only once its acceptance return's human check is `passed` (ADR-0050: the
+    orchestrator's `acceptance` block, or a retired Slice Coordinator's return). A requested, deferred or
+    failed check under the epic keeps it open (no acceptance return: nothing to check)."""
+    from check_signoff import acceptance
     numbers = {f"{repo}#{s['number']}" for s in subs}
     out = []
     for path, doc in sorted(current.items()):
-        if doc.get("role") != "afs-slice-coordinator" or doc.get("issue") not in numbers:
+        doc = acceptance(doc)               # the orchestrator's acceptance block, or a retired coordinator's
+        if not doc or doc.get("issue") not in numbers:
             continue
         check = doc.get("human_check")
         if check != "passed":

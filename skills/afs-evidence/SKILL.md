@@ -49,7 +49,7 @@ target observation, expected target behavior and the decision or independent evi
 Keep approved divergences, comparison defects, unresolved quirks and implementation defects distinct.
 Record remaining failures honestly; a corrected oracle is not evidence that production now passes.
 
-## Slice evidence report (Slice Coordinator, Auditor)
+## Slice evidence report (Program Orchestrator's slice acceptance, Auditor)
 Write `.migration/evidence/<slice>/report.md` (committed):
 ```markdown
 # Slice <slice> — acceptance evidence

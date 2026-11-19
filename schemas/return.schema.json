@@ -1087,194 +1087,6 @@
       "if": {
         "properties": {
           "role": {
-            "const": "afs-slice-coordinator"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "slice",
-          "tickets",
-          "acceptance",
-          "human_check",
-          "human_check_issues",
-          "quirk_tickets"
-        ],
-        "properties": {
-          "slice": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tickets": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "required": [
-              "total",
-              "merged",
-              "open",
-              "blocked"
-            ],
-            "properties": {
-              "total": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "merged": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "open": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "blocked": {
-                "type": [
-                  "array",
-                  "null"
-                ],
-                "items": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              }
-            }
-          },
-          "acceptance": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "required": [
-              "report",
-              "gates",
-              "mutation_score",
-              "coverage_gaps"
-            ],
-            "properties": {
-              "report": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "gates": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "mutation_score": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "number",
-                      "null"
-                    ],
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              },
-              "coverage_gaps": {
-                "anyOf": [
-                  {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "minimum": 0
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^n/a: \\S"
-                  }
-                ]
-              }
-            }
-          },
-          "human_check": {
-            "enum": [
-              "requested",
-              "passed",
-              "issues",
-              "deferred",
-              null
-            ]
-          },
-          "human_check_issues": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "quirk_tickets": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "role": {
             "const": "afs-verifier"
           }
         }
@@ -1630,6 +1442,194 @@
               "string",
               "null"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "const": "afs-slice-coordinator"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "slice",
+          "tickets",
+          "acceptance",
+          "human_check",
+          "human_check_issues",
+          "quirk_tickets"
+        ],
+        "properties": {
+          "slice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tickets": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "total",
+              "merged",
+              "open",
+              "blocked"
+            ],
+            "properties": {
+              "total": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "merged": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "open": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "blocked": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "acceptance": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "report",
+              "gates",
+              "mutation_score",
+              "coverage_gaps"
+            ],
+            "properties": {
+              "report": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "gates": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mutation_score": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              },
+              "coverage_gaps": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^n/a: \\S"
+                  }
+                ]
+              }
+            }
+          },
+          "human_check": {
+            "enum": [
+              "requested",
+              "passed",
+              "issues",
+              "deferred",
+              null
+            ]
+          },
+          "human_check_issues": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "quirk_tickets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         }
       }

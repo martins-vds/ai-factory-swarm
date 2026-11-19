@@ -7,11 +7,10 @@ issue to the Copilot coding agent and pick the agent).
 
 | Agent | Layer | Phase | Writes |
 |---|---|---|---|
-| [`afs-program-orchestrator`](afs-program-orchestrator.agent.md) | L0 | all | tracker, `.migration/` decisions; at intake, the setup PR (`afs-bootstrap` skill, ADR-0046) |
+| [`afs-program-orchestrator`](afs-program-orchestrator.agent.md) | L0 | all | tracker, `.migration/` decisions; at intake, the setup PR (`afs-bootstrap` skill, ADR-0046); every slice's ticket loop and acceptance (`afs-slice-acceptance`, ADR-0050) |
 | [`afs-analyst`](afs-analyst.agent.md) | L1 | 2 | graphs, ledger, risk map |
 | [`afs-characterizer`](afs-characterizer.agent.md) | L1 | 3 | characterization suite, ledger evidence |
 | [`afs-planner`](afs-planner.agent.md) | L1 | 4 | draft slice plan |
-| [`afs-slice-coordinator`](afs-slice-coordinator.agent.md) | L1 | 5–6 | tracker, slice evidence report |
 | [`afs-migrator`](afs-migrator.agent.md) | L2 | 5 | target code, one PR per ticket, self-verified (ADR-0045); data / UI / messaging tickets add the `afs-specialty` skill (ADR-0042) |
 | [`afs-verifier`](afs-verifier.agent.md) | L2 | 5 | tests and a verdict (never production code); audits and evals only since ADR-0045 |
 | [`afs-auditor`](afs-auditor.agent.md) | L1/L0 | 6–7 | audit reports and gap tickets (read-only) |
@@ -23,8 +22,7 @@ edit its PR description after opening it, and it has no user token. So:
 
 - **Tracker writes and dispatch** (assigning a ticket to Copilot with a custom agent, opening quirk and
   gap issues, blocking edges, labels, merges) belong to whoever holds a user token: the Program
-  Orchestrator locally, or the operator. A remote Slice Coordinator cannot dispatch workers; run it
-  locally, or let L0 dispatch for it.
+  Orchestrator locally, or the operator.
 - **Everything a remote agent must leave behind is a committed file** — return file, handoff, quirk
   drafts, run journal (`afs-migration-contract` → Durable outputs). The dispatcher reads those files,
   turns quirk drafts into issues, and links them.

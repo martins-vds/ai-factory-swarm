@@ -94,7 +94,6 @@
         "analyst",
         "characterizer",
         "planner",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -111,7 +110,6 @@
         "analyst",
         "characterizer",
         "planner",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -128,7 +126,6 @@
         "analyst",
         "characterizer",
         "planner",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -141,10 +138,10 @@
       "path": "skills/afs-ledger",
       "install": "harness",
       "roles": [
+        "program-orchestrator",
         "analyst",
         "characterizer",
         "planner",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -183,13 +180,23 @@
       "notes": "Phase 0: prepare the target at intake; replaces the Bootstrapper role (ADR-0046)."
     },
     {
+      "name": "afs-slice-acceptance",
+      "category": "orchestration",
+      "path": "skills/afs-slice-acceptance",
+      "install": "harness",
+      "roles": [
+        "program-orchestrator"
+      ],
+      "notes": "Slice acceptance: gates, Auditor, report, generated reconciliation, human check and sign-off; replaces the Slice Coordinator's acceptance (ADR-0050)."
+    },
+    {
       "name": "afs-evidence",
       "category": "state",
       "path": "skills/afs-evidence",
       "install": "harness",
       "roles": [
+        "program-orchestrator",
         "characterizer",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -201,9 +208,9 @@
       "path": "skills/afs-quirk-ticket",
       "install": "harness",
       "roles": [
+        "program-orchestrator",
         "analyst",
         "characterizer",
-        "slice-coordinator",
         "migrator",
         "verifier",
         "auditor"
@@ -227,7 +234,7 @@
       "path": "skills/engineering/wayfinder",
       "install": "vendored",
       "roles": [
-        "slice-coordinator"
+        "program-orchestrator"
       ],
       "notes": "Model-invocable copy for working through the map unattended."
     },
@@ -248,8 +255,8 @@
       "path": "skills/engineering/to-tickets",
       "install": "vendored",
       "roles": [
-        "planner",
-        "slice-coordinator"
+        "program-orchestrator",
+        "planner"
       ]
     },
     {
@@ -444,9 +451,9 @@
       "path": "skills/verification-before-completion",
       "install": "upstream",
       "roles": [
+        "program-orchestrator",
         "migrator",
-        "verifier",
-        "slice-coordinator"
+        "verifier"
       ]
     },
     {
@@ -498,7 +505,7 @@
       "path": "skills/dispatching-parallel-agents",
       "install": "upstream",
       "roles": [
-        "slice-coordinator"
+        "program-orchestrator"
       ]
     },
     {
@@ -508,7 +515,7 @@
       "path": "skills/using-git-worktrees",
       "install": "upstream",
       "roles": [
-        "slice-coordinator"
+        "program-orchestrator"
       ]
     },
     {
@@ -627,9 +634,9 @@
       "path": ".agents/skills/lessons-learned",
       "install": "upstream",
       "roles": [
+        "program-orchestrator",
         "migrator",
-        "characterizer",
-        "slice-coordinator"
+        "characterizer"
       ],
       "license": "MIT",
       "licenseEvidence": ".agents/skills/lessons-learned/LICENSE"

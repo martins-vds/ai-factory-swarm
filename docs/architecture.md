@@ -112,6 +112,7 @@ humans, and approved for cutover.
 | 47 | Merges and parallel dispatch go through tools: `afs-merge` (never `merge-async`), `stack_refresh.py` at any depth, `check_dispatch_paths.py` before dispatch and in CI | [0047](adr/0047-merges-and-parallel-dispatch-go-through-tools.md) |
 | 48 | Plan checks catch what planning lost: target anchors under `builds:`, pages under `graph.target_paths`, removals with their importing tests, and issue file lists that match the plan | [0048](adr/0048-plan-checks-catch-what-planning-lost.md) |
 | 49 | Ticket reconciliation is generated, then reviewed: `reconcile_epic.py` writes each disposition the check's own rules prove and marks the rest `needs_review` | [0049](adr/0049-ticket-reconciliation-is-generated-then-reviewed.md) |
+| 50 | The Slice Coordinator folds into the Program Orchestrator: one dispatcher loop runs every slice's tickets, and slice acceptance is the `afs-slice-acceptance` skill, whose return is the orchestrator's `acceptance` block | [0050](adr/0050-the-slice-coordinator-folds-into-the-program-orchestrator.md) |
 
 ---
 
@@ -186,11 +187,10 @@ Roles evolve from PR #6's seven agents. New roles are marked ★.
 
 | Role | Layer | Responsibility | Writes |
 |------|-------|----------------|--------|
-| **Program Orchestrator** | L0 | Intake and bootstrap (the `afs-bootstrap` skill; the separate Bootstrapper role was folded in, ADR-0046); owns the decision map, slice plan, human gates, escalations and cutover readiness. Dispatches slice coordinators. Never writes application code. Human-triggered. | Tracker, `.migration/` (via PR) |
+| **Program Orchestrator** | L0 | Intake and bootstrap (the `afs-bootstrap` skill; the separate Bootstrapper role was folded in, ADR-0046); runs every slice's ticket loop and slice acceptance (the `afs-slice-acceptance` skill; the separate Slice Coordinator was folded in, ADR-0050); owns the decision map, slice plan, human gates, escalations and cutover readiness. Dispatches slice coordinators. Never writes application code. Human-triggered. | Tracker, `.migration/` (via PR) |
 | **Analyst** | L1 | Builds the source graph and domain graph with Understand Anything, inventories every capability into the ledger, produces the source risk map, flags quirk candidates. | Ledger, graph snapshot, risk map |
 | ★ **Characterizer** | L1 | Builds a harness around the source and records its observable behavior as characterization tests; inventories legacy tests and the behavior they assert; re-runs the risk map with characterization coverage. | `.migration/characterization/`, ledger |
 | **Planner** | L1 | Proposes vertical slices from the graph, ledger and risk map, with dependency edges and sizing; includes data-migration slices. | Draft slice plan |
-| ★ **Slice Coordinator** | L1 | Owns one slice end to end: sequences its tickets on the frontier, dispatches workers, runs slice acceptance, keeps the ledger in sync. | Tracker comments, evidence |
 | **Migrator** | L2 | Implements exactly one ticket test-first in the target. One per ticket; many in parallel. A ticket with `specialty:` (**data migration** §11, **UI** in the chosen UI direction, messaging) loads the `afs-specialty` skill; the separate Specialist Migrator role was folded in (ADR-0042). | Target code (one PR per ticket), data pipeline |
 | **Verifier** | L2 | Fresh context, no builder reasoning. Runs the per-PR gates (§10.3), including CRAP and mutation on changed code; adds tests where coverage or mutation score is short. Reports, never fixes production code. | Tests, evidence |
 | **Auditor** | L1 / L0 | Read-only, first-principles. Per slice: capability coverage and differential checks. Final: full bidirectional audit and the A–G report. Ignores progress labels. | Evidence report |
@@ -199,7 +199,7 @@ Rules carried over from PR #6 and kept binding:
 
 - **Artifacts, not conversation.** Hand-offs pass ids and paths (ticket, profile, ledger, graph).
 - **Independent verification.** Verifier and Auditor never receive the builder's reasoning.
-- **Verify, don't trust.** A coordinator re-reads fresh evidence before accepting "done".
+- **Verify, don't trust.** The orchestrator re-reads fresh evidence before accepting "done".
 - **Stop rules.** Same failure after two honest attempts, a real limit, or a graph discrepancy →
   stop and escalate.
 - **No hidden state.** Discovered work, reorderings and deferrals are written down immediately.
@@ -300,9 +300,9 @@ Mandatory, before any migration ([ADR-0005](adr/0005-characterization-first.md))
 4. Every ledger capability maps to a slice or to an explicit, justified deferral.
 5. **Human gate:** the operator approves the slice plan. Then `to-tickets` publishes it (§12).
 
-### Phase 5 — Execute (Slice Coordinators → Migrators / Verifiers)
+### Phase 5 — Execute (Program Orchestrator → Migrators)
 For each ticket on the frontier:
-1. Coordinator claims it and dispatches a Migrator with the ticket id and profile, ledger and graph
+1. The orchestrator claims it and dispatches a Migrator with the ticket id and profile, ledger and graph
    paths.
 2. Migrator: resolve dependencies from the graph → write failing target tests from the ticket's
    characterization cases and transcribed legacy tests → implement idiomatically → refactor →
@@ -312,7 +312,7 @@ For each ticket on the frontier:
 4. **Human gate:** PR review and merge.
 5. Out-of-scope discoveries become new tickets; quirks become question tickets (§14).
 
-### Phase 6 — Slice acceptance (Slice Coordinator + Auditor)
+### Phase 6 — Slice acceptance (Program Orchestrator with `afs-slice-acceptance`, + Auditor)
 When every ticket in the slice is merged:
 1. Run the slice's end-to-end characterization suite against the target.
 2. Run **automated differential checks** where feasible (§10.2).
@@ -661,7 +661,7 @@ application, not a particular hierarchy.
 | **Decision map** | Architecture, mappings, data strategy, **quirk rulings**, capability gaps | `wayfinder` | One `wayfinder:map` issue; decision tickets as sub-issues with `wayfinder:<type>` labels |
 | **Slice tickets** | Build work: one ticket per agent session, acceptance criteria from the ledger | `to-tickets` | `ready-for-agent` issues grouped under a slice parent via sub-issues; native blocking edges |
 
-- **Frontier:** open, unblocked, unclaimed tickets. Coordinators pull only from the frontier.
+- **Frontier:** open, unblocked, unclaimed tickets. The orchestrator pulls only from the frontier.
 - **Claim:** assign before any work, so concurrent agents skip it.
 - **Decisions block builds** only where they apply (native blocking edges).
 - **Sizing:** one ticket fits one fresh agent context; wide mechanical changes use expand →
@@ -676,15 +676,12 @@ application, not a particular hierarchy.
 ```mermaid
 flowchart TB
   OP((Operator)) <--> L0[L0 · Program Orchestrator]
-  L0 --> C1[L1 · Slice Coordinator A]
-  L0 --> C2[L1 · Slice Coordinator B]
-  L0 --> CN[L1 · …]
-  C1 --> W1[L2 · Migrator #142]
-  C1 --> W2[L2 · Verifier #142]
-  C2 --> W3[L2 · Migrator #157]
-  C2 --> W4[L2 · Data Specialist #160]
+  L0 --> W1[L2 · Migrator #142]
+  L0 --> W3[L2 · Migrator #157]
+  L0 --> W4[L2 · Migrator #160, data specialty]
+  L0 --> A1[L2 · Auditor, slice acceptance]
   W1 & W3 & W4 -- PRs --> T[(Target repo)]
-  C1 & C2 -- frontier queries,\nclaims, comments --> I[(Tracker)]
+  L0 -- frontier queries,\nclaims, comments --> I[(Tracker)]
 ```
 
 **Scaling principle:** no agent holds the whole migration in context. State lives in the tracker and

@@ -253,6 +253,8 @@ These are added to `tools/check_plan.py`, each with a fixture from the run that 
 
 ### 3d: Slice Coordinator → Program Orchestrator + `afs-slice-acceptance` skill (finding 3)
 
+**Status (2026-11-19): built (ADR-0050, proposed).** Rolls out to the synthetic target only after its open side-by-side checks finish (Ground rules).
+
 1. **ADR** (one dispatcher loop). Amends ADR-0024, ADR-0030, ADR-0031 and ADR-0036. It decides one open
    question, the acceptance return. My recommendation:
    - the orchestrator commits `.migration/returns/<acceptance-ticket>.afs-program-orchestrator.yaml`;

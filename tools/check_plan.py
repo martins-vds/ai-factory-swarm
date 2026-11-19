@@ -48,12 +48,17 @@ HERE = pathlib.Path(__file__).resolve().parent
 IMPLEMENTATION = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
 # Retired roles stay valid on finished tickets (history is never rewritten); an open ticket can't use one.
 RETIRED_ROLES = {"afs-specialist-migrator": "use `role: afs-migrator` and keep `specialty:` (ADR-0042)",
-                 "afs-bootstrapper": "the Program Orchestrator prepares the target with the `afs-bootstrap` skill (ADR-0046)"}
+                 "afs-bootstrapper": "the Program Orchestrator prepares the target with the `afs-bootstrap` skill (ADR-0046)",
+                 "afs-slice-coordinator": "use `role: afs-program-orchestrator`: it runs the ticket loop and the "
+                                          "`afs-slice-acceptance` skill (ADR-0050)"}
 # A retired role and the role it folded into are one role for ticket ids: rework of a ticket the retired role
 # finished is done by its successor, under the same id (eval fold-r1..r3: BK-05F and BK-05G rework).
-FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator"}
-# Roles that work on another role's ticket and keep that ticket's id.
-SHARED_ID_ROLES = {"afs-verifier", "afs-slice-coordinator", "afs-auditor"}
+FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator",
+               "afs-slice-coordinator": "afs-program-orchestrator"}
+# Roles that work on another role's ticket and keep that ticket's id. The retired Slice Coordinator stays a
+# legacy one: its committed returns on other roles' tickets stay valid (ADR-0050).
+SHARED_ID_ROLES = {"afs-verifier", "afs-auditor"}
+LEGACY_SHARED_ID_ROLES = {"afs-slice-coordinator"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", ".source", ".migration", "__pycache__"}
 
 
@@ -161,7 +166,7 @@ def check(folder, schemas, errors, sample=False):
     returned = returns_by_ticket(folder)
     for t in tickets:
         path = where[t["id"]]
-        others = returned.get(t["id"], set()) - same_role(t["role"]) - SHARED_ID_ROLES
+        others = returned.get(t["id"], set()) - same_role(t["role"]) - SHARED_ID_ROLES - LEGACY_SHARED_ID_ROLES
         if others:
             errors.append(f"{path}: ticket id {t['id']} is already used by {', '.join(sorted(others))} "
                           f"(.migration/returns/): pick a new id")

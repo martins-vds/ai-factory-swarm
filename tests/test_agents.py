@@ -16,7 +16,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
-ROLES = ["program-orchestrator", "analyst", "characterizer", "planner", "slice-coordinator",
+ROLES = ["program-orchestrator", "analyst", "characterizer", "planner",
          "migrator", "verifier", "auditor"]
 MAX_AGENT_CHARS = 9000
 FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.S)
@@ -76,7 +76,6 @@ class AgentsTest(unittest.TestCase):
 
     def test_coordinator_return_examples_parse_as_string_lists(self):
         examples = [
-            ("afs-slice-coordinator", "tickets", "blocked", "<link: blocker>"),
             ("afs-program-orchestrator", "", "decisions", "<ticket link: one-line answer>"),
             ("afs-program-orchestrator", "", "awaiting_human", "<ticket link: what is needed>"),
         ]
@@ -89,6 +88,13 @@ class AgentsTest(unittest.TestCase):
                 items = parsed[parent][key] if parent else parsed[key]
                 self.assertEqual(items, [expected])
                 self.assertTrue(all(isinstance(item, str) for item in items))
+
+    def test_the_acceptance_return_example_parses(self):
+        # ADR-0050: the Slice Coordinator's return became the orchestrator's `acceptance` block.
+        text = (ROOT / "skills" / "afs-slice-acceptance" / "SKILL.md").read_text(encoding="utf-8")
+        block = yaml.safe_load(re.search(r"```yaml\n(.*?)```", text, re.S).group(1))["acceptance"]
+        self.assertEqual(block["tickets"]["blocked"], ["<link: blocker>"])
+        self.assertIn("human_check", block)
 
     def test_harness_skills_are_well_formed(self):
         harness = [e for e in LOCK["skills"] if e.get("install") == "harness"]

@@ -41,6 +41,7 @@
               "afs-characterizer",
               "afs-migrator",
               "afs-planner",
+              "afs-program-orchestrator",
               "afs-slice-coordinator",
               "afs-specialist-migrator",
               "afs-verifier"

@@ -19,7 +19,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
    migration.
 4. **Plan** — chart open decisions on a Wayfinder map; break the work, including data migration, into
    vertical slices with dependency edges. A human approves the slice plan.
-5. **Execute** — slice coordinators dispatch migrator agents, which verify their own work (local, or the Copilot
+5. **Execute** — the program orchestrator dispatches migrator agents, which verify their own work (local, or the Copilot
    coding agent), one ticket and one PR at a time. Gates include CRAP and mutation testing. Humans
    merge every PR and answer every quirk.
 6. **Accept each slice** — automated differential checks, then a human side-by-side check.

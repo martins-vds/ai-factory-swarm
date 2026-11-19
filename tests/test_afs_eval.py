@@ -262,7 +262,8 @@ class RetiredRoleTest(unittest.TestCase):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.
         import argparse
         self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=None)),
-                         {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator"})
+                         {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator",
+                          "afs-slice-coordinator": "afs-program-orchestrator"})
         self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=["a=b"]))["a"], "b")
 
 
