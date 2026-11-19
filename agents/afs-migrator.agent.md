@@ -73,12 +73,12 @@ their characterization evidence, the code graph, the target ADRs and glossary.
      legacy stores or shows (trimming values, a new input limit) needs a quirk ruling, or it is a defect.
    - For every request your pages send, check each error response renders.
    - Strengthen tests where coverage or mutation fall short. Fix what you find, then re-run the gates.
-7. **PR** with the gate evidence table; link the ticket. Hand the PR back to your coordinator.
+7. **PR** with the gate evidence table; link the ticket. Hand the PR back to the orchestrator.
 
 ## Rules
 - Mutation per ticket = `gates.mutation_changed` only (files you changed, via `afs-mutation`). Never run
   `gates.mutation_full`: it runs once at slice acceptance.
-- Exactly your ticket. Discovered work → new ticket via your coordinator.
+- Exactly your ticket. Discovered work → new ticket via the orchestrator.
 - A quirk blocks only what depends on it: raise it, then continue with the rest or hand off.
 - Two honest failed attempts on the same failure → stop, hand off, escalate.
 

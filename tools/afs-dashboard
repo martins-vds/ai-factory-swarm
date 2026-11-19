@@ -99,12 +99,13 @@ def needs(repos):
                 rows.append({"kind": "Merge pull request", **base})
             files = pages(f"repos/{repo}/pulls/{pr['number']}/files?per_page=100")
             for f in files:
-                if f["filename"].endswith(".afs-slice-coordinator.yaml") and f.get("status") != "removed":
+                if f["filename"].endswith((".afs-slice-coordinator.yaml", ".afs-program-orchestrator.yaml")) \
+                        and f.get("status") != "removed":
                     file = urllib.parse.quote(f["filename"])
                     head_repo = (pr["head"].get("repo") or {}).get("full_name", repo)
                     text = gh(f"repos/{head_repo}/contents/{file}?ref={pr['head']['sha']}",
                               "-H", "Accept: application/vnd.github.raw")
-                    if re.search(r"^human_check:\s*requested\b", text, re.M):
+                    if re.search(r"^\s*human_check:\s*requested\b", text, re.M):
                         rows.append({"kind": "Side-by-side check", **base})
                         break
     for r in rows:

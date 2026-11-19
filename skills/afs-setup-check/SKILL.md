@@ -45,7 +45,9 @@ python .migration/harness/tools/afs-services check
 # 7. Runtimes are the versions the profile declares (e.g. python-3.13 in target.stacks)
 python .migration/harness/tools/check_runtime.py
 ```
-Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. A failed check 7
+**Before the harness is installed** (intake: the Program Orchestrator running `afs-bootstrap`, ADR-0046),
+only checks 1–2 apply; checks 3–7 need `.migration/harness/`, which bootstrap installs. Their absence is not
+a failure then. Roles that do not read the source (e.g. Program Orchestrator, Planner) skip check 1. A failed check 7
 means the session runs a different runtime than CI and the profile: stop, never run the gates on it. Roles that do not
 run tests (Program Orchestrator, Planner, Analyst) skip check 6. If check 6 fails, try
 `python .migration/harness/tools/afs-services up` once (it prints the services' logs on failure) —

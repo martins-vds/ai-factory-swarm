@@ -40,7 +40,7 @@ a human. Body:
 ### Remote workers without issue access
 If you cannot create issues from your session (e.g. a Copilot coding agent), write each ticket body
 (the template above, title as the first `# ` line) to `.migration/quirks/<short-id>.md` in your PR and
-list the paths under `quirk_tickets`. The coordinator opens them on the decision map, deletes the files
+list the paths under `quirk_tickets`. The orchestrator opens them on the decision map, deletes the files
 and adds the issue to `quirks` in each affected ledger entry (the file's *Impact* section lists them).
 
 ## Then

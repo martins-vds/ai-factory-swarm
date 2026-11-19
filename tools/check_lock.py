@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ALLOWED_LICENSES = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"}
-ROLES = {"program-orchestrator", "bootstrapper", "analyst", "characterizer", "planner", "slice-coordinator",
+ROLES = {"program-orchestrator", "analyst", "characterizer", "planner",
          "migrator", "specialist-migrator", "verifier", "auditor"}
 INSTALL = {"upstream", "vendored", "harness"}
 SHA = re.compile(r"^[0-9a-f]{40}$")

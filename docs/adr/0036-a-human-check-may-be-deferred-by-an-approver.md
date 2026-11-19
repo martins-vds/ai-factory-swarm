@@ -1,6 +1,6 @@
 # ADR-0036: A slice's human check may be deferred, by an approver, with a tracked deadline
 
-- Status: Accepted (martins-vds, 2026-11-07: "Merge … 119")
+- Status: Accepted (martins-vds, 2026-11-07: "Merge … 119"); amended by ADR-0050 (the Program Orchestrator runs slice acceptance)
 - Date: 2026-11-07
 - Amends: ADR-0031
 

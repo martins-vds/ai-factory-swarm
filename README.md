@@ -19,7 +19,7 @@ or A → a newer A — with **high fidelity**, on codebases of any size.
    migration.
 4. **Plan** — chart open decisions on a Wayfinder map; break the work, including data migration, into
    vertical slices with dependency edges. A human approves the slice plan.
-5. **Execute** — slice coordinators dispatch migrator agents, which verify their own work (local, or the Copilot
+5. **Execute** — the program orchestrator dispatches migrator agents, which verify their own work (local, or the Copilot
    coding agent), one ticket and one PR at a time. Gates include CRAP and mutation testing. Humans
    merge every PR and answer every quirk.
 6. **Accept each slice** — automated differential checks, then a human side-by-side check.
@@ -129,10 +129,13 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `check_slice_returns.py`: a slice epic closes only with every return file
 - `check_signoff.py`: a slice's human sign-off is an approver's review on the exact head commit
 - `ticket_guard.py`: reopen a ticket closed before its work reached the default branch
+- `reconcile_epic.py`: write a slice epic's ticket-reconciliation file from the evidence the check computes; what it can't prove is marked `needs_review` (ADR-0049)
 - `check_stack_base.py`: a stacked PR's base contains the default branch
 - `stack_refresh.py`: merge the default branch into open stacked PRs bottom-up when it moves (ADR-0038)
 - `close_gap_issues.py`: on main, close capability-gap issues whose checklist entry is met, waived or not applicable
 - `check_verified_merge.py`: a PR into the default branch that changes a migrator return is verified: self-verified for `afs-migrator` (an audit of the current work must pass), a later passing Verifier return for the retired specialist role (ADR-0040, ADR-0045)
+- `afs-merge`: `work` merges a work PR into the default branch only when it is not stacked, nothing is stacked on it and every check (verified-merge included) is green, never with `merge-async`; `verifier` merges an audit Verifier PR into its work branch with `--no-ff` (ADR-0047)
+- `check_dispatch_paths.py`: concurrent work (tickets dispatched together, open PRs) owns distinct files, and no new module shadows a package or back (ADR-0047); CI runs it on every PR
 - `fog_rewalk.py`: re-walk the decision map's fog after a slice
 
 **Costs and coverage**

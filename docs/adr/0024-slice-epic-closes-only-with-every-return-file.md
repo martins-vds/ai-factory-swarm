@@ -1,6 +1,6 @@
 # ADR-0024: A slice epic closes only when every ticket under it left its return file
 
-- Status: Accepted
+- Status: Accepted; amended by ADR-0050 (the Program Orchestrator runs slice acceptance)
 - Date: 2026-11-03
 
 ## Context

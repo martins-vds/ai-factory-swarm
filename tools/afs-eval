@@ -235,6 +235,22 @@ def apply_normalize(tree, ops, source_dir, part="base"):
     return done
 
 
+def harness_copy(tree, harness, copies):
+    """A case that runs before the harness is installed (a bootstrap case) still needs the agent and skills
+    under test: copy them from the harness checkout, as bootstrap would place them (ADR-0046: the
+    orchestrator's `afs-bootstrap` skill)."""
+    done = []
+    for c in copies or []:
+        src, dest = pathlib.Path(harness) / c["from"], pathlib.Path(tree) / c["to"]
+        if src.is_dir():
+            shutil.copytree(src, dest, dirs_exist_ok=True)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+        done.append(f"copy harness {c['from']} to {c['to']}")
+    return done
+
+
 ROLE_MAP_FOR_PREPARE = {}
 
 
@@ -292,6 +308,8 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
         notes += replan_open_tickets(wt, ROLE_MAP_FOR_PREPARE)
         if case.get("install", True):      # a bootstrap case starts before any harness is installed
             install(wt, harness, case.get("stack_pack", "java-to-django"), allow_unreleased)
+        else:
+            notes += harness_copy(wt, harness, case.get("harness_copy"))
         harness_sha = git(harness, "rev-parse", "--short", "HEAD").stdout.strip()
         git(wt, "add", "-A")
         msg = (f"Eval case {case['id']}: {label} at {sha[:12]} with harness {harness_sha}\n\n"

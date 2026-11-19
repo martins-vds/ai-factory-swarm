@@ -775,6 +775,11 @@ class HumanCheckTest(unittest.TestCase):
                     self.assertIn("tracked in o/r#418", found[0])
         other = {"role": "afs-slice-coordinator", "issue": "o/r#999", "human_check": "requested"}
         self.assertEqual(csr.human_check_problems("o/r", subs, {"y": other}), [], "another epic's coordinator")
+        # ADR-0050: the orchestrator's acceptance block keeps the epic open the same way.
+        orch = {"role": "afs-program-orchestrator", "issue": "o/r#413", "acceptance": {"human_check": "requested"}}
+        self.assertEqual(len(csr.human_check_problems("o/r", subs, {"z.afs-program-orchestrator.yaml": orch})), 1)
+        orch["acceptance"]["human_check"] = "passed"
+        self.assertEqual(csr.human_check_problems("o/r", subs, {"z.afs-program-orchestrator.yaml": orch}), [])
 
 
 PLANNER = """role: afs-planner
