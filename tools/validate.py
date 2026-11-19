@@ -41,7 +41,8 @@ PR_ATTRIBUTION_RULE_V1 = "PR_ATTRIBUTION_RULE_V1"  # Stable history marker for r
 VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns committed before this rule are exempt.
 VERIFIER_RULES_RULE_V1 = "VERIFIER_RULES_RULE_V1"  # Phase 3e (rules checked): earlier returns are exempt.
 LEDGER_RULES_RULE_V1 = "LEDGER_RULES_RULE_V1"  # Phase 3e (rules in the ledger): earlier returns are exempt.
-MIGRATOR_SELF_VERIFY_RULE_V1 = "MIGRATOR_SELF_VERIFY_RULE_V1"  # ADR-0045: earlier Migrator returns are exempt.
+MIGRATOR_SELF_VERIFY_RULE_V1 = "MIGRATOR_SELF_VERIFY_RULE_V1"
+PLAN_ANCHORS_RULE_V1 = "PLAN_ANCHORS_RULE_V1"  # ADR-0048 (builds: for target anchors): earlier plans are exempt.  # ADR-0045: earlier Migrator returns are exempt.
 
 
 def load_schema(schemas, name):
