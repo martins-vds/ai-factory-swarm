@@ -1,6 +1,6 @@
 # ADR-0030: Reconcile slice tickets before coordinator completion
 
-- Status: Accepted; amended 2026-11-07 (killed sessions)
+- Status: Accepted; amended 2026-11-07 (killed sessions); amended by ADR-0049 (the file is generated, then reviewed)
 - Date: 2026-11-05
 
 ## Context
