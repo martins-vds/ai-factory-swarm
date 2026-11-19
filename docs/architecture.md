@@ -116,6 +116,7 @@ humans, and approved for cutover.
 | 51 | The Analyst and the Characterizer run as one session when the scope fits: phase 4b's one session matched the two on the billing case at about a third less time; the combined return contract and a larger-scope eval come first | [0051](adr/0051-analyst-and-characterizer-run-as-one-session-when-the-scope-fits.md) |
 | 52 | The Auditor stays: the independent, read-only check after the loop, now the one reviewer that isn't the author | [0052](adr/0052-the-auditor-stays.md) |
 | 53 | Skills and prompts are audited after each milestone: skills by usage (12 per role, exceptions recorded), 6,000 characters per agent file, and an eval for any change | [0053](adr/0053-skills-and-prompts-are-audited-after-each-milestone.md) |
+| 54 | An eval run measures the harness only when the session started with its tools: RTK from the release URL, `setup-failure` rows that don't count, prepare refuses cases that start on validation errors | [0054](adr/0054-an-eval-run-measures-the-harness-only-when-the-session-started-with-its-tools.md) |
 
 ---
 
