@@ -108,6 +108,7 @@ humans, and approved for cutover.
 | 43 | Layer contracts from the ADRs live in the profile (`layering`) and `check_layers.py` checks them in the idiom gate; a Verifier's verdict follows its findings, and every serious finding cites a failing test or run | [0043](adr/0043-layering-is-a-gate-and-a-verifier-verdict-follows-evidence.md) |
 | 44 | The Verifier stays an independent session: phase 4a found no defect reaching a merge candidate in either configuration, so it was inconclusive; re-run on cases that start clean | [0044](adr/0044-the-verifier-stays-phase-4a-was-inconclusive.md) |
 | 45 | The Verifier folds into the Migrator for Migrator tickets; phase 4a round 2 met the rule (A's Verifier caught two major defects, B had none on a merge candidate, at about a third less cost) | [0045](adr/0045-the-verifier-folds-into-the-migrator.md) |
+| 46 | The Bootstrapper folds into the Program Orchestrator: intake runs the `afs-bootstrap` skill, the tier-C proof moves into `capabilities.yaml`, and the retired role's returns stay valid | [0046](adr/0046-the-bootstrapper-folds-into-the-program-orchestrator.md) |
 
 ---
 
@@ -182,8 +183,7 @@ Roles evolve from PR #6's seven agents. New roles are marked ★.
 
 | Role | Layer | Responsibility | Writes |
 |------|-------|----------------|--------|
-| **Program Orchestrator** | L0 | Intake; owns the decision map, slice plan, human gates, escalations and cutover readiness. Dispatches slice coordinators. Never writes application code. Human-triggered. | Tracker, `.migration/` (via PR) |
-| ★ **Bootstrapper** | L0 | Detects stacks, runs the capability checklist, builds the profile, installs pinned agents and skills, configures the tracker, scaffolds the target. Opens operator tickets for capability gaps. | Target repo (setup PR) |
+| **Program Orchestrator** | L0 | Intake and bootstrap (the `afs-bootstrap` skill; the separate Bootstrapper role was folded in, ADR-0046); owns the decision map, slice plan, human gates, escalations and cutover readiness. Dispatches slice coordinators. Never writes application code. Human-triggered. | Tracker, `.migration/` (via PR) |
 | **Analyst** | L1 | Builds the source graph and domain graph with Understand Anything, inventories every capability into the ledger, produces the source risk map, flags quirk candidates. | Ledger, graph snapshot, risk map |
 | ★ **Characterizer** | L1 | Builds a harness around the source and records its observable behavior as characterization tests; inventories legacy tests and the behavior they assert; re-runs the risk map with characterization coverage. | `.migration/characterization/`, ledger |
 | **Planner** | L1 | Proposes vertical slices from the graph, ledger and risk map, with dependency edges and sizing; includes data-migration slices. | Draft slice plan |
@@ -235,7 +235,7 @@ Record the source repo URL and **pinned SHA**, target repo, target stack and ver
 front end** — tracker, data stores, and who takes production snapshots (usually the operations team). Write
 `.migration/source.lock`.
 
-### Phase 1 — Bootstrap (Bootstrapper)
+### Phase 1 — Bootstrap (Program Orchestrator, `afs-bootstrap` skill)
 1. Detect source stacks (languages, frameworks, build tools, data stores, UI tech, integrations).
 2. Run the **required-capability checklist** (§6): for each capability, find a skill or tool for the
    source and target stacks — first in the built-in skill menu, then with `find-skills`.

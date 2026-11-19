@@ -7,8 +7,7 @@ issue to the Copilot coding agent and pick the agent).
 
 | Agent | Layer | Phase | Writes |
 |---|---|---|---|
-| [`afs-program-orchestrator`](afs-program-orchestrator.agent.md) | L0 | all | tracker, `.migration/` decisions |
-| [`afs-bootstrapper`](afs-bootstrapper.agent.md) | L0 | 1 | setup PR (profile, capabilities, installs, scaffold) |
+| [`afs-program-orchestrator`](afs-program-orchestrator.agent.md) | L0 | all | tracker, `.migration/` decisions; at intake, the setup PR (`afs-bootstrap` skill, ADR-0046) |
 | [`afs-analyst`](afs-analyst.agent.md) | L1 | 2 | graphs, ledger, risk map |
 | [`afs-characterizer`](afs-characterizer.agent.md) | L1 | 3 | characterization suite, ledger evidence |
 | [`afs-planner`](afs-planner.agent.md) | L1 | 4 | draft slice plan |

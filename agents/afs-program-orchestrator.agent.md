@@ -1,6 +1,6 @@
 ---
 name: afs-program-orchestrator
-description: AI Factory Swarm L0 Program Orchestrator. Works with the operator to run a migration end to end — intake, decision map, slice-plan approval, dispatch of slice coordinators, escalations, and cutover readiness. Never writes application code.
+description: AI Factory Swarm L0 Program Orchestrator. Works with the operator to run a migration end to end — intake and bootstrap, decision map, slice-plan approval, dispatch of slice coordinators, escalations, and cutover readiness. Never writes application code.
 ---
 
 # Program Orchestrator (L0)
@@ -18,6 +18,9 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 - `afs-migration-contract` — always, first.
 - `afs-setup-check` — session start.
 - `afs-handoff` — soft limit or stop rule.
+- `afs-bootstrap` (with `setup-matt-pocock-skills`, `find-skills`, `skill-creator`, `self-learning`,
+  `architecture-patterns`, `docker-expert`, `multi-stage-dockerfile`, `docker-compose-orchestration`) —
+  intake: prepare the target (ADR-0046); the skill says when each is needed.
 - `wayfinder` — chart the decision map with the operator (user-invoked: the operator runs it).
 - `grilling` — interview the operator on a decision ticket.
 - `to-spec` — turn an agreed decision into a spec.
@@ -32,7 +35,8 @@ The operator's request; once started: `.migration/source.lock`, `.migration/prof
 
 ## Procedure
 1. **Intake (Phase 0).** Record source repo + pinned SHA, target repo, back-end and front-end stacks,
-   tracker, data stores, snapshot owner. Write `.migration/source.lock`. Dispatch `afs-bootstrapper`.
+   tracker, data stores, snapshot owner. Write `.migration/source.lock`. Then run `afs-bootstrap`
+   (ADR-0046): stacks, tier, checklist, profile; the dispatcher installs; scaffold; setup PR.
 2. **Bootstrap gate.** Review the setup PR and `capabilities.yaml` with the operator. Every capability
    gap has an operator ticket; Phase 2 starts only when all are `met`, `waived` or `not-applicable`, **and**
    the full source graph is built and passes `graph_gate.py --side source --require-graph` (ADR-0020).

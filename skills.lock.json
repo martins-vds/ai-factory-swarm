@@ -91,7 +91,6 @@
       "install": "harness",
       "roles": [
         "program-orchestrator",
-        "bootstrapper",
         "analyst",
         "characterizer",
         "planner",
@@ -109,7 +108,6 @@
       "install": "harness",
       "roles": [
         "program-orchestrator",
-        "bootstrapper",
         "analyst",
         "characterizer",
         "planner",
@@ -127,7 +125,6 @@
       "install": "harness",
       "roles": [
         "program-orchestrator",
-        "bootstrapper",
         "analyst",
         "characterizer",
         "planner",
@@ -174,6 +171,16 @@
         "migrator"
       ],
       "notes": "What a ticket with specialty (data, ui, messaging) adds to the Migrator procedure; replaces the Specialist Migrator role (ADR-0042)."
+    },
+    {
+      "name": "afs-bootstrap",
+      "category": "orchestration",
+      "path": "skills/afs-bootstrap",
+      "install": "harness",
+      "roles": [
+        "program-orchestrator"
+      ],
+      "notes": "Phase 0: prepare the target at intake; replaces the Bootstrapper role (ADR-0046)."
     },
     {
       "name": "afs-evidence",
@@ -272,7 +279,7 @@
       "path": "skills/engineering/setup-matt-pocock-skills",
       "install": "upstream",
       "roles": [
-        "bootstrapper"
+        "program-orchestrator"
       ],
       "notes": "User-invoked; run by the operator during bootstrap."
     },
@@ -317,7 +324,7 @@
       "path": "plugins/backend-development/skills/architecture-patterns",
       "install": "upstream",
       "roles": [
-        "bootstrapper",
+        "program-orchestrator",
         "planner"
       ],
       "notes": "Practical clean/hexagonal/DDD structure for designing the target. Overlap with the rule sets below resolved by role: design here, review there."
@@ -511,7 +518,7 @@
       "path": "skills/docker-expert",
       "install": "upstream",
       "roles": [
-        "bootstrapper",
+        "program-orchestrator",
         "characterizer"
       ]
     },
@@ -522,7 +529,7 @@
       "path": "skills/multi-stage-dockerfile",
       "install": "upstream",
       "roles": [
-        "bootstrapper"
+        "program-orchestrator"
       ]
     },
     {
@@ -532,7 +539,7 @@
       "path": "plugins/luxor-devops-suite/skills/docker-compose-orchestration",
       "install": "upstream",
       "roles": [
-        "bootstrapper",
+        "program-orchestrator",
         "characterizer"
       ]
     },
@@ -600,7 +607,7 @@
       "path": "skills/find-skills",
       "install": "upstream",
       "roles": [
-        "bootstrapper"
+        "program-orchestrator"
       ]
     },
     {
@@ -610,7 +617,7 @@
       "path": "skills/skill-creator",
       "install": "upstream",
       "roles": [
-        "bootstrapper"
+        "program-orchestrator"
       ]
     },
     {
@@ -634,7 +641,7 @@
       "path": ".agents/skills/self-learning",
       "install": "upstream",
       "roles": [
-        "bootstrapper"
+        "program-orchestrator"
       ],
       "license": "MIT",
       "licenseEvidence": ".agents/skills/self-learning/LICENSE"

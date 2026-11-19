@@ -262,7 +262,7 @@ class RetiredRoleTest(unittest.TestCase):
         # v3e-r1: pilot Verifier cases prepared without --role-map started with open specialist tickets.
         import argparse
         self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=None)),
-                         {"afs-specialist-migrator": "afs-migrator"})
+                         {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator"})
         self.assertEqual(ev.prepare_role_map(argparse.Namespace(role_map=["a=b"]))["a"], "b")
 
 
@@ -334,6 +334,18 @@ class GradeTest(unittest.TestCase):
         self.assertFalse(ev.verdict(ev.grade_migrator(na, "failure", 0.8)), "only with a green Gates")
         self.assertFalse(ev.verdict(ev.grade_migrator({"gates": {"mutation_changed": "n/a: runner failed"}},
                                                       "success", 0.8)))
+
+    def test_harness_copy_places_the_agent_and_skills_a_bootstrap_case_needs(self):
+        with tempfile.TemporaryDirectory() as h, tempfile.TemporaryDirectory() as t:
+            pathlib.Path(h, "skills/afs-bootstrap").mkdir(parents=True)
+            pathlib.Path(h, "skills/afs-bootstrap/SKILL.md").write_text("x")
+            pathlib.Path(h, "agents").mkdir()
+            pathlib.Path(h, "agents/a.agent.md").write_text("y")
+            notes = ev.harness_copy(t, h, [{"from": "skills/afs-bootstrap", "to": ".github/skills/afs-bootstrap"},
+                                           {"from": "agents/a.agent.md", "to": ".github/agents/a.agent.md"}])
+            self.assertEqual(pathlib.Path(t, ".github/skills/afs-bootstrap/SKILL.md").read_text(), "x")
+            self.assertEqual(pathlib.Path(t, ".github/agents/a.agent.md").read_text(), "y")
+            self.assertEqual(len(notes), 2)
 
     def test_bootstrap_fields_are_compared_by_file_and_key(self):
         files = {"p.yaml": {"source": {"path": "legacy"}}, "c.yaml": {"characterization": {"tier": "B"}}}

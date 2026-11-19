@@ -34,10 +34,11 @@ from jsonschema import Draft202012Validator
 HERE = pathlib.Path(__file__).resolve().parent
 IMPLEMENTATION = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
 # Retired roles stay valid on finished tickets (history is never rewritten); an open ticket can't use one.
-RETIRED_ROLES = {"afs-specialist-migrator": "use `role: afs-migrator` and keep `specialty:` (ADR-0042)"}
+RETIRED_ROLES = {"afs-specialist-migrator": "use `role: afs-migrator` and keep `specialty:` (ADR-0042)",
+                 "afs-bootstrapper": "the Program Orchestrator prepares the target with the `afs-bootstrap` skill (ADR-0046)"}
 # A retired role and the role it folded into are one role for ticket ids: rework of a ticket the retired role
 # finished is done by its successor, under the same id (eval fold-r1..r3: BK-05F and BK-05G rework).
-FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator"}
+FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "afs-program-orchestrator"}
 # Roles that work on another role's ticket and keep that ticket's id.
 SHARED_ID_ROLES = {"afs-verifier", "afs-slice-coordinator", "afs-auditor"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", ".source", ".migration", "__pycache__"}

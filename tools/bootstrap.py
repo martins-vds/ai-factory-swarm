@@ -626,7 +626,7 @@ def check_profile_services(profile, target):
     compose = pathlib.Path(target) / services.get("compose", "")
     if not compose.is_file():
         raise BootstrapError(f"profile services.compose names {services.get('compose')!r}, which the target "
-                             f"doesn't have. Write the test services first (afs-bootstrapper step 4, with "
+                             f"doesn't have. Write the test services first (`afs-bootstrap` step 4, with "
                              f"docker-compose-orchestration); CI and Copilot setup steps start them")
 
 

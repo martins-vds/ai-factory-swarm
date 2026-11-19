@@ -22,9 +22,18 @@
           "description": "What stops the source from building or running, e.g. proprietary dependencies."
         },
         "tier": { "enum": ["A", "B", "C"] },
-        "reason": { "type": "string" }
+        "reason": { "type": "string" },
+        "tier_b_attempt": {
+          "type": "string",
+          "pattern": "^(ran|no code): \\S",
+          "description": "Required for tier C (ADR-0005, ADR-0046): `ran: <compile-only command> -> <result>` (the tier-B recipe) or `no code: <what the source contains>`."
+        }
       },
       "allOf": [
+        {
+          "if": { "properties": { "tier": { "const": "C" } }, "required": ["tier"] },
+          "then": { "required": ["tier_b_attempt"] }
+        },
         {
           "if": { "properties": { "tier": { "const": "A" } } },
           "then": { "properties": { "legacy_environment": { "const": "available" } } }

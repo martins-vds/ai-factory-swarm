@@ -176,6 +176,8 @@ These are two independent PRs, each followed by its own eval run.
 
 ### 2b: Bootstrapper → Program Orchestrator + `afs-bootstrap` skill
 
+**Status (2026-11-19): built (ADR-0046, proposed); accepted once the bootstrap case shows no flip.**
+
 1. **ADR** (bootstrap is a skill of the orchestrator).
 2. **New skill `skills/afs-bootstrap/`.** It holds steps 1–4 and 6–8 of the current agent: detection, tier,
    checklist, profile, test services, scaffold, graph-first, validation. Step 5 (install) stays
