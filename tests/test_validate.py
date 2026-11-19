@@ -387,3 +387,16 @@ class LedgerRulesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MutationBaseTest(unittest.TestCase):
+    """A hardcoded --changed-since defeats CI's $AFS_BASE (eval 4f: pilot Gates mutated the whole codebase)."""
+
+    def errs(self, cmd):
+        out = []
+        validate_mod.check_mutation_base("profile.yaml", {"gates": {"mutation_changed": [cmd]}}, out)
+        return out
+
+    def test_a_hardcoded_base_is_rejected(self):
+        self.assertTrue(self.errs("python .migration/harness/tools/afs-mutation --changed-since origin/main"))
+        self.assertEqual(self.errs("python .migration/harness/tools/afs-mutation"), [])

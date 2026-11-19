@@ -64,6 +64,11 @@ normalize:
     old: cargotracker.handling.interfaces.urls.urlpatterns
     new: cargotracker.urls.urlpatterns
     optional: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Normalization: the stale ledger references the live run fixed later (pilot #490). The plan ticket files
   are left missing: copying later ones adds plan errors at this commit. Graded on verdict and findings, which those
   pre-existing errors do not affect.'

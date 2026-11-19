@@ -71,4 +71,9 @@ normalize:
       - static/**/*.js
       htmx_errors: true
       built_css: static/css/tailwind.css
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: ' Phase 4a: the profile gets today''s layering, UI checks and self-healing, as live targets have them.'

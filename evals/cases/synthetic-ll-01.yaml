@@ -40,5 +40,10 @@ normalize:
     key: target.shared_test_files
     value:
     - tests/conftest.py
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Normalization: LL-01''s plan ticket gains tests/test_ui_smoke.py, which its issue asks for. The live run
   fixed the plan the same way (synthetic #71); without it, b3c r2 and r3 rightly stopped on the scope question.'

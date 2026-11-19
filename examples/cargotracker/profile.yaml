@@ -48,7 +48,7 @@ gates:
   idiom: ["ruff check", "ruff format --check"]
   tests: ["pytest -q"]
   crap: ["pytest -q --cov=src --cov-report=lcov:.migration/runs/crap.lcov", "lizard --csv src > .migration/runs/lizard.csv", "python .migration/harness/tools/crap.py .migration/runs/lizard.csv --lcov .migration/runs/crap.lcov --max 30"]
-  mutation_changed: ["python .migration/harness/tools/afs-mutation --changed-since origin/main"]
+  mutation_changed: ["python .migration/harness/tools/afs-mutation"]   # diffs against $AFS_BASE (CI: the PR base), else origin/main
   mutation_full: ["python .migration/harness/tools/afs-mutation --all"]
 thresholds:
   crap_max_per_method: 30

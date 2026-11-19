@@ -572,6 +572,16 @@ def check_thresholds(path, profile, errors):
                               f"is {limit}; make them equal (the threshold is the source of truth)")
 
 
+def check_mutation_base(path, profile, errors):
+    """gates.mutation_changed lets afs-mutation take its base from $AFS_BASE, which CI sets to the PR's base. A
+    hardcoded `--changed-since origin/main` mutates a stacked PR's parent too, and on the eval repo (whose
+    `main` is unrelated history) the whole codebase: eval 4f's pilot Gates ran 76 minutes or hit the timeout."""
+    for cmd in (profile.get("gates") or {}).get("mutation_changed") or []:
+        if re.search(r"afs-mutation\b.*--changed-since", str(cmd)):
+            errors.append(f"{path}: gates.mutation_changed passes --changed-since; drop it so afs-mutation diffs "
+                          f"against $AFS_BASE (CI sets it to the PR's base), falling back to origin/main")
+
+
 def check_layering_gate(path, profile, errors):
     """A profile with layer contracts or UI checks runs them: without the tool in gates.idiom, they check nothing."""
     idiom = (profile.get("gates") or {}).get("idiom") or []
@@ -597,6 +607,7 @@ def main():
             if name == "profile.yaml":
                 check_thresholds(folder / name, load_yaml(folder / name) or {}, errors)
                 check_layering_gate(folder / name, load_yaml(folder / name) or {}, errors)
+                check_mutation_base(folder / name, load_yaml(folder / name) or {}, errors)
             checked += 1
 
     slices = folder / "slices"
