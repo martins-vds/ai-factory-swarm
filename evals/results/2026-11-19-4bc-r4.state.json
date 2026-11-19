@@ -1,0 +1,10 @@
+{
+  "synthetic-billing-understand": {
+    "base_branch": "copilot/bl-01-inventory-member-billing-source-yet-again",
+    "chained_from": "2026-11-19-4ba-r4",
+    "dispatched_at": "2026-11-19T15:08:45+00:00",
+    "issue": 1560,
+    "origin_base": "eval/2026-11-19-4ba-r4/synthetic-billing-understand",
+    "work_pr": 1557
+  }
+}

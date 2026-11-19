@@ -113,6 +113,7 @@ humans, and approved for cutover.
 | 48 | Plan checks catch what planning lost: target anchors under `builds:`, pages under `graph.target_paths`, removals with their importing tests, and issue file lists that match the plan | [0048](adr/0048-plan-checks-catch-what-planning-lost.md) |
 | 49 | Ticket reconciliation is generated, then reviewed: `reconcile_epic.py` writes each disposition the check's own rules prove and marks the rest `needs_review` | [0049](adr/0049-ticket-reconciliation-is-generated-then-reviewed.md) |
 | 50 | The Slice Coordinator folds into the Program Orchestrator: one dispatcher loop runs every slice's tickets, and slice acceptance is the `afs-slice-acceptance` skill, whose return is the orchestrator's `acceptance` block | [0050](adr/0050-the-slice-coordinator-folds-into-the-program-orchestrator.md) |
+| 51 | The Analyst and the Characterizer run as one session when the scope fits: phase 4b's one session matched the two on the billing case at about a third less time; the combined return contract and a larger-scope eval come first | [0051](adr/0051-analyst-and-characterizer-run-as-one-session-when-the-scope-fits.md) |
 
 ---
 

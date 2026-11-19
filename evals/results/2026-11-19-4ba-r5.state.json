@@ -1,0 +1,9 @@
+{
+  "synthetic-billing-understand": {
+    "agent": "afs-analyst",
+    "base_branch": "eval/2026-11-19-4ba-r5/synthetic-billing-understand",
+    "dispatched_at": "2026-11-19T14:58:21+00:00",
+    "issue": 1558,
+    "work_pr": null
+  }
+}
