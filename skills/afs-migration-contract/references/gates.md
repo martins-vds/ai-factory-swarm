@@ -23,6 +23,14 @@ any no  → fix; same failure after two honest attempts → stop, handoff, escal
 Never weaken a threshold, skip a gate, disable a test, or use `--no-verify`. Thresholds are a human
 decision recorded in the profile.
 
+## Test isolation
+Tests leave shared state as they found it. A test that commits for real (a browser test against a live
+server, a transactional test) restores the database afterwards, so seed rows from data migrations survive
+for the tests after it. Prefer one project-wide setting to per-test marks (Django + pytest-django: a
+`django_db_serialized_rollback` fixture returning `True` in `tests/conftest.py`). The profile's
+`target.shared_test_files` lists where that setting lives; any ticket may change those files. Run the full
+suite in its default order before finishing: a test that passes alone can still break another one.
+
 ## Differential fidelity
 
 Source observations are evidence, not permission to override an approved human decision. Before

@@ -21,22 +21,13 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 - `afs-handoff` — soft limit or stop rule.
 - `afs-implement` — the implementation loop for a ticket.
 - `tdd` — red → green → refactor.
-- `understand-anything` — `/understand-explain`, `/understand-chat` to resolve source dependencies;
-  `/understand-diff` for the blast radius of your change.
-- `domain-modeling`, `codebase-design` — domain language and module seams in the target.
-- `patterns-of-enterprise-application-architecture` — map legacy patterns to target equivalents.
-- `refactoring`, `refactoring-guru`, `clean-code` — redesign hot spots instead of translating them.
-- `afs-evidence` — run gates through `afs-run`.
+- `afs-evidence` — run gates through `afs-run`; before claiming done.
 - `afs-ledger` — update the ticket's entries in the same PR.
 - `afs-quirk-ticket` — anything that looks wrong in the source.
-- `verification-before-completion` — before claiming done.
-- `pr` — the PR description.
-- `receiving-code-review` — when review feedback arrives.
 - `diagnosing-bugs` — when a failure is not obvious.
-- `lessons-learned` — recall before starting; record surprises.
 - `afs-specialty` — your ticket has `specialty:` (data, ui or messaging): what it adds (ADR-0042).
-- `afs-data-pipeline`, `db-seed` — data tickets, as `afs-specialty` says.
-- `ui-ux-pro-max`, `prototype` — UI tickets, as `afs-specialty` says.
+- `afs-data-pipeline` — data tickets, as `afs-specialty` says.
+- `ui-ux-pro-max` — UI tickets, as `afs-specialty` says.
 
 ## Procedure
 1. **Understand the capability** from the ledger entry, its characterization, and the graph (graph
@@ -44,23 +35,15 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    `afs-specialty` now and follow it alongside these steps.
 2. **Tests first:** turn the characterization cases (and transcribed legacy-test behavior) into failing
    target tests at the equivalence boundary.
-3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign with the refactoring and design
-   skills; never transliterate.
+3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign it; never transliterate.
 4. **Gates** through `afs-run`: build, behavior, idiom & architecture, CRAP, mutation on changed code,
    full suite. Add tests until mutation reaches the threshold; never weaken anything.
-   **Tests leave shared state as they found it.** A test that commits for real (a browser test against a
-   live server, a transactional test) restores the database afterwards, so seed rows from data migrations
-   survive for the tests after it. Prefer one project-wide setting to per-test marks (Django + pytest-django:
-   a `django_db_serialized_rollback` fixture returning `True` in `tests/conftest.py`). The profile's
-   `target.shared_test_files` lists where that setting lives; any ticket may change those files. Run the full suite in
-   its default order before finishing: a test that passes alone can still break another one.
-5. **Ledger:** `target.components`, evidence, `status: migrated` — in the same PR. Record each
-   capability's **business rules** under `rules` (`id`, `rule`, `source`): every check that refuses input
-   or must hold (an eligibility check, a limit, a state transition), from the legacy code, a quirk ruling
-   or the plan. Include each one your code enforces, wherever it enforces it, a view included. A
-   capability with none (a static page, a layout) gets `no_rules: <why>`. Step 6 proves each rule is
-   enforced in the layer the ADRs name, so a rule you leave out goes unchecked. The finish check refuses
-   your return while a ticket capability has neither.
+   Tests leave shared state as they found it (references/gates.md, "Test isolation"); run the full suite
+   in its default order before finishing.
+5. **Ledger:** `target.components`, evidence, `status: migrated`, in the same PR. Record each capability's
+   **business rules** under `rules` (`id`, `rule`, `source`): every check that refuses input or must hold,
+   from the legacy code, a quirk ruling or the plan, wherever your code enforces it. A capability with none
+   gets `no_rules: <why>` (the finish check refuses neither).
 6. **Verify your own work, as an independent reviewer would.** No Verifier session follows you (ADR-0045).
    - Re-run every gate from a clean state through `afs-run`, mutation on changed code included, and the
      full suite in default order.
@@ -84,11 +67,8 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
-the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
-An initial WIP return may use `pr: null` before the PR exists. Before finishing, replace it with this
-return's PR as `owner/repo#N` or a canonical PR URL and commit the update. If work is incomplete, record
-a handoff; its `pr` may remain null.
+(`afs-migration-contract` → Durable outputs); link it from the PR description, never paste it. A handoff's
+`pr` may stay null.
 ```yaml
 ticket: <link>
 pr: <link>

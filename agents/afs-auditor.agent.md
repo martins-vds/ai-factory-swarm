@@ -32,28 +32,20 @@ Scope (one slice, or the whole migration), the ledger, both graphs, the target, 
 - **Source graph:** run `python .migration/harness/tools/check_graph_fresh.py --require source` and
   `graph_gate.py --side source` before anything else. If either fails, stop with a handoff: the
   dispatcher runs afs-understand `side=source` and merges its PR.
-- **Target graph:** at slice acceptance this comes from the **AFS acceptance gates** run you audit. That
-  run built the target graph for its own commit, gated it there (`graph-target` step, ownership enforced)
-  and kept it in its artifact. `afs-acceptance verify` checks that the graph describes that commit. Audit
-  that commit: `git checkout <commit>` for your code reading, or confirm the analysed paths are unchanged
-  since it. Never use the committed target graph as acceptance evidence: it's a reference and may be
-  stale.
-- Merges to `main` after the run's commit don't invalidate your audit; it is "as of" that commit. CI
-  accepts `verdict: complete` only with the verified result committed under
-  `.migration/evidence/acceptance-runs/`: added in your PR, or already on `main` and named in your return's
-  `acceptance_run:` (a re-audit after acceptance).
+- **Target graph:** at slice acceptance it's the one the **AFS acceptance gates** run built and gated for
+  its own commit (`afs-acceptance verify` checks that). Audit that commit (`git checkout <commit>`), never
+  the committed target graph, which may be stale. Your audit is "as of" that commit; CI accepts
+  `verdict: complete` only with the verified run under `.migration/evidence/acceptance-runs/` (added in your
+  PR, or named in `acceptance_run:`).
 
 **Slice acceptance (gate 7):** for every ledger entry of the slice — target components exist, evidence
 exists and passes now, the flow connects end to end. A data path line shows the shortest path, then every data node the
 anchor reaches (`reaches N data node(s): …`): check each entry's table against that list, never against the
 shortest path alone. Classify every delta with the five gap classes.
 
-Full mutation may exceed the cloud worker's lifetime. Use the generated **AFS acceptance gates**
-workflow instead of repeatedly restarting `afs-mutation --all` in a bounded agent session. Follow
-`afs-evidence`'s durable Actions procedure: independently check the linked run and exact revision,
-verify its artifact against the current execution inputs, and import the genuine journal rows.
-An interrupted, partial, missing or N/A full-mutation result is a blocker, never a score or pass.
-Workflow success proves gates only; it does not replace your capability review or human flow sign-off.
+Full mutation comes from the **AFS acceptance gates** run, never a restarted `afs-mutation --all` in your
+session: verify its artifact as `afs-evidence`'s durable Actions procedure says. An interrupted, partial or
+missing result is a blocker, never a score. A green workflow proves gates only, not capabilities.
 
 **Final verification:** with both graphs fresh (above);
 sweep **top-down** from every screen, route and workflow and **bottom-up** from every non-UI capability;
@@ -66,8 +58,7 @@ report to `.migration/evidence/final/report.md`.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
-the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
+(`afs-migration-contract` → Durable outputs); link it from the PR description, never paste it.
 ```yaml
 scope: <slice name | final>
 report: <path>

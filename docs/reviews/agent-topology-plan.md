@@ -397,12 +397,16 @@ in an ADR whether the fold is kept or rejected.
 
 ### 4c: The Auditor (finding 7)
 
+**Status (2026-11-19): recorded (ADR-0052).**
+
 The Auditor isn't folded. One ADR line records the decision to keep it, with the LC-AUDIT evidence, and
 phase 5 trims its prompt.
 
 **Done when:** both experiments are recorded and the chosen topology is rolled out.
 
 ## Phase 5: prompt audit and skills pruning (findings 8 audit, 9, 7 trim)
+
+**Status (2026-11-19): built (ADR-0053, proposed); the final eval decides.**
 
 1. **Skill usage report.** `afs-eval report --skills` and a journal scan of the live targets report, per
    role:
