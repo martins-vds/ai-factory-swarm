@@ -162,3 +162,68 @@ class CheckPlanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlannerChecksTest(CheckPlanTest):
+    """ADR-0048: the planner checks phase 3b adds, each with the run that showed the loss."""
+
+    def spec(self, name, anchors):
+        (self.mig / "slices").mkdir(exist_ok=True)
+        (self.mig / "slices" / f"{name}.yaml").write_text(yaml.safe_dump({"data_paths": {"target": anchors}}))
+
+    def test_a_new_slices_target_anchors_are_built_by_its_tickets(self):
+        # Synthetic #77, #89, #99: the spec named routes the code never had.
+        self.spec("loans", ["endpoint=GET /loans", "endpoint=/ui/loans/"])
+        t = ticket("LL-01", ["src/loans/views.py"])
+        t["builds"] = ["endpoint=GET /loans"]
+        self.plan("loans", [t])
+        errs = self.errors()
+        self.assertTrue(any("endpoint=/ui/loans/" in e and "builds" in e for e in errs), errs)
+        t["builds"].append("endpoint=/ui/loans/")
+        self.plan("loans", [t])
+        self.assertEqual(self.errors(), [])
+
+    def test_a_started_slice_isnt_held_to_builds(self):
+        self.spec("loans", ["endpoint=GET /loans"])
+        self.plan("loans", [ticket("LL-01", ["src/loans/views.py"]), ticket("LL-02", ["src/loans/forms.py"])])
+        (self.mig / "returns" / "LL-01.afs-migrator.yaml").write_text("role: afs-migrator\n")
+        self.assertEqual(self.errors(), [])
+
+    def test_a_planned_page_is_under_target_paths(self):
+        # Synthetic #76: templates/ wasn't in target_paths, so the target graph never saw the pages.
+        (self.mig / "profile.yaml").write_text(yaml.safe_dump({"graph": {"target_paths": ["src"]}}))
+        self.plan("loans", [ticket("LL-01", ["src/loans/views.py", "templates/loans/list.html"])])
+        errs = self.errors()
+        self.assertTrue(any("templates/loans/list.html" in e and "target_paths" in e for e in errs), errs)
+        (self.mig / "profile.yaml").write_text(yaml.safe_dump({"graph": {"target_paths": ["src", "templates"]}}))
+        self.assertEqual(self.errors(), [])
+
+    def test_removing_a_module_needs_its_importing_tests(self):
+        self.touch("src/loans/old.py")
+        (self.root / "tests").mkdir()
+        (self.root / "tests" / "test_old.py").write_text("from loans.old import thing\n")
+        t = ticket("LL-03", ["src/loans/old.py"])
+        t["removes"] = ["src/loans/old.py"]
+        self.plan("loans", [t])
+        errs = self.errors()
+        self.assertTrue(any("tests/test_old.py imports" in e for e in errs), errs)
+        owner = ticket("LL-02", ["tests/test_old.py"])
+        t["blocked_by"] = ["LL-02"]
+        self.plan("loans", [owner, t])
+        self.assertEqual(self.errors(), [])
+
+    def test_an_issue_that_drifts_from_the_plan_fails(self):
+        # LL-01 #71, LL-04 #107: the issue's file list drifted, and the session followed the issue.
+        self.plan("loans", [ticket("LL-04", ["src/a.py", "tests/test_a.py", ".migration/returns/LL-04.afs-migrator.yaml"])])
+        body = ("- **Files** (touch only these):\n  - `src/a.py`\n  - `src/b.py`\n"
+                "  - `.migration/returns/LL-04.afs-migrator.yaml`\n\nAFS-SCOPE: src/c.py\n")
+        errs = []
+        plans = check_plan.load_plans(self.mig, SCHEMAS, errs)
+        check_plan.check_issue_drift(plans, {}, [{"number": 107, "title": "LL-04 · Report", "body": body}], errs)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("not planned: src/b.py", errs[0])
+        self.assertIn("planned but not listed: tests/test_a.py", errs[0])
+        ok = body.replace("`src/b.py`", "`tests/test_a.py`")
+        errs = []
+        check_plan.check_issue_drift(plans, {}, [{"number": 107, "title": "LL-04 · Report", "body": ok}], errs)
+        self.assertEqual(errs, [])

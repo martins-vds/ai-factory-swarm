@@ -55,7 +55,7 @@ A passing classification is not a passing gate. Unapproved differences remain fi
 behavior or regression runs cannot support a `pass` verdict. Verifiers fix tests/evidence only,
 never production code, and send implementation defects back to a Migrator.
 
-## Slice acceptance (Slice Coordinator + Auditor)
+## Slice acceptance (Program Orchestrator with `afs-slice-acceptance`, + Auditor)
 1. Slice's end-to-end characterization suite against the target.
 2. Automated differential checks where a legacy environment exists (tier A); otherwise against the
    characterization tests and derived specs.

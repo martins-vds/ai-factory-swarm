@@ -468,12 +468,16 @@ TIER_B_ATTEMPT = re.compile(r"^(ran|no code): \S")
 def check_tier_attempt(path, doc, errors):
     """ADR-0005: tier C only after the tier-B recipe was tried. A build that fails on a private dependency is
     exactly the case tier B exists for, so `tier_b_attempt` must show the compile-only run and its result,
-    or say there is no code to compile."""
+    or say there is no code to compile. ADR-0046: the proof lives in `capabilities.yaml`'s
+    `characterization`; a retired Bootstrapper's return carrying it is still checked."""
+    if pathlib.Path(path).name == "capabilities.yaml":
+        doc = {"role": "afs-bootstrapper", "characterization_tier": (doc.get("characterization") or {}).get("tier"),
+               "tier_b_attempt": (doc.get("characterization") or {}).get("tier_b_attempt")}
     if doc.get("role") != "afs-bootstrapper" or doc.get("characterization_tier") != "C":
         return
     attempt = doc.get("tier_b_attempt")
     if not isinstance(attempt, str) or not TIER_B_ATTEMPT.match(attempt.strip()):
-        errors.append(f"{path}: characterization_tier C needs `tier_b_attempt: \"ran: <compile-only command> -> "
+        errors.append(f"{path}: characterization tier C needs `tier_b_attempt: \"ran: <compile-only command> -> "
                       f"<result>\"` (the tier-B recipe: compile only what the source's tests reach) or "
                       f"`\"no code: <what the source contains>\"`. A failed full build is not enough "
                       f"(afs-migration-contract -> references/characterization.md)")
@@ -618,6 +622,8 @@ def main():
                 check_thresholds(folder / name, load_yaml(folder / name) or {}, errors)
                 check_layering_gate(folder / name, load_yaml(folder / name) or {}, errors)
                 check_mutation_base(folder / name, load_yaml(folder / name) or {}, errors)
+            else:
+                check_tier_attempt(folder / name, load_yaml(folder / name) or {}, errors)
             checked += 1
 
     slices = folder / "slices"

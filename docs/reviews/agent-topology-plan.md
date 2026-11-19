@@ -176,6 +176,8 @@ These are two independent PRs, each followed by its own eval run.
 
 ### 2b: Bootstrapper → Program Orchestrator + `afs-bootstrap` skill
 
+**Status (2026-11-19): built and measured (ADR-0046, proposed): the bootstrap case passes 2 of 2, no flip (`evals/results/2026-11-19-2b-summary.md`).**
+
 1. **ADR** (bootstrap is a skill of the orchestrator).
 2. **New skill `skills/afs-bootstrap/`.** It holds steps 1–4 and 6–8 of the current agent: detection, tier,
    checklist, profile, test services, scaffold, graph-first, validation. Step 5 (install) stays
@@ -200,6 +202,8 @@ this order: the tools first, so the fold has them to rely on.
 
 ### 3a: Dispatcher safety tools (finding 8)
 
+**Status (2026-11-19): built (ADR-0047, proposed).**
+
 1. **`tools/afs-merge`.**
    - `afs-merge verifier <verifier-PR>` merges a Verifier PR into its work branch with `git merge --no-ff`,
      after checking that the PR's base is a work branch.
@@ -223,6 +227,8 @@ this order: the tools first, so the fold has them to rely on.
 
 ### 3b: Planner checks (finding 6, part 1)
 
+**Status (2026-11-19): built (ADR-0048, proposed).**
+
 These are added to `tools/check_plan.py`, each with a fixture from the run that showed the loss:
 
 - **Anchors.** A slice's `data_paths.target` anchor must name a route that one of the slice's tickets builds
@@ -235,6 +241,8 @@ These are added to `tools/check_plan.py`, each with a fixture from the run that 
 
 ### 3c: Reconciliation as a tool (finding 3)
 
+**Status (2026-11-19): built (ADR-0049, proposed).**
+
 - **`tools/reconcile_epic.py`.** It writes `.migration/evidence/ticket-reconciliation/<epic>.yaml` from
   the evidence `ticket_guard.py --reconcile-epic` already computes.
   - Every issue it can prove is written as `completed` or `superseded`.
@@ -244,6 +252,8 @@ These are added to `tools/check_plan.py`, each with a fixture from the run that 
 - **ADR-0030 is amended:** the file is generated and then reviewed, not written by hand.
 
 ### 3d: Slice Coordinator → Program Orchestrator + `afs-slice-acceptance` skill (finding 3)
+
+**Status (2026-11-19): built (ADR-0050, proposed).** Rolls out to the synthetic target only after its open side-by-side checks finish (Ground rules).
 
 1. **ADR** (one dispatcher loop). Amends ADR-0024, ADR-0030, ADR-0031 and ADR-0036. It decides one open
    question, the acceptance return. My recommendation:
@@ -373,6 +383,8 @@ in an ADR whether the fold is kept or rejected.
     green Gates.
 
 ### 4b: Analyst + Characterizer (finding 6, part 2)
+
+**Status (2026-11-19): the rule is met on the billing case (ADR-0051, proposed).** Both configurations scored 7/7 ledger rules and 5/5 characterization values on both runs; one session took about a third less time but didn't commit the Characterizer's return. The combined return contract and a larger-scope eval come next (`evals/results/2026-11-19-4b-summary.md`).
 
 - **Configurations:** separate sessions (current) against one "understand" session that runs both
   procedures as skills.

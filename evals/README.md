@@ -15,7 +15,8 @@ fresh Copilot sessions against the harness under test, and the results are compa
 | `bootstrap` | The listed profile and checklist fields have their live values |
 
 **Must-pass cases.** Every case is `must_pass` except the bootstrap case, which is tracked only: its live
-session ran before the harness was installed.
+session ran before the harness was installed. Its `harness_copy` puts the agent and harness skills under
+test on the branch, as bootstrap would (ADR-0046).
 
 **Normalization.** A case's `normalize` edits make an old commit valid under today's rules, using the fixes
 the live run made later. They never change behavior. A case that couldn't be normalized without rewriting

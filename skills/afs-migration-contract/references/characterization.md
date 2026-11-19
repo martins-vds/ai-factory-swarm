@@ -18,8 +18,9 @@ reappear as target tests.
 **Try tier B before settling on C.** A full build (`mvn package`, `mvn test`) failing on a private or
 missing dependency doesn't make a source tier C: it is the situation tier B is for. Run the recipe below
 on the source's own tests (or the units you would characterize) and record the command and result. Tier C
-is for when that attempt fails too, or there is no code at all. A tier-C Bootstrapper return carries
-`tier_b_attempt` (`ran: …` or `no code: …`); `validate.py` rejects one without it.
+is for when that attempt fails too, or there is no code at all. A tier-C `capabilities.yaml` carries
+`characterization.tier_b_attempt` (`ran: …` or `no code: …`); `validate.py` rejects one without it
+(ADR-0046; a retired Bootstrapper's return is checked the same way).
 
 ## Tier-B recipe (proven on the pilot, spike M1-5)
 - **Never modify the source.** The harness lives in the target repo (or a scratch folder) and reads the

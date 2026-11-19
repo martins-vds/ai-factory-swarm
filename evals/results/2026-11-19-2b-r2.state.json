@@ -1,0 +1,9 @@
+{
+  "synthetic-sy-01-bootstrap": {
+    "agent": "afs-program-orchestrator",
+    "base_branch": "eval/2026-11-19-2b-r2/synthetic-sy-01-bootstrap",
+    "dispatched_at": "2026-11-19T13:53:53+00:00",
+    "issue": 1536,
+    "work_pr": null
+  }
+}

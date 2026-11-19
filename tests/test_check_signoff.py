@@ -169,3 +169,19 @@ class SignoffTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AcceptanceBlockTest(unittest.TestCase):
+    """ADR-0050: the orchestrator's `acceptance` block carries the sign-off; a retired coordinator's still does."""
+
+    def test_the_orchestrators_acceptance_block_is_read(self):
+        text = ("role: afs-program-orchestrator\nticket: LL-ACCEPT\nissue: o/r#9\nphase: 6\n"
+                "acceptance:\n  slice: loans\n  human_check: passed\n")
+        self.assertEqual(check_signoff.state(text), "passed")
+        self.assertEqual(check_signoff.coordinator(text)["issue"], "o/r#9")
+
+    def test_a_retired_coordinators_return_still_counts(self):
+        self.assertEqual(check_signoff.state(coordinator("deferred")), "deferred")
+
+    def test_an_orchestrator_return_without_acceptance_is_not_a_signoff(self):
+        self.assertIsNone(check_signoff.state("role: afs-program-orchestrator\nphase: 6\nhuman_check: passed\n"))

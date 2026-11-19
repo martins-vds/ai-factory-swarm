@@ -18,7 +18,7 @@ list, and the setup PR repeats it as a checklist.
 | 8 | **Copilot firewall lets setup steps pull the compose images** (ADR-0016): if blocked, add the registry (e.g. `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`) to the allowlist | Settings → Copilot → Coding agent → Firewall | Setup steps start the target's test services with `afs-services up` | `afs-setup-check` reports `services DOWN`; agents stop instead of testing |
 | 9 | **Graph first** (ADR-0020): after the setup PR merges, run **AFS understand (code graphs)** with `side=source` on `main`, review its PR (the graph gate and the list of entry points that reach data), and merge it | Actions → AFS understand → Run workflow | Analysis and planning query the graph; a graph that can't reach the data hides capabilities | Planner and Analyst stop at setup; CI fails on slice anchors that reach no data |
 | 10 | *(Optional, cost tracking)* **`BILLING_READ_TOKEN` secret** for the account that **pays** for Copilot, named in profile `costs.billing` (see below) | Settings → Secrets and variables → Actions | The daily **AFS costs** workflow records billed AI credits and Actions minutes and attributes them to sessions (ADR-0021) | The workflow only warns; session records still hold tokens, but no billed credits |
-| 11 | **Who signs off slices** (ADR-0031): profile `signoff.approvers`, the GitHub logins whose approving review on the coordinator's PR is the human sign-off. Open that PR from the Copilot coding agent (or any login that isn't an approver): GitHub doesn't let a PR's author approve it | `.migration/profile.yaml` | `human_check: passed` is only a claim; the approver's review on the exact head commit is the sign-off | **AFS human sign-off** fails on the PR and on `main` |
+| 11 | **Who signs off slices** (ADR-0031): profile `signoff.approvers`, the GitHub logins whose approving review on the acceptance PR is the human sign-off. Open that PR from the Copilot coding agent (or any login that isn't an approver): GitHub doesn't let a PR's author approve it | `.migration/profile.yaml` | `human_check: passed` is only a claim; the approver's review on the exact head commit is the sign-off | **AFS human sign-off** fails on the PR and on `main` |
 
 **Merge the setup PR first.** Copilot's setup steps (`copilot-setup-steps.yml`) run only from the default
 branch, while hooks in `.github/hooks/` are read from the branch a session works on. A session based on an
@@ -37,7 +37,7 @@ The dispatcher never approves workflow runs for you.
 
 ## Slice completion and ticket reconciliation
 
-Before a coordinator completes a slice or closes its epic, require the committed
+Before the orchestrator completes a slice or closes its epic, require the committed
 `.migration/evidence/ticket-reconciliation/<epic>.yaml` report (ADR-0030). It must cover the slice epic's
 related work/fix/verifier/bootstrap descendants, with one evidence-backed disposition per issue:
 
