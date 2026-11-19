@@ -133,6 +133,8 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `stack_refresh.py`: merge the default branch into open stacked PRs bottom-up when it moves (ADR-0038)
 - `close_gap_issues.py`: on main, close capability-gap issues whose checklist entry is met, waived or not applicable
 - `check_verified_merge.py`: a PR into the default branch that changes a migrator return is verified: self-verified for `afs-migrator` (an audit of the current work must pass), a later passing Verifier return for the retired specialist role (ADR-0040, ADR-0045)
+- `afs-merge`: `work` merges a work PR into the default branch only when it is not stacked, nothing is stacked on it and every check (verified-merge included) is green, never with `merge-async`; `verifier` merges an audit Verifier PR into its work branch with `--no-ff` (ADR-0047)
+- `check_dispatch_paths.py`: concurrent work (tickets dispatched together, open PRs) owns distinct files, and no new module shadows a package or back (ADR-0047); CI runs it on every PR
 - `fog_rewalk.py`: re-walk the decision map's fog after a slice
 
 **Costs and coverage**

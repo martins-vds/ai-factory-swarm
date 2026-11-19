@@ -75,6 +75,27 @@ class StackRefreshTest(unittest.TestCase):
         self.assertLess(r.stdout.index("#1 "), r.stdout.index("#2 "), "parents first")
         self.assertIn("AFS-RESULT gate=stack-refresh", r.stdout)
 
+    def test_a_three_deep_stack_is_refreshed_parents_first(self):
+        w = self.work
+        sh(w, "git", "checkout", "-q", "-B", "s3", "origin/s2")
+        commit(w, "s3.txt", "3\n", "s3")
+        sh(w, "git", "push", "-q", "origin", "s3")
+        sh(w, "git", "checkout", "-q", "main")
+        r = self.run_tool([pr(3, "s3", "s2"), pr(2, "s2", "s1"), pr(1, "s1", "main")])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.contains("main", "s3"))
+        self.assertLess(r.stdout.index("#2 "), r.stdout.index("#3 "), "parents first at every depth")
+
+    def test_a_merged_pr_is_left_out(self):
+        # Synthetic #123: a child merged already was merged with its base again.
+        merged = {**pr(2, "s2", "s1"), "state": "closed", "merged_at": "2026-11-10T00:00:00Z"}
+        before = sh(self.work, "git", "rev-parse", "origin/s2")
+        r = self.run_tool([merged, pr(1, "s1", "main")])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("#2 ", r.stdout)
+        sh(self.work, "git", "fetch", "-q", "origin")
+        self.assertEqual(sh(self.work, "git", "rev-parse", "origin/s2"), before)
+
     def test_a_current_stack_is_left_alone(self):
         self.run_tool([pr(2, "s2", "s1"), pr(1, "s1", "main")])
         before = sh(self.work, "git", "rev-parse", "origin/s2")

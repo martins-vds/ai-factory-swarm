@@ -42,16 +42,14 @@ edit its PR description after opening it, and it has no user token. So:
   a sub-issue of the ticket) with `base_branch` set to the work PR's head branch. An `@copilot` mention on
   the PR may continue the session or may be ignored (pilot HR-04C: two mentions never started one), and
   a fresh session from the findings is the rule anyway ("restart, don't stretch").
-- **Merging a Verifier PR into the work branch:** do it with git, never with GitHub's stacked merge.
-  `git fetch origin <verifier-branch> <work-branch>`, check out the work branch, `git merge --no-ff
-  origin/<verifier-branch>`, push. GitHub then marks the Verifier PR merged, and nothing reaches `main`.
-  **Never use `merge-async` on a PR whose base is another PR's branch:** it merges the *whole stack* into
-  the default branch (pilot HR-04C: an unverified work PR and its failing test landed on `main`). The work
-  PR reaches `main` only by its own plain merge, after its Verifier passes.
-- **Before trusting stacked-PR CI:** after a merge or revert on the default branch, bring every open
-  work branch up to date, then merge each updated base into its stacked PR's head and push. Updating
-  only the base does not trigger fresh head CI, and rerunning an old workflow reuses its old merge
-  commit. `check_stack_base.py` blocks the other harness-check jobs until both ancestry checks pass.
+- **Merging (ADR-0047):** `afs-merge verifier --repo <r> --pr <n>` merges an audit Verifier's PR into
+  the work branch with `git merge --no-ff`; `afs-merge work --repo <r> --pr <n>` merges a work PR into the
+  default branch only when it isn't stacked, nothing is stacked on it, every check is green and the
+  verified-merge check passed. It never uses `merge-async`, which merged a whole stack into `main` (pilot
+  HR-04C).
+- **Stacked-PR CI:** after a merge or revert on the default branch, `stack_refresh.py` refreshes every
+  stacked PR, parents first and at any depth (ADR-0038). `check_stack_base.py` blocks the other
+  harness-check jobs until both ancestry checks pass.
 - **Superseded returns:** a later run may update the same ticket/role return to its own issue and PR.
   Keep that provenance intact. The return-contract check can use a schema-valid committed version
   from this PR's own base-to-head history, at a still-changed return path with the same ticket/role,

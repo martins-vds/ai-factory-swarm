@@ -86,14 +86,12 @@ slice.
    to block epic closure under ADR-0024.
 
 ## Rules
-- **Parallel dispatch, path check:** before dispatching tickets that run at the same time, compare
-  every path you prescribe (and every path the tickets will obviously create) with what is on `main`
-  and in the other open PRs. No two tickets may own the same file, and no new module or package
-  may share a dotted name with an existing one (a package `x/` shadows a module `x.py`). After
-  merging one of them, bring the others up to date with `main` and re-run CI before merging.
-- After any merge or revert on the default branch, update every open work branch before trusting
-  stacked-PR CI. Then merge each updated base into its stacked PR's head and push to trigger fresh
-  checks; updating only the base or rerunning the old workflow is not enough (agents/README.md).
+- **Parallel dispatch, path check:** before dispatching tickets that run at the same time, run
+  `python .migration/harness/tools/check_dispatch_paths.py --tickets <A,B,…> --repo <owner/name>`; it
+  fails on a file two pieces of work own or a module/package name clash (ADR-0047), and CI runs it on
+  every agent PR. Merge with `afs-merge work` (ADR-0047); after one merges, CI refreshes the stacks.
+- After any merge or revert on the default branch, `stack_refresh.py` (its own workflow) refreshes every
+  stacked PR, parents first; it skips a branch an agent is still pushing to and names any conflict.
 - Never accept a bare "done". Re-read the evidence (or re-run a gate through `afs-run`).
 - Never infer issue closure from a worker return or a merged PR. Review the report and use the
   coordinator's authorized GitHub actions to close completed or superseded issues; never close retained-open work.

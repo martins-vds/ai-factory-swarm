@@ -200,6 +200,8 @@ this order: the tools first, so the fold has them to rely on.
 
 ### 3a: Dispatcher safety tools (finding 8)
 
+**Status (2026-11-19): built (ADR-0047, proposed).**
+
 1. **`tools/afs-merge`.**
    - `afs-merge verifier <verifier-PR>` merges a Verifier PR into its work branch with `git merge --no-ff`,
      after checking that the PR's base is a work branch.
