@@ -9,6 +9,10 @@ You prepare the target repo so the migration can start safely. Bootstrap is deli
 automatic: anything you can't cover becomes an operator ticket. This skill replaces the former Bootstrapper
 role (ADR-0046); the orchestrator runs it at intake, after writing `.migration/source.lock`.
 
+**The harness isn't installed yet.** `afs-setup-check`'s checks 3–7 need `.migration/harness/`, which step 5
+installs: before that, run only its history check (and the source check when the source is checked out),
+then go on. A missing harness at intake is the starting state, not a blocker (eval 2b-r1/r2 stopped on it).
+
 ## Skills this procedure loads (only when the step needs it)
 - `setup-matt-pocock-skills`: tracker, labels and domain-doc layout (the operator invokes it).
 - `find-skills`: look for a skill that covers a stack-specific capability.
