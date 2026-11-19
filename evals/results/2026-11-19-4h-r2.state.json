@@ -1,0 +1,23 @@
+{
+  "pilot-bk-05f-fresh": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-19-4h-r2/pilot-bk-05f-fresh",
+    "dispatched_at": "2026-11-19T18:15:37+00:00",
+    "issue": 1590,
+    "work_pr": null
+  },
+  "pilot-bk-05g": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-19-4h-r2/pilot-bk-05g",
+    "dispatched_at": "2026-11-19T18:15:39+00:00",
+    "issue": 1591,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-19-4h-r2/pilot-dm-05f",
+    "dispatched_at": "2026-11-19T18:15:42+00:00",
+    "issue": 1592,
+    "work_pr": null
+  }
+}
