@@ -78,6 +78,11 @@ normalize:
       - static/**/*.js
       htmx_errors: true
       built_css: static/css/tailwind.css
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Normalization: stale ledger references the live run fixed later (synthetic #98), as they apply to this commit.
   Phase 4a: the profile gets today''s layering, UI checks and self-healing, as live targets have them. Phase 4a,
   second round: the oracle flags a stripped member or ISBN being stored. The legacy (`LoanResource.lend`, `LoanRepository.lend`)

@@ -109,6 +109,11 @@ normalize:
       - static/**/*.js
       htmx_errors: true
       built_css: static/css/tailwind.css
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Normalization: the stale ledger references the live run fixed in its harness #153 rollout (synthetic #98);
   a reference whose text is absent at this commit is skipped. Phase 4a: the profile gets today''s layering, UI checks
   and self-healing, as live targets have them.'

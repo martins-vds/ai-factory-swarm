@@ -155,6 +155,11 @@ normalize:
       - static/**/*.js
       - assets/**/*.js
       htmx_errors: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Phase 4a, second round: BK-05F from before its first session (the parent of PR #394''s first commit), so
   the Migrator writes the route-selection views itself. The 4a continuation case started on PR #394''s branch, which
   already had the route-specification check in the view. Same normalization and profile as pilot-bk-05f.'

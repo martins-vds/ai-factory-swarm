@@ -90,6 +90,11 @@ normalize:
       - static/**/*.js
       htmx_errors: true
       built_css: static/css/tailwind.css
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'The clean Verifier case since BK-05G and LL-04 were re-ruled as defect cases (2026-11-17): the eval keeps
   at least one, so a Verifier that rejects everything can''t pass. LL-05 is the monthly report command (no UI).
   The live Verifier returned pass (#123) and the work merged (#120); no later finding contradicts it. Phase 3e:

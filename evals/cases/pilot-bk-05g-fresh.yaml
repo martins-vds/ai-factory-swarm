@@ -164,6 +164,11 @@ normalize:
       - static/**/*.js
       - assets/**/*.js
       htmx_errors: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'Phase 4a, second round: BK-05G from before its first session (the parent of PR #395''s first commit; the
   same commit as pilot-bk-05f-fresh), with the operator''s later scope extension for the not-routed table, which
   the first session correctly stopped for. Rule-placement and legacy-difference prone: three quirk rulings (#234,

@@ -144,6 +144,11 @@ normalize:
     - id: route-specification-satisfied
       rule: The selected itinerary must satisfy the cargo's current route specification before assignment.
       source: src/cargotracker/booking/interfaces/route_selection/views.py:35-38
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'A defect case since 2026-11-16. The live Verifier passed BK-05F, but in eval b3b-r3 a Verifier found two
   major layering defects: the application use case raises Django Http404, and route eligibility is checked in the
   view instead of being enforced by the use case. The operator confirmed both as real violations. The work under

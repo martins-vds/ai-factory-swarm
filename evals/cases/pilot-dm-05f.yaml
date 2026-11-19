@@ -141,6 +141,11 @@ normalize:
       - static/**/*.js
       - assets/**/*.js
       htmx_errors: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
 notes: 'A data ticket: setup steps fetch the newest data snapshot artifact, so the eval repo needs one afs-snapshot
   run first (README). Normalization: the two stale ledger references and the plan ticket lists the live run added
   later (pilot #490, b6852cd), each only where this commit lacks them. Phase 4a: the profile gets today''s layering,
