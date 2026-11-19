@@ -349,13 +349,23 @@ def read_journal(path):
     return rows, has_result
 
 
+CHANGED_SINCE = re.compile(r"\s--changed-since[ =]\S+")
+
+
 def gate_commands(profile):
-    """Journal Command cells that count as a real gate run: each profile gate command, as run or via bash -c."""
+    """Journal Command cells that count as a real gate run: each profile gate command, as run or via bash -c.
+    An afs-mutation run counts with or without `--changed-since <ref>`: the base it diffed against was the
+    profile's choice then, and dropping the flag (harness #211) mustn't untrust the journals before it."""
     trusted = set()
     for cmds in (profile.get("gates") or {}).values():
         for cmd in cmds or []:
-            trusted.add(cell(cmd))
-            trusted.add(cell(shlex.join(["bash", "-c", cmd])))
+            forms = {cmd}
+            if "afs-mutation" in cmd:
+                bare = CHANGED_SINCE.sub("", cmd)
+                forms |= {bare, bare.replace("afs-mutation", "afs-mutation --changed-since origin/main", 1)}
+            for form in forms:
+                trusted.add(cell(form))
+                trusted.add(cell(shlex.join(["bash", "-c", form])))
     return trusted
 
 

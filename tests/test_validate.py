@@ -400,3 +400,12 @@ class MutationBaseTest(unittest.TestCase):
     def test_a_hardcoded_base_is_rejected(self):
         self.assertTrue(self.errs("python .migration/harness/tools/afs-mutation --changed-since origin/main"))
         self.assertEqual(self.errs("python .migration/harness/tools/afs-mutation"), [])
+
+
+class MutationJournalTest(unittest.TestCase):
+    def test_journals_from_before_the_base_change_stay_trusted(self):
+        new = {"gates": {"mutation_changed": ["python .migration/harness/tools/afs-mutation"]}}
+        trusted = validate_mod.gate_commands(new)
+        old = validate_mod.cell("python .migration/harness/tools/afs-mutation --changed-since origin/main")
+        self.assertIn(old, trusted)
+        self.assertIn(validate_mod.cell("python .migration/harness/tools/afs-mutation"), trusted)
