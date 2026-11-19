@@ -54,6 +54,10 @@ strategy, UI direction), `profile.context.working_budget`.
    - a shared test or setting the change will break (e.g. a test that asserts the exact installed apps);
    - a view or module owned by an earlier ticket that this one must extend (and a blocking edge to it).
 
+   Each target anchor of the slice spec goes under the ticket that builds it (`builds:`, written exactly as
+   the spec writes it); a deleted file goes under `removes:` with the tests that import it; and pages sit in
+   the profile's `graph.target_paths` (ADR-0048).
+
    Use new ids that no earlier ticket, return, journal or handoff used. Run `validate.py .migration`:
    `check_plan.py` fails the plan on any of the above that it can detect.
 8. Write the plan as a draft for review (do not publish).

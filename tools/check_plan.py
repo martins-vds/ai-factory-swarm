@@ -16,16 +16,29 @@ backfilled ticket that finished before return files existed is marked `done_befo
   * a file planned in two slices is listed under `cross_slice` in both plans;
   * a planned test file whose name is also used by another test file in a different folder has that
     folder's `__init__.py` existing or in the ticket's files (pytest can't collect both otherwise);
-  * every capability a ticket proves has its `.migration/ledger/<id>.yaml` in the ticket's files.
+  * every capability a ticket proves has its `.migration/ledger/<id>.yaml` in the ticket's files;
+  * (ADR-0048) a template or static file a ticket plans is under the profile's `graph.target_paths`, so the
+    target graph sees the page (synthetic #76);
+  * (ADR-0048) a module a ticket `removes` has its importing tests in the ticket's files, or owned by a
+    ticket it is blocked by.
+
+Over each slice whose tickets are all still open (a new plan), ADR-0048:
+  * every target anchor in `.migration/slices/<slice>.yaml` (`data_paths.target`, `entry_points.target`) is
+    in some ticket's `builds`, so the spec names routes the plan builds (synthetic #77, #89, #99).
+
+With `--issues ISSUES.json` (or `--repo OWNER/NAME`), ADR-0048: the file list of each open ticket's
+dispatched issue matches its plan entry; the plan file is the scope, and drift fails (LL-01 #71, LL-04 #107).
 
 The file list is the ticket's whole scope: the finish check (ADR-0034) holds sessions to it.
 
-Usage: check_plan.py <.migration folder> [--schemas <dir>] [--sample]
+Usage: check_plan.py <.migration folder> [--schemas <dir>] [--sample] [--issues ISSUES.json | --repo OWNER/NAME]
 Run by validate.py; exits 1 on any error.
 """
 import argparse
 import json
 import pathlib
+import re
+import subprocess
 import sys
 
 import yaml
@@ -214,7 +227,130 @@ def check(folder, schemas, errors, sample=False):
             entry = f".migration/ledger/{cap}.yaml"
             if entry not in t["files"]:
                 errors.append(f"{where[t['id']]}: {t['id']} proves {cap}: add {entry} to its files")
+
+    check_anchors(folder, plans, returned, errors)
+    if not sample:
+        check_target_paths(folder, open_tickets, where, errors)
+        check_removals(root, tickets, open_tickets, where, deps, errors)
     return len(plans)
+
+
+def load_yaml(path):
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def check_anchors(folder, plans, returned, errors):
+    """ADR-0048: a new slice's every target anchor is built by one of its tickets (synthetic #77, #89, #99: a
+    spec named routes the code never had, and the graph gate failed after the work merged)."""
+    for name, (path, doc) in plans.items():
+        started = [t for t in doc["tickets"] if t["role"] in returned.get(t["id"], set()) or t.get("done_before_returns")]
+        if started:
+            continue
+        spec = load_yaml(folder / "slices" / f"{name}.yaml")
+        anchors = list((spec.get("data_paths") or {}).get("target") or []) + \
+            list((spec.get("entry_points") or {}).get("target") or [])
+        built = {a for t in doc["tickets"] for a in t.get("builds") or []}
+        missing = [a for a in anchors if a not in built]
+        if missing:
+            errors.append(f"{path}: no ticket builds the slice's target anchor(s) {', '.join(missing)}: list each "
+                          f"under the ticket that builds it (`builds:`), exactly as the slice spec writes it")
+
+
+def check_target_paths(folder, open_tickets, where, errors):
+    """ADR-0048: a page a ticket plans is in a folder the target graph analyses (synthetic #76)."""
+    graph = (load_yaml(folder / "profile.yaml").get("graph") or {})
+    roots = [str(p).rstrip("/") + "/" for p in graph.get("target_paths") or []]
+    excluded = [str(p).rstrip("/") + "/" for p in graph.get("target_exclude") or []]
+    if not roots:
+        return
+    for t in open_tickets:
+        for f in t["files"]:
+            parts = pathlib.PurePosixPath(f).parts
+            if not ({"templates", "static"} & set(parts[:-1] if not f.endswith("/") else parts)):
+                continue
+            if f.startswith((".migration/", "tests/")) or any(f.startswith(x) for x in excluded):
+                continue
+            if not any(f.startswith(r) for r in roots):
+                errors.append(f"{where[t['id']]}: {t['id']} plans {f}, outside the profile's graph.target_paths "
+                              f"({', '.join(r.rstrip('/') for r in roots)}): add its folder there (or to "
+                              f"graph.target_exclude if it holds no pages), so the target graph sees it")
+
+
+def check_removals(root, tickets, open_tickets, where, deps, errors):
+    """ADR-0048: removing a module breaks the tests that import it unless the ticket (or one it waits for)
+    owns them."""
+    owner = {f: t["id"] for t in tickets for f in t["files"]}
+    for t in open_tickets:
+        for f in t.get("removes") or []:
+            if f not in t["files"]:
+                errors.append(f"{where[t['id']]}: {t['id']} removes {f}: list it in files too")
+            p = pathlib.PurePosixPath(f)
+            if p.suffix != ".py":
+                continue
+            names = {".".join(p.with_suffix("").parts)}
+            if p.parts and p.parts[0] == "src":
+                names.add(".".join(p.with_suffix("").parts[1:]))
+            alt = "|".join(map(re.escape, sorted(names)))
+            pattern = re.compile(rf"^\s*(?:from\s+(?:{alt})\b|import\s+(?:{alt})\b)", re.M)
+            for test in sorted((root / "tests").rglob("*.py")) if (root / "tests").is_dir() else []:
+                rel = test.relative_to(root).as_posix()
+                if rel in t["files"] or not pattern.search(test.read_text(encoding="utf-8", errors="ignore")):
+                    continue
+                other = owner.get(rel)
+                if other and other in deps[t["id"]]:
+                    continue
+                errors.append(f"{where[t['id']]}: {t['id']} removes {f}, which {rel} imports: add the test to its "
+                              f"files, or block it on the ticket that owns that test")
+
+
+SCOPE_LINE = re.compile(r"^\s*AFS-SCOPE:\s*`?([^`\s]+)`?\s*$", re.M)
+FILES_HEAD = re.compile(r"^\s*[-*]\s*\*\*Files\*\*", re.M)
+
+
+def issue_files(body):
+    """The paths an issue's **Files** list names (backticked, one per bullet under it)."""
+    m = FILES_HEAD.search(body or "")
+    if not m:
+        return None
+    out = []
+    for line in body[m.end():].splitlines()[1:]:
+        if not re.match(r"^\s+[-*]\s", line):
+            if line.strip():
+                break
+            continue
+        out += re.findall(r"`([^`\s]+)`", line)
+    return out
+
+
+def check_issue_drift(plans, returned, issues, errors):
+    """ADR-0048: the plan file is a ticket's scope; its dispatched issue lists the same files (LL-01 #71,
+    LL-04 #107: an issue's list drifted from the plan, and the session followed the issue)."""
+    by_ticket = {}
+    for i in issues:
+        m = re.match(r"^\s*([A-Z][A-Z0-9]*-[0-9A-Z-]+)\s*·", i.get("title") or "")
+        if m:
+            by_ticket.setdefault(m.group(1), i)
+    for name, (path, doc) in plans.items():
+        for t in doc["tickets"]:
+            if t["role"] in returned.get(t["id"], set()) or t.get("done_before_returns") or t["id"] not in by_ticket:
+                continue
+            issue = by_ticket[t["id"]]
+            listed = issue_files(issue.get("body"))
+            if listed is None:
+                continue
+            extended = set(SCOPE_LINE.findall(issue.get("body") or ""))
+            planned = set(t["files"])
+            extra = sorted(set(listed) - planned - extended)
+            missing = sorted(f for f in planned - set(listed)
+                             if not f.startswith((".migration/returns/", ".migration/evidence/")))
+            if extra or missing:
+                errors.append(f"{path}: {t['id']}'s issue #{issue['number']} lists files that drift from the plan"
+                              + (f"; not planned: {', '.join(extra)}" if extra else "")
+                              + (f"; planned but not listed: {', '.join(missing)}" if missing else "")
+                              + ". The plan is the scope: fix the issue, or the plan through a plan PR")
 
 
 def unbuilt(folder, schemas=None):
@@ -256,9 +392,20 @@ def main():
     ap.add_argument("folder")
     ap.add_argument("--schemas", default=str(HERE.parent / "schemas"))
     ap.add_argument("--sample", action="store_true", help="skip checks that need the target repo's files")
+    ap.add_argument("--issues", help="the target's open issues as JSON (title, number, body): check plan drift")
+    ap.add_argument("--repo", help="read the open issues from GitHub instead of --issues")
     a = ap.parse_args()
     errors = []
     n = check(a.folder, a.schemas, errors, a.sample)
+    if a.issues or a.repo:
+        if a.issues:
+            issues = json.loads(pathlib.Path(a.issues).read_text(encoding="utf-8"))
+        else:
+            out = subprocess.run(["gh", "api", "--paginate", f"repos/{a.repo}/issues?state=open&per_page=100"],
+                                 capture_output=True, text=True, check=True).stdout
+            issues = [i for i in json.loads(out.replace("][", ",")) if "pull_request" not in i]
+        check_issue_drift(load_plans(pathlib.Path(a.folder), pathlib.Path(a.schemas), []),
+                          returns_by_ticket(pathlib.Path(a.folder)), issues, errors)
     for e in errors:
         print(e, file=sys.stderr)
     print(f"check_plan: {n} plan(s), {len(errors)} error(s)")
