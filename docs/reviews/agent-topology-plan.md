@@ -235,6 +235,8 @@ These are added to `tools/check_plan.py`, each with a fixture from the run that 
 
 ### 3c: Reconciliation as a tool (finding 3)
 
+**Status (2026-11-19): built (ADR-0049, proposed).**
+
 - **`tools/reconcile_epic.py`.** It writes `.migration/evidence/ticket-reconciliation/<epic>.yaml` from
   the evidence `ticket_guard.py --reconcile-epic` already computes.
   - Every issue it can prove is written as `completed` or `superseded`.

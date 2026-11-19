@@ -55,7 +55,7 @@ HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "close_gap_issues.py", "check_ve
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "reconcile_epic.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"

@@ -64,9 +64,10 @@ slice.
 6. **Ticket reconciliation (ADR-0030), before coordinator completion or closing the slice epic.** After
    the work has reached `main`, ensure every related work, fix, verifier and bootstrap issue is linked
    beneath the slice epic, then enumerate its descendants; do not include unrelated slices or
-   decision-map/research issues. For
-   each issue, review the landing and role evidence, then record exactly one disposition in
-   `.migration/evidence/ticket-reconciliation/<epic>.yaml`: `completed` with landing PR(s) and committed
+   decision-map/research issues. Generate
+   `.migration/evidence/ticket-reconciliation/<epic>.yaml` with `reconcile_epic.py --repo <r> --epic <n>`
+   (ADR-0049): it writes each disposition it can prove and marks the rest `needs_review`. Review every
+   entry, fill in each `needs_review` one, remove that key, then commit. Each issue has exactly one disposition: `completed` with landing PR(s) and committed
    role return(s), `superseded` with a replacement issue plus the closed-unmerged failure PR and that
    role's own failed return (or, for a session killed before it could write one, `failure.session_run`: its
    own cancelled, timed-out or failed agent run; for a session that stopped and handed off, `failure.handoff`:
