@@ -1,0 +1,60 @@
+id: synthetic-billing-understand
+kind: understand
+must_pass: false
+agent: afs-analyst
+ticket: BL-01
+role: afs-analyst
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: da27cf8b7869d5dabfcf76b91844fdfcf1650062
+reference: phase 4b (agent-topology plan); no live ticket yet
+issue:
+  title: BL-01 · Inventory the member-billing source
+  body: |
+    **Role:** `afs-analyst`, ticket `BL-01`. Scope: the member-billing source, `legacy-billing/` in this repository (read-only, at this branch's commit). It is a separate source from the pinned `legacy/`: `.migration/source.lock` doesn't cover it, and nothing in `legacy-billing/` may change.
+
+    **Operator decisions for this ticket:**
+    - **No source graph:** `legacy-billing/` has no graph, and its source is four Java files and one test class. Inventory from the code and its tests directly. Don't stop to ask for an afs-understand run.
+    - **No risk map** for this scope (step 4).
+    - **Tier B:** the source's full build needs a vendor's private Maven repository (`com.northgate.vault`). Its tested code compiles without that dependency.
+
+    **Do:** inventory every capability of `legacy-billing/` into `.migration/ledger/billing.<name>.yaml` (`status: pending`), with each entry's business `rules`. Raise quirk drafts for anything that looks wrong. Commit your return `.migration/returns/BL-01.afs-analyst.yaml`.
+
+    **Only if your agent is `afs-understander`:** after BL-01, also do ticket **BL-02** in the same session. That is the Characterizer's procedure for the capabilities you inventoried, at tier B: compile only what the source's own tests reach, with public artifacts, and characterize at seams. Commit the suite under `.migration/characterization/billing/`, update the ledger entries, and commit `.migration/returns/BL-02.afs-characterizer.yaml`.
+chain:
+  agent: afs-characterizer
+  ticket: BL-02
+  role: afs-characterizer
+  title: BL-02 · Characterize the member-billing source
+  body: |
+    **Role:** `afs-characterizer`, ticket `BL-02`. Scope: the member-billing source, `legacy-billing/` (read-only), whose capabilities the Analyst inventoried in {work_pr} (your base branch) as `.migration/ledger/billing.*.yaml`.
+
+    **Operator decision:** **tier B.** The full build needs a vendor's private Maven repository (`com.northgate.vault`). Compile only what the source's own tests (or the units you characterize) reach, with public artifacts and compile-only stand-ins, and characterize at seams.
+
+    **Do:** the Characterizer's procedure for every `billing.*` capability. Commit the suite under `.migration/characterization/billing/`, update each ledger entry's evidence, tier and verification, and raise quirk drafts. Commit `.migration/returns/BL-02.afs-characterizer.yaml`.
+expect:
+  # The golden ledger, read from legacy-billing/'s code and tests: each rule's every group must match
+  # (any keyword of a group, case-insensitive) in the ledger files the work changed.
+  ledger_rules:
+    - id: late-fee-cap
+      all_of: [["25.00", "25"], ["cap"]]
+    - id: monthly-membership-fee
+      all_of: [["3.00"], ["member"]]
+    - id: tax-rate-and-rounding
+      all_of: [["5%", "0.05", "five percent"], ["half-up", "half_up", "half up"]]
+    - id: carry-over-under-a-dollar
+      all_of: [["1.00", "a dollar", "one dollar", "$1"], ["carr"]]
+    - id: negative-line-rejected
+      all_of: [["negative"]]
+    - id: card-charge-via-vault
+      all_of: [["northgate", "vault"], ["card"]]
+    - id: decline-raises
+      all_of: [["declin"]]
+  characterization_values: ["8.14", "29.40", "2.10", "0.53", "0.99"]
+  min_ledger: 6
+  min_characterization: 4
+notes: >-
+  Phase 4b: configuration A is the Analyst (this case) followed by the Characterizer (`chain`) on the
+  Analyst's PR; configuration B is one `afs-understander` session (evals/variants/). Graded on the
+  combined work against the case base: ledger completeness against the golden rules above, and how many of
+  the source test's values the characterization records. Not must-pass: there is no live run to compare.

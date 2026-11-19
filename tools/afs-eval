@@ -70,7 +70,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
-KINDS = ("migrator", "verifier", "bootstrap")
+KINDS = ("migrator", "verifier", "bootstrap", "understand")
 SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
 COPILOT = "copilot-swe-agent[bot]"
 # Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
@@ -122,6 +122,13 @@ def case_problems(doc):
                 out.append("expect.findings[] needs any_of keywords or a where path prefix")
     if doc["kind"] == "bootstrap" and not exp.get("fields"):
         out.append("a bootstrap case needs expect.fields")
+    if doc["kind"] == "understand":
+        if not exp.get("ledger_rules"):
+            out.append("an understand case needs expect.ledger_rules")
+        chain_spec = doc.get("chain") or {}
+        if not all(chain_spec.get(k) for k in ("agent", "ticket", "role", "title", "body")):
+            out.append("an understand case needs chain: agent, ticket, role, title and body (configuration A's "
+                       "second session)")
     for op in doc.get("normalize") or []:
         if not (set(op) & {"replace", "copy_from", "yaml_set"}):
             out.append("normalize ops are replace, copy_from or yaml_set")
@@ -447,13 +454,16 @@ def chain(a, cases):
     state = load_state(a)
     for case in cases:
         st = source.get(case["id"])
-        if case["kind"] != "migrator" or not st or case["id"] in state:
+        if case["kind"] not in ("migrator", "understand") or not st or case["id"] in state:
             continue
         head = agent_pr(a.eval_repo, st["issue"], st["base_branch"])
         if not head or head["title"].startswith("[WIP]"):
-            print(f"{case['id']}: no finished Migrator PR in {a.from_run}; skipped")
+            print(f"{case['id']}: no finished first-session PR in {a.from_run}; skipped")
             continue
         pr = head
+        if case["kind"] == "understand":           # phase 4b, configuration A: the Characterizer after the Analyst
+            chain_understand(a, case, st, head, state)
+            continue
         ret_path = f".migration/returns/{case['ticket']}.afs-migrator.yaml"
         r = sh(["gh", "api", f"repos/{a.eval_repo}/contents/{ret_path}?ref={head['head']['sha']}",
                 "-H", "Accept: application/vnd.github.raw"], check=False)
@@ -472,6 +482,54 @@ def chain(a, cases):
                              "chained_from": a.from_run, "dispatched_at": now()}
         save_state(a, state)
         print(f"{case['id']}: issue #{issue} assigned to Copilot (afs-verifier, base {head['head']['ref']})")
+
+
+def chain_understand(a, case, st, head, state):
+    """Phase 4b, configuration A: the case's second session (`chain`: the Characterizer) on the first one's PR
+    branch, as a live target runs them one after the other."""
+    c = case["chain"]
+    ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
+    r = sh(["gh", "api", f"repos/{a.eval_repo}/contents/{ret_path}?ref={head['head']['sha']}",
+            "-H", "Accept: application/vnd.github.raw"], check=False)
+    ret = yaml.safe_load(r.stdout) if r.returncode == 0 else None
+    if not isinstance(ret, dict) or ret.get("handoff") not in (None, "", "none"):
+        print(f"{case['id']}: the first session committed no return or handed off; skipped")
+        return
+    body = rewrite_body(c["body"], case["source"]["repo"], head["number"]) + eval_note(a.run, case)
+    issue = gh_api(f"repos/{a.eval_repo}/issues", "POST", {"title": f"[eval {a.run}] {c['title']}",
+                                                           "body": body})["number"]
+    gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
+        "assignees": [COPILOT],
+        "agent_assignment": {"target_repo": a.eval_repo, "base_branch": head["head"]["ref"],
+                             "custom_agent": c["agent"], "custom_instructions": ""}})
+    state[case["id"]] = {"issue": issue, "work_pr": head["number"], "base_branch": head["head"]["ref"],
+                         "origin_base": st["base_branch"], "chained_from": a.from_run, "dispatched_at": now()}
+    save_state(a, state)
+    print(f"{case['id']}: issue #{issue} assigned to Copilot ({c['agent']}, base {head['head']['ref']})")
+
+
+def grade_understand(base, head, expect, changed):
+    """Phase 4b: how much of the golden ledger the session(s) wrote, and how many golden values the
+    characterization recorded. Both are read from the files the work changed."""
+    def text(prefixes):
+        return "\n".join((pathlib.Path(head) / f).read_text(encoding="utf-8", errors="ignore").lower()
+                         for f in changed if f.startswith(prefixes) and (pathlib.Path(head) / f).is_file())
+    ledger = text((".migration/ledger/",))
+    found, missing = [], []
+    for rule in expect["ledger_rules"]:
+        ok = all(any(k.lower() in ledger for k in group) for group in rule["all_of"])
+        (found if ok else missing).append(rule["id"])
+    char = text((".migration/characterization/", "tests/characterization/"))
+    values = [v for v in expect.get("characterization_values") or [] if v.lower() in char]
+    need_ledger = expect.get("min_ledger", len(expect["ledger_rules"]))
+    need_char = expect.get("min_characterization", len(expect.get("characterization_values") or []))
+    metrics = {"ledger_found": len(found), "ledger_total": len(expect["ledger_rules"]), "ledger_missing": missing,
+               "characterization_found": len(values),
+               "characterization_total": len(expect.get("characterization_values") or [])}
+    return [("ledger covers the golden rules", len(found) >= need_ledger,
+             f"{len(found)}/{len(expect['ledger_rules'])}; missing {', '.join(missing) or 'none'}"),
+            ("characterization records the golden values", len(values) >= need_char,
+             f"{len(values)}/{metrics['characterization_total']}")], metrics
 
 
 def chain_row(src, case, st):
@@ -803,13 +861,16 @@ def grade(a, cases):
                 row.update(status=f"session-{ended}" if ended else "running", passed=False)
                 continue
         src = source_clone(sources, case["source"]["repo"])
+        base_branch = st.get("origin_base") or st["base_branch"]     # 4b, A: judge both sessions' work together
         git(src, "fetch", "-q", f"https://github.com/{a.eval_repo}",
-            f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{st['base_branch']}:refs/afs-eval/base")
+            f"+refs/pull/{pr['number']}/head:refs/afs-eval/head", f"+refs/heads/{base_branch}:refs/afs-eval/base")
         checks = []
-        if st.get("chained_from"):                # phase 4a, configuration A: the Verifier on a Migrator's PR
+        if st.get("chained_from") and case["kind"] != "understand":   # 4a, configuration A: Verifier on a Migrator
             row.update(chain_row(src, case, st))
             continue
         ret_path = f".migration/returns/{case['ticket']}.{case['role']}.yaml"
+        if case["kind"] == "understand" and st.get("chained_from"):
+            ret_path = f".migration/returns/{case['chain']['ticket']}.{case['chain']['role']}.yaml"
         shown = git(src, "show", f"refs/afs-eval/head:{ret_path}", check=False)
         ret, why = None, ret_path
         if shown.returncode == 0:
@@ -842,6 +903,12 @@ def grade(a, cases):
                 changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
                               check=False).stdout.split()
                 checks.append(work_check(changed))
+            elif case["kind"] == "understand":
+                changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
+                              check=False).stdout.split()
+                found, metrics = grade_understand(trees["base"], trees["head"], case["expect"], changed)
+                checks += found
+                row["understand"] = metrics
             elif case["kind"] == "verifier":
                 checks += grade_verifier(ret, case["expect"])
                 gate = blocked_gate(ret, case["expect"])

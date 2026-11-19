@@ -373,3 +373,26 @@ class ReportTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnderstandGradeTest(unittest.TestCase):
+    """Phase 4b: the golden ledger and the characterization's golden values, read from the changed files."""
+
+    def test_rules_and_values_are_found_in_the_changed_files(self):
+        with tempfile.TemporaryDirectory() as h:
+            led = pathlib.Path(h, ".migration/ledger/billing.total.yaml")
+            led.parent.mkdir(parents=True)
+            led.write_text("rules:\n- Late fees are capped at 25.00 a month\n- tax 5% rounded HALF_UP once\n")
+            ch = pathlib.Path(h, ".migration/characterization/billing/cases.yaml")
+            ch.parent.mkdir(parents=True)
+            ch.write_text("- observed: 8.14\n- observed: 0.53\n")
+            expect = {"ledger_rules": [{"id": "cap", "all_of": [["25.00"], ["cap"]]},
+                                       {"id": "tax", "all_of": [["5%"], ["half_up", "half-up"]]},
+                                       {"id": "card", "all_of": [["vault"]]}],
+                      "characterization_values": ["8.14", "0.53", "29.40"], "min_ledger": 2,
+                      "min_characterization": 2}
+            checks, metrics = ev.grade_understand(None, h, expect, [
+                ".migration/ledger/billing.total.yaml", ".migration/characterization/billing/cases.yaml"])
+        self.assertTrue(all(ok for _, ok, _ in checks), checks)
+        self.assertEqual(metrics["ledger_missing"], ["card"])
+        self.assertEqual(metrics["characterization_found"], 2)
