@@ -110,6 +110,7 @@ humans, and approved for cutover.
 | 45 | The Verifier folds into the Migrator for Migrator tickets; phase 4a round 2 met the rule (A's Verifier caught two major defects, B had none on a merge candidate, at about a third less cost) | [0045](adr/0045-the-verifier-folds-into-the-migrator.md) |
 | 46 | The Bootstrapper folds into the Program Orchestrator: intake runs the `afs-bootstrap` skill, the tier-C proof moves into `capabilities.yaml`, and the retired role's returns stay valid | [0046](adr/0046-the-bootstrapper-folds-into-the-program-orchestrator.md) |
 | 47 | Merges and parallel dispatch go through tools: `afs-merge` (never `merge-async`), `stack_refresh.py` at any depth, `check_dispatch_paths.py` before dispatch and in CI | [0047](adr/0047-merges-and-parallel-dispatch-go-through-tools.md) |
+| 48 | Plan checks catch what planning lost: target anchors under `builds:`, pages under `graph.target_paths`, removals with their importing tests, and issue file lists that match the plan | [0048](adr/0048-plan-checks-catch-what-planning-lost.md) |
 
 ---
 

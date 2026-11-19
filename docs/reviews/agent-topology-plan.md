@@ -227,6 +227,8 @@ this order: the tools first, so the fold has them to rely on.
 
 ### 3b: Planner checks (finding 6, part 1)
 
+**Status (2026-11-19): built (ADR-0048, proposed).**
+
 These are added to `tools/check_plan.py`, each with a fixture from the run that showed the loss:
 
 - **Anchors.** A slice's `data_paths.target` anchor must name a route that one of the slice's tickets builds
