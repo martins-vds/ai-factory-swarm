@@ -374,6 +374,8 @@ in an ADR whether the fold is kept or rejected.
 
 ### 4b: Analyst + Characterizer (finding 6, part 2)
 
+**Status (2026-11-19): the rule is met on the billing case (ADR-0051, proposed).** Both configurations scored 7/7 ledger rules and 5/5 characterization values on both runs; one session took about a third less time but didn't commit the Characterizer's return. The combined return contract and a larger-scope eval come next (`evals/results/2026-11-19-4b-summary.md`).
+
 - **Configurations:** separate sessions (current) against one "understand" session that runs both
   procedures as skills.
 - **Case:** one new-scope case on the synthetic target. `synthetic/legacy-reports` or `legacy-billing` has

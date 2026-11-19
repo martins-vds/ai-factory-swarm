@@ -108,6 +108,7 @@ humans, and approved for cutover.
 | 43 | Layer contracts from the ADRs live in the profile (`layering`) and `check_layers.py` checks them in the idiom gate; a Verifier's verdict follows its findings, and every serious finding cites a failing test or run | [0043](adr/0043-layering-is-a-gate-and-a-verifier-verdict-follows-evidence.md) |
 | 44 | The Verifier stays an independent session: phase 4a found no defect reaching a merge candidate in either configuration, so it was inconclusive; re-run on cases that start clean | [0044](adr/0044-the-verifier-stays-phase-4a-was-inconclusive.md) |
 | 45 | The Verifier folds into the Migrator for Migrator tickets; phase 4a round 2 met the rule (A's Verifier caught two major defects, B had none on a merge candidate, at about a third less cost) | [0045](adr/0045-the-verifier-folds-into-the-migrator.md) |
+| 51 | The Analyst and the Characterizer run as one session when the scope fits: phase 4b's one session matched the two on the billing case at about a third less time; the combined return contract and a larger-scope eval come first | [0051](adr/0051-analyst-and-characterizer-run-as-one-session-when-the-scope-fits.md) |
 
 ---
 

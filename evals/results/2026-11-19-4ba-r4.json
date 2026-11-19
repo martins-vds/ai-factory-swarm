@@ -1,0 +1,65 @@
+{
+  "cases": {
+    "synthetic-billing-understand": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BL-01.afs-analyst.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "ledger covers the golden rules",
+          "detail": "7/7; missing none",
+          "ok": true
+        },
+        {
+          "check": "characterization records the golden values",
+          "detail": "0/5",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "failure",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1557,
+      "skills": {
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-quirk-ticket": 1,
+        "afs-setup-check": 1
+      },
+      "status": "graded",
+      "understand": {
+        "characterization_found": 0,
+        "characterization_total": 5,
+        "ledger_found": 7,
+        "ledger_missing": [],
+        "ledger_total": 7
+      },
+      "usage": {
+        "minutes": 3.7,
+        "output_tokens": 0,
+        "requests": 27,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-19T15:28:17+00:00",
+  "run": "2026-11-19-4ba-r4"
+}
