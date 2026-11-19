@@ -2,16 +2,17 @@ id: synthetic-sy-01-bootstrap
 kind: bootstrap
 must_pass: false
 install: false
-agent: afs-bootstrapper
+agent: afs-program-orchestrator
 ticket: SY-01
-role: afs-bootstrapper
+role: afs-program-orchestrator
 source:
   repo: martins-vds/ai-factory-synthetic-target
   base: 563c316ed51462b08fd6e58f3781a3c8b2890453
 reference: martins-vds/ai-factory-synthetic-target#4
 issue:
   title: SY-01 · Prepare the migration target
-  body: '**Role:** `afs-bootstrapper`, ticket `SY-01`: prepare this repository as a migration target.
+  body: '**Role:** `afs-program-orchestrator`, ticket `SY-01`: prepare this repository as a migration target with
+    the `afs-bootstrap` skill (intake, step 1).
 
 
     **Intake (operator: martins-vds):**
@@ -27,7 +28,7 @@ issue:
     - **Sign-off approver:** `martins-vds`.
 
 
-    Do steps 1–4 of your procedure:
+    Do steps 1–4 of `afs-bootstrap`:
 
     1. detect the stacks;
 
@@ -43,7 +44,8 @@ issue:
     your profile and checklist, and scaffolding follows after.
 
 
-    Write your return `.migration/returns/SY-01.afs-bootstrapper.yaml` and a handoff for step 5.
+    Write your return `.migration/returns/SY-01.afs-program-orchestrator.yaml` (`phase: 0`) and a handoff for step
+    5.
 
 
 
@@ -56,4 +58,16 @@ expect:
     .migration/profile.yaml:source.path: legacy
     .migration/profile.yaml:source.sha: 563c316ed51462b08fd6e58f3781a3c8b2890453
 notes: 'Tracked, not must-pass: the live session ran before the harness was installed, so this case has no installed
-  skills on its branch.'
+  skills on its branch. Since ADR-0046 the Program Orchestrator runs it with the `afs-bootstrap` skill; `harness_copy`
+  puts that agent and its harness skills on the branch, as bootstrap would.'
+harness_copy:
+- from: agents/afs-program-orchestrator.agent.md
+  to: .github/agents/afs-program-orchestrator.agent.md
+- from: skills/afs-migration-contract
+  to: .github/skills/afs-migration-contract
+- from: skills/afs-setup-check
+  to: .github/skills/afs-setup-check
+- from: skills/afs-handoff
+  to: .github/skills/afs-handoff
+- from: skills/afs-bootstrap
+  to: .github/skills/afs-bootstrap

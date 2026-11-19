@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A slice's human sign-off is an approving PR review by a named approver (ADR-0031, ADR-0036).
 
-A Slice Coordinator records the human side-by-side check as `human_check: passed` in its return file.
+A slice's acceptance return records the human side-by-side check as `human_check: passed`: the Program
+Orchestrator's `acceptance` block (ADR-0050), or a retired Slice Coordinator's return.
 An agent can write that line, so the line alone proves nothing. The sign-off is the approver's own
 action: an **approving review**, by a login listed in the profile's `signoff.approvers`, on the exact
 head commit of the PR that sets `passed`. A later push makes the approval stale, so the human signs
@@ -61,12 +62,25 @@ SIGNED = ("passed", "deferred")       # a deferral is a sign-off decision too (A
 MAX_DEFER_DAYS, FAIL_AFTER_DAYS = 30, 30
 
 
+def acceptance(doc):
+    """The slice-acceptance fields of a return: a Program Orchestrator's `acceptance` block (ADR-0050), or a
+    retired Slice Coordinator's whole return (history stays valid). {} for any other return."""
+    if not isinstance(doc, dict):
+        return {}
+    if doc.get("role") == "afs-slice-coordinator":
+        return doc
+    block = doc.get("acceptance")
+    if doc.get("role") == "afs-program-orchestrator" and isinstance(block, dict):
+        return {**block, "role": doc["role"], "ticket": doc.get("ticket"), "issue": doc.get("issue")}
+    return {}
+
+
 def coordinator(text):
     try:
         doc = yaml.safe_load(text or "") or {}
     except yaml.YAMLError:
         return {}
-    return doc if isinstance(doc, dict) and doc.get("role") == "afs-slice-coordinator" else {}
+    return acceptance(doc)
 
 
 def state(text):

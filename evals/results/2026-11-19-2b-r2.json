@@ -1,0 +1,49 @@
+{
+  "cases": {
+    "synthetic-sy-01-bootstrap": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/SY-01.afs-program-orchestrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": ".migration/capabilities.yaml:characterization.tier = 'A'",
+          "detail": "got None",
+          "ok": false
+        },
+        {
+          "check": ".migration/profile.yaml:source.path = 'legacy'",
+          "detail": "got None",
+          "ok": false
+        },
+        {
+          "check": ".migration/profile.yaml:source.sha = '563c316ed51462b08fd6e58f3781a3c8b2890453'",
+          "detail": "got None",
+          "ok": false
+        }
+      ],
+      "ci": {},
+      "kind": "bootstrap",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1538,
+      "skills": {},
+      "status": "graded",
+      "usage": {
+        "minutes": 0.0,
+        "output_tokens": 0,
+        "requests": 0,
+        "sessions": 0
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-19T14:43:07+00:00",
+  "run": "2026-11-19-2b-r2"
+}

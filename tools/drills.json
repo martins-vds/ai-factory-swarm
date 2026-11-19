@@ -81,8 +81,8 @@
       "ops": [
         {
           "op": "write",
-          "path": ".migration/returns/AFS-DRILL.afs-slice-coordinator.yaml",
-          "text": "role: afs-slice-coordinator\nticket: AFS-DRILL\nissue: null\nslice: afs-drill\ntickets: {total: 0, merged: 0, open: 0, blocked: []}\nacceptance: {report: null, gates: null, mutation_score: null, coverage_gaps: null}\nhuman_check: passed\nhuman_check_issues: []\nquirk_tickets: []\n"
+          "path": ".migration/returns/AFS-DRILL.afs-program-orchestrator.yaml",
+          "text": "role: afs-program-orchestrator\nticket: AFS-DRILL\nissue: null\nphase: 6\ndecisions: []\ndispatched: []\nawaiting_human: []\nnext_step: drill\nacceptance:\n  slice: afs-drill\n  human_check: passed\n"
         }
       ],
       "trigger": "pr",
@@ -217,12 +217,12 @@
     },
     {
       "id": "deferral-without-approval",
-      "why": "A Slice Coordinator's `human_check: deferred` without an approver's review is rejected: only an approver defers (ADR-0036).",
+      "why": "A slice acceptance's `human_check: deferred` without an approver's review is rejected: only an approver defers (ADR-0036).",
       "ops": [
         {
           "op": "write",
-          "path": ".migration/returns/DRILL-DEFER.afs-slice-coordinator.yaml",
-          "text": "role: afs-slice-coordinator\nticket: DRILL-DEFER\nissue: drill#0\nhuman_check: deferred\nhuman_check_issue: drill#0\nhuman_check_due: '2099-01-01'\n"
+          "path": ".migration/returns/DRILL-DEFER.afs-program-orchestrator.yaml",
+          "text": "role: afs-program-orchestrator\nticket: DRILL-DEFER\nissue: drill#0\nphase: 6\ndecisions: []\ndispatched: []\nawaiting_human: []\nnext_step: drill\nacceptance:\n  slice: afs-drill\n  human_check: deferred\n  human_check_issue: drill#0\n  human_check_due: '2099-01-01'\n"
         }
       ],
       "trigger": "pr",

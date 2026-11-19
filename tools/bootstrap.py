@@ -50,12 +50,12 @@ import check_runtime  # noqa: E402
 import check_installed  # noqa: E402
 import validate  # noqa: E402
 
-HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "close_gap_issues.py", "check_verified_merge.py", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_layers.py", "check_ui.py", "check_installed.py", "extract_slice.py", "check_graph.py",
+HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "close_gap_issues.py", "check_verified_merge.py", "validate.py", "check_plan.py", "afs-finish-check", "crap.py", "check_layers.py", "check_ui.py", "check_dispatch_paths.py", "afs-merge", "check_installed.py", "extract_slice.py", "check_graph.py",
                  "understand.py", "check_domain_coverage.py", "check_return_contract.py", "afs-mutation", "check_inputs.py",
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "reconcile_epic.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -626,7 +626,7 @@ def check_profile_services(profile, target):
     compose = pathlib.Path(target) / services.get("compose", "")
     if not compose.is_file():
         raise BootstrapError(f"profile services.compose names {services.get('compose')!r}, which the target "
-                             f"doesn't have. Write the test services first (afs-bootstrapper step 4, with "
+                             f"doesn't have. Write the test services first (`afs-bootstrap` step 4, with "
                              f"docker-compose-orchestration); CI and Copilot setup steps start them")
 
 

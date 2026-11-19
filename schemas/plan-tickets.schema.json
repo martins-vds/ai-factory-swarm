@@ -41,6 +41,7 @@
               "afs-characterizer",
               "afs-migrator",
               "afs-planner",
+              "afs-program-orchestrator",
               "afs-slice-coordinator",
               "afs-specialist-migrator",
               "afs-verifier"
@@ -76,6 +77,22 @@
           "done_before_returns": {
             "type": "boolean",
             "description": "Backfill only: the ticket finished before return files were required, so no return marks it done. The open-ticket checks skip it."
+          },
+          "builds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(endpoint|command)=.+"
+            },
+            "description": "Target anchors (as the slice spec's data_paths.target and entry_points.target write them) this ticket builds. A new slice's every target anchor must be built by one of its tickets (ADR-0048; synthetic #77, #89, #99)."
+          },
+          "removes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Files this ticket deletes (each also in files). A removed module's importing tests are in files, or owned by a ticket this one is blocked by (ADR-0048)."
           }
         }
       }

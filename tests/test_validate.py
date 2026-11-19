@@ -85,6 +85,16 @@ class TierAttemptTest(unittest.TestCase):
         validate_mod.check_tier_attempt("r.yaml", {"role": "afs-verifier", "characterization_tier": "C"}, out)
         self.assertEqual(out, [])
 
+    def test_the_proof_lives_in_the_capability_checklist(self):
+        # ADR-0046: the Bootstrapper folded into the orchestrator; capabilities.yaml carries the tier-C proof.
+        out = []
+        validate_mod.check_tier_attempt(".migration/capabilities.yaml", {"characterization": {"tier": "C"}}, out)
+        self.assertIn("tier-B recipe", out[0])
+        out = []
+        validate_mod.check_tier_attempt(".migration/capabilities.yaml", {"characterization": {
+            "tier": "C", "tier_b_attempt": "no code: specs only"}}, out)
+        self.assertEqual(out, [])
+
 
 class ShallowHistoryTest(unittest.TestCase):
     """A shallow clone can't prove a pre-rule return's exemption; the error must say so (pilot BK-04 restart)."""
