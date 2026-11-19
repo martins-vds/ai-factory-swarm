@@ -1,6 +1,6 @@
 # ADR-0046: The Bootstrapper folds into the Program Orchestrator
 
-- Status: Proposed (merging the harness PR that adds it accepts it, once the bootstrap eval case shows no flip)
+- Status: Proposed (merging the harness PR that adds it accepts it). Eval: no flip; the bootstrap case passes 2 of 2 (runs 2b-r3, 2b-r4) after the setup-check fix ([summary](../../evals/results/2026-11-19-2b-summary.md))
 - Date: 2026-11-19
 - Source: [agent-topology review](../reviews/agent-topology-review.md), finding 4; [plan](../reviews/agent-topology-plan.md),
   phase 2b
