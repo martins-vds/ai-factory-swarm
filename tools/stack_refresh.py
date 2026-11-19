@@ -16,6 +16,8 @@ one above it. This tool does that, bottom-up, in a clone with full history and a
 * A merge that conflicts is aborted; the PR gets a comment (with --comment) and everything above it is
   skipped. Conflicts are a person's or a session's job; the tool never resolves them.
 * PRs from forks are skipped: their branches aren't ours to push.
+* A PR that is already merged or closed is left out, even when the PR list given names it (synthetic #123:
+  a merged child was merged with its base again). Stacks of any depth are refreshed, parents first.
 
 Exit 0 when every stacked PR is current or was refreshed, 1 when any was skipped or conflicted (the
 summary says which and why), 2 on a usage or git error. Standard library plus git and gh.
@@ -53,6 +55,7 @@ def default_branch(repo):
 
 def stack_order(prs, default, repo):
     """Stacked PRs, parents before children. Each entry: (pr, depth)."""
+    prs = [p for p in prs if p.get("state", "open") == "open" and not p.get("merged_at")]
     own = [p for p in prs if (p.get("head", {}).get("repo") or {}).get("full_name") == repo]
     by_head = {p["head"]["ref"]: p for p in own}
     stacked = {p["number"] for p in own if p["base"]["ref"] != default}

@@ -109,6 +109,7 @@ humans, and approved for cutover.
 | 44 | The Verifier stays an independent session: phase 4a found no defect reaching a merge candidate in either configuration, so it was inconclusive; re-run on cases that start clean | [0044](adr/0044-the-verifier-stays-phase-4a-was-inconclusive.md) |
 | 45 | The Verifier folds into the Migrator for Migrator tickets; phase 4a round 2 met the rule (A's Verifier caught two major defects, B had none on a merge candidate, at about a third less cost) | [0045](adr/0045-the-verifier-folds-into-the-migrator.md) |
 | 46 | The Bootstrapper folds into the Program Orchestrator: intake runs the `afs-bootstrap` skill, the tier-C proof moves into `capabilities.yaml`, and the retired role's returns stay valid | [0046](adr/0046-the-bootstrapper-folds-into-the-program-orchestrator.md) |
+| 47 | Merges and parallel dispatch go through tools: `afs-merge` (never `merge-async`), `stack_refresh.py` at any depth, `check_dispatch_paths.py` before dispatch and in CI | [0047](adr/0047-merges-and-parallel-dispatch-go-through-tools.md) |
 
 ---
 

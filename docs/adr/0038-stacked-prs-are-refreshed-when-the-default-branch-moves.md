@@ -1,6 +1,6 @@
 # ADR-0038: Stacked PRs are refreshed when the default branch moves
 
-**Status:** accepted (2026-11-08)
+- Status: accepted (2026-11-08); amended by ADR-0047 (stacks of any depth; merged PRs are left out)
 
 ## Context
 A stacked PR targets another PR's branch: a Verifier PR on a Migrator PR, a continuation session on the
