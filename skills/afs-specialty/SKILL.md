@@ -16,7 +16,7 @@ It replaces the former Specialist Migrator role (ADR-0042).
 - Read the decision-map answer that governs your specialty: the data strategy, or the UI direction.
 
 ## Data (ADR-0010, ADR-0032)
-Load `afs-data-pipeline` and `db-seed`.
+Load `afs-data-pipeline`.
 
 1. **Build the pipeline.** Build the repeatable legacy → target pipeline for your slice's tables,
    following `afs-data-pipeline`: snapshot check, mapping, idempotent loader, export.
@@ -30,7 +30,7 @@ Load `afs-data-pipeline` and `db-seed`.
 **Evidence:** the reconciliation report.
 
 ## UI (ADR-0014)
-Load `ui-ux-pro-max`. Load `prototype` only when a screen's look is still open; a prototype is throwaway.
+Load `ui-ux-pro-max`. A screen whose look is still open is a decision-map question (a prototype ticket), not yours to settle.
 
 - **Functional fidelity is mandatory.** Every field, flow, validation, state and permission of the screen,
   per the ledger.

@@ -306,6 +306,14 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
         # (b3-r1, cancelled before any session ran).
         notes = apply_normalize(wt, case.get("normalize"), src, label)
         notes += replan_open_tickets(wt, ROLE_MAP_FOR_PREPARE)
+        who = ["-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com"]
+        if notes:
+            # The normalized files get their own commit, before the harness: a validator rule that exempts files
+            # committed before it (predates_rule) must see a re-planned plan as older than the rule, as it is on
+            # the live target (p5s-r1, LL-01 handed off on a plan the anchors rule should have exempted).
+            git(wt, "add", "-A")
+            git(wt, *who, "commit", "-q", "--allow-empty", "-m",
+                f"Eval case {case['id']}: normalize {label} at {sha[:12]}\n\n" + "\n".join(f"- {n}" for n in notes))
         if case.get("install", True):      # a bootstrap case starts before any harness is installed
             install(wt, harness, case.get("stack_pack", "java-to-django"), allow_unreleased)
         else:
@@ -315,11 +323,9 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
         msg = (f"Eval case {case['id']}: {label} at {sha[:12]} with harness {harness_sha}\n\n"
                + ("Normalized to today's rules (no behavior change):\n" + "\n".join(f"- {n}" for n in notes)
                   if notes else "No normalization.") + "\n")
-        git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
-            "commit", "-q", "--allow-empty", "-m", msg)
+        git(wt, *who, "commit", "-q", "--allow-empty", "-m", msg)
         for ref in [eval_main, *merge_also]:
-            git(wt, "-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com",
-                "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", ref)
+            git(wt, *who, "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", ref)
         return wt, git(wt, "rev-parse", "HEAD").stdout.strip()
     except Exception:
         git(src, "worktree", "remove", "--force", str(wt), check=False)
@@ -344,7 +350,7 @@ def prepare(a, cases):
                              "evaluate an unmerged harness (a topology experiment)")
     sources = pathlib.Path(a.sources)
     sources.mkdir(parents=True, exist_ok=True)
-    out = []
+    out, refused = [], []
     for case in cases:
         src = source_clone(sources, case["source"]["repo"])
         remote = f"https://github.com/{a.eval_repo}"
@@ -356,18 +362,31 @@ def prepare(a, cases):
             wt2, head2 = build_branch(src, case["source"]["work"], case, harness, eval_main, [head],
                                       a.allow_unreleased, "work")
             pushes.append((wt2, head2, branch(a.run, case, "work")))
+        trees = list(pushes)
+        found = {}
         for tree, sha, name in pushes:
-            errors = validate_errors(tree)
+            found[name] = errors = validate_errors(tree)
             print(f"{case['id']}: {name}: {len(errors)} validation error(s) before the agent starts"
                   + "".join(f"\n    {e[:200]}" for e in errors[:5]))
+        if any(found.values()) and not a.allow_errors:
+            # The agent's setup check runs the same validator and stops on these: the session would grade the
+            # case, not the harness (p5-r1: LL-01..05 started with the anchors rule's errors). A case that means
+            # to start on a broken tree passes --allow-errors.
+            print(f"{case['id']}: not pushed: fix the case (its normalize) or pass --allow-errors")
+            refused.append(case["id"])
+            pushes = []
+        for tree, sha, name in pushes:
             if a.dry_run:
                 print(f"{case['id']}: would push {sha[:12]} to {name}")
             else:
                 git(tree, "-c", "push.negotiate=true", "push", "-q", "--force", remote, f"{sha}:refs/heads/{name}")
                 print(f"{case['id']}: pushed {sha[:12]} to {name}")
-        out.append({"case": case["id"], "branches": [p[2] for p in pushes]})
-        for tree, _, _ in pushes:
+        if pushes:
+            out.append({"case": case["id"], "branches": [p[2] for p in pushes]})
+        for tree, _, _ in trees:
             git(src, "worktree", "remove", "--force", str(tree), check=False)
+    if refused:
+        raise SystemExit(f"afs-eval: refused {len(refused)} case(s) with validation errors: {', '.join(refused)}")
     return out
 
 
@@ -871,6 +890,10 @@ def grade(a, cases):
             row.update(status="no-pr", passed=False)
             continue
         row["pr"] = pr["number"]
+        failed_step = setup_failure(a.eval_repo, pr["head"]["ref"])
+        if failed_step:      # the session ran without its tools: that grades the runner, not the harness
+            row.update(status="setup-failure", passed=False, setup_step=failed_step)
+            continue
         if pr["title"].startswith("[WIP]"):     # Copilot leaves finished PRs as drafts
             ended = session_end(a.eval_repo, pr["head"]["ref"])
             # A cancelled session (the one-hour limit) never retitles its PR: it ended unfinished. A session that
@@ -963,6 +986,25 @@ def session_end(eval_repo, head_ref):
             if run.get("conclusion") == "success":
                 return "completed"
             return {"cancelled": "timed-out"}.get(run["conclusion"], run["conclusion"])
+    return None
+
+
+# Copilot's own steps around each of the target's setup steps; their conclusions say nothing about the setup.
+COPILOT_STEP = re.compile(r"^(Set up job|Initialize|Complete job|Clean ?[Uu]p|Post |Starting User|Finished User|Validate |"
+                          r"Use pre-installed|Configure pre-started|Prepare Copilot|Download |Start MCP|Pre-seed|"
+                          r"Processing Request|\[Optional\])")
+
+
+def setup_failure(eval_repo, head_ref):
+    """The name of a setup step that failed in the Copilot session's first run on this branch, if one did. A failed
+    step skips every later one, so the agent works without RTK, Python or the harness tools (ADR-0054)."""
+    runs = (gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=20") or {})
+    runs = sorted(runs.get("workflow_runs") or [], key=lambda r: r.get("created_at") or "")
+    for run in runs[:1]:
+        for job in (gh_api(f"repos/{eval_repo}/actions/runs/{run['id']}/jobs") or {}).get("jobs") or []:
+            for step in job.get("steps") or []:
+                if step.get("conclusion") == "failure" and not COPILOT_STEP.match(step.get("name") or ""):
+                    return step["name"]
     return None
 
 
@@ -1060,11 +1102,18 @@ def report(results, baseline=None):
     return "\n".join(lines) + "\n"
 
 
+# A run that never tested the case: it wasn't dispatched there, or its session started without its tools.
+NOT_A_RUN = {"not-dispatched", "setup-failure"}
+
+
 def majority(runs):
-    """{case: {"passes": n, "runs": n, "passed": bool, "usage": median usage}} over runs of one variant."""
+    """{case: {"passes": n, "runs": n, "passed": bool, "usage": median usage}} over runs of one variant. Runs in
+    NOT_A_RUN don't count, so a case re-run in a later run file counts once per real session."""
     out = {}
     for res in runs:
         for cid, row in res["cases"].items():
+            if row.get("status") in NOT_A_RUN:
+                continue
             c = out.setdefault(cid, {"passes": 0, "runs": 0, "must_pass": row.get("must_pass"), "usages": [],
                                      "statuses": []})
             c["runs"] += 1
@@ -1253,6 +1302,8 @@ def main(argv=None):
             p.add_argument("--harness", default=str(ROOT))
             p.add_argument("--allow-unreleased", action="store_true")
             p.add_argument("--dry-run", action="store_true")
+            p.add_argument("--allow-errors", action="store_true",
+                           help="push a case whose tree has validation errors (a case about a broken tree)")
     p = sub.add_parser("report")
     p.add_argument("--results", required=True)
     p.add_argument("--baseline")

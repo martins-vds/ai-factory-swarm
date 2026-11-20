@@ -18,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 LOCK = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
 ROLES = ["program-orchestrator", "analyst", "characterizer", "planner",
          "migrator", "verifier", "auditor"]
-MAX_AGENT_CHARS = 9000
+MAX_AGENT_CHARS = 6000   # phase 5 (ADR-0053): was 9,000; the largest file was 8,838
 FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.S)
 
 
@@ -88,6 +88,30 @@ class AgentsTest(unittest.TestCase):
                 items = parsed[parent][key] if parent else parsed[key]
                 self.assertEqual(items, [expected])
                 self.assertTrue(all(isinstance(item, str) for item in items))
+
+    # Phase 5 (ADR-0053): at most 12 listed skills per role. A role above it needs a recorded reason here.
+    SKILL_BUDGET = 12
+    SKILL_BUDGET_EXCEPTIONS = {
+        "program-orchestrator": "absorbed the Bootstrapper and the Slice Coordinator (ADR-0046, ADR-0050); 16 of its "
+                                "skills are loaded only by `afs-bootstrap` or the ticket loop. No session data yet: "
+                                "revisit after its next 20 sessions",
+        "characterizer": "no eval sessions yet to show which of its 13 are unused; revisit with phase 4b's follow-up",
+        "verifier": "audit-only since ADR-0045; its four gate-3 rule sets are each loaded in 16-33% of 180 sessions",
+    }
+
+    def test_each_role_stays_within_its_skill_budget(self):
+        lock = json.loads((ROOT / "skills.lock.json").read_text(encoding="utf-8"))
+        counts = {}
+        for e in lock["skills"] + lock["plugins"]:
+            for r in e["roles"]:
+                counts[r] = counts.get(r, 0) + 1
+        for role, n in counts.items():
+            with self.subTest(role=role):
+                if n > self.SKILL_BUDGET:
+                    self.assertIn(role, self.SKILL_BUDGET_EXCEPTIONS,
+                                  f"{role} lists {n} skills (budget {self.SKILL_BUDGET}): trim, or record why")
+        for role in self.SKILL_BUDGET_EXCEPTIONS:
+            self.assertGreater(counts.get(role, 0), self.SKILL_BUDGET, f"{role}'s exception is stale: remove it")
 
     def test_the_acceptance_return_example_parses(self):
         # ADR-0050: the Slice Coordinator's return became the orchestrator's `acceptance` block.

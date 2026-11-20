@@ -248,12 +248,21 @@ def load_yaml(path):
         return {}
 
 
+def plan_predates_anchors(path, folder):
+    """A plan committed before the anchors rule reached this target is exempt (eval cases replay such plans)."""
+    try:
+        import validate
+    except ImportError:
+        return False
+    return validate.predates_rule(pathlib.Path(path), pathlib.Path(folder), validate.PLAN_ANCHORS_RULE_V1)
+
+
 def check_anchors(folder, plans, returned, errors):
     """ADR-0048: a new slice's every target anchor is built by one of its tickets (synthetic #77, #89, #99: a
     spec named routes the code never had, and the graph gate failed after the work merged)."""
     for name, (path, doc) in plans.items():
         started = [t for t in doc["tickets"] if t["role"] in returned.get(t["id"], set()) or t.get("done_before_returns")]
-        if started:
+        if started or plan_predates_anchors(path, folder):
             continue
         spec = load_yaml(folder / "slices" / f"{name}.yaml")
         anchors = list((spec.get("data_paths") or {}).get("target") or []) + \

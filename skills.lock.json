@@ -154,7 +154,6 @@
       "install": "harness",
       "roles": [
         "planner",
-        "verifier",
         "auditor",
         "migrator"
       ]
@@ -298,8 +297,7 @@
       "install": "upstream",
       "roles": [
         "analyst",
-        "planner",
-        "migrator"
+        "planner"
       ]
     },
     {
@@ -309,8 +307,7 @@
       "path": "skills/engineering/codebase-design",
       "install": "upstream",
       "roles": [
-        "planner",
-        "migrator"
+        "planner"
       ]
     },
     {
@@ -376,30 +373,9 @@
       "path": "patterns-of-enterprise-application-architecture",
       "install": "upstream",
       "roles": [
-        "migrator",
         "verifier"
       ],
       "notes": "Maps legacy enterprise patterns (Table Module, Active Record, Unit of Work\u2026) to their target equivalents."
-    },
-    {
-      "name": "refactoring",
-      "category": "refactoring",
-      "source": "agent-rules-books",
-      "path": "refactoring",
-      "install": "upstream",
-      "roles": [
-        "migrator"
-      ]
-    },
-    {
-      "name": "refactoring-guru",
-      "category": "refactoring",
-      "source": "agent-rules-books",
-      "path": "refactoring-guru",
-      "install": "upstream",
-      "roles": [
-        "migrator"
-      ]
     },
     {
       "name": "clean-code",
@@ -408,7 +384,6 @@
       "path": "clean-code",
       "install": "upstream",
       "roles": [
-        "migrator",
         "verifier"
       ]
     },
@@ -445,18 +420,6 @@
       ]
     },
     {
-      "name": "verification-before-completion",
-      "category": "build",
-      "source": "superpowers",
-      "path": "skills/verification-before-completion",
-      "install": "upstream",
-      "roles": [
-        "program-orchestrator",
-        "migrator",
-        "verifier"
-      ]
-    },
-    {
       "name": "code-review",
       "category": "review",
       "source": "mattpocock-skills",
@@ -468,34 +431,13 @@
       ]
     },
     {
-      "name": "pr",
-      "category": "review",
-      "source": "mattpocock-skills",
-      "path": "skills/engineering/pr",
-      "install": "upstream",
-      "roles": [
-        "migrator"
-      ]
-    },
-    {
-      "name": "receiving-code-review",
-      "category": "review",
-      "source": "superpowers",
-      "path": "skills/receiving-code-review",
-      "install": "upstream",
-      "roles": [
-        "migrator"
-      ]
-    },
-    {
       "name": "diagnosing-bugs",
       "category": "review",
       "source": "mattpocock-skills",
       "path": "skills/engineering/diagnosing-bugs",
       "install": "upstream",
       "roles": [
-        "migrator",
-        "verifier"
+        "migrator"
       ]
     },
     {
@@ -602,8 +544,7 @@
       "path": "skills/engineering/prototype",
       "install": "upstream",
       "roles": [
-        "program-orchestrator",
-        "migrator"
+        "program-orchestrator"
       ],
       "notes": "Throwaway UI/logic prototypes that resolve wayfinder:prototype tickets (the wayfinder skill calls it)."
     },
@@ -635,7 +576,6 @@
       "install": "upstream",
       "roles": [
         "program-orchestrator",
-        "migrator",
         "characterizer"
       ],
       "license": "MIT",
@@ -660,8 +600,7 @@
       "path": ".agents/skills/db-seed",
       "install": "upstream",
       "roles": [
-        "characterizer",
-        "migrator"
+        "characterizer"
       ],
       "notes": "SQL Server and Oracle only; add engine references (e.g. PostgreSQL) as capability gaps.",
       "license": "MIT",
@@ -675,9 +614,7 @@
       "path": ".",
       "roles": [
         "analyst",
-        "auditor",
-        "migrator",
-        "verifier"
+        "auditor"
       ],
       "patches": [
         "understand-anything/argument-hint.patch"

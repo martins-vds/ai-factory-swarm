@@ -88,11 +88,12 @@ jobs:
         run: python .migration/harness/tools/check_installed.py
       - name: RTK block and hook match RTK {rtk_version}
         if: "!cancelled()"   # every check reports, not only the first that fails
-        env:
-          GH_TOKEN: ${{{{ github.token }}}}
         run: |
           d=$(mktemp -d)
-          gh release download "v{rtk_version}" --repo {rtk_repo} --pattern "{rtk_asset}" --dir "$d"
+          # The release's download URL, not the API: Copilot sessions in one repo share the token's API quota,
+          # and an exhausted quota reads as "release not found" (ADR-0054).
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o "$d/{rtk_asset}" \
+            "https://github.com/{rtk_repo}/releases/download/v{rtk_version}/{rtk_asset}"
           tar -xzf "$d/{rtk_asset}" -C "$d"
           rtk="$(find "$d" -type f -name rtk | head -1)"; chmod +x "$rtk"
           "$rtk" init --copilot

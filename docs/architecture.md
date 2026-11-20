@@ -114,6 +114,9 @@ humans, and approved for cutover.
 | 49 | Ticket reconciliation is generated, then reviewed: `reconcile_epic.py` writes each disposition the check's own rules prove and marks the rest `needs_review` | [0049](adr/0049-ticket-reconciliation-is-generated-then-reviewed.md) |
 | 50 | The Slice Coordinator folds into the Program Orchestrator: one dispatcher loop runs every slice's tickets, and slice acceptance is the `afs-slice-acceptance` skill, whose return is the orchestrator's `acceptance` block | [0050](adr/0050-the-slice-coordinator-folds-into-the-program-orchestrator.md) |
 | 51 | The Analyst and the Characterizer run as one session when the scope fits: phase 4b's one session matched the two on the billing case at about a third less time; the combined return contract and a larger-scope eval come first | [0051](adr/0051-analyst-and-characterizer-run-as-one-session-when-the-scope-fits.md) |
+| 52 | The Auditor stays: the independent, read-only check after the loop, now the one reviewer that isn't the author | [0052](adr/0052-the-auditor-stays.md) |
+| 53 | Skills and prompts are audited after each milestone: skills by usage (12 per role, exceptions recorded), 6,000 characters per agent file, and an eval for any change | [0053](adr/0053-skills-and-prompts-are-audited-after-each-milestone.md) |
+| 54 | An eval run measures the harness only when the session started with its tools: RTK from the release URL, `setup-failure` rows that don't count, prepare refuses cases that start on validation errors | [0054](adr/0054-an-eval-run-measures-the-harness-only-when-the-session-started-with-its-tools.md) |
 
 ---
 
@@ -354,6 +357,10 @@ the target, the ciembor rule sets to review it. The `afs-` copies of user-invoke
 under `skills/` by `tools/vendor_skills.py` with provenance, and patches to pinned plugins live in
 `patches/`.
 
+Phase 5 pruned the menu by usage across 415 eval sessions: `refactoring`, `refactoring-guru`, `pr` and
+`receiving-code-review` were never or rarely loaded and left the lock; `verification-before-completion` folded
+into `afs-evidence` (ADR-0053).
+
 | Category | Skills | Source |
 |----------|--------|--------|
 | Planning & tracking | `wayfinder`, `to-tickets`, `to-spec`, `grilling`, `setup-matt-pocock-skills` | mattpocock/skills |
@@ -361,11 +368,9 @@ under `skills/` by `tools/vendor_skills.py` with provenance, and patches to pinn
 | Architecture | `architecture-patterns` (clean, hexagonal, DDD) *(hackathon)* | wshobson/agents |
 | | `architecture-blueprint-generator` (narrative blueprint of the source) *(hackathon)* | github/awesome-copilot |
 | | `clean-architecture`, `domain-driven-design`, `patterns-of-enterprise-application-architecture` *(candidate)* | ciembor/agent-rules-books |
-| **Refactoring** | `refactoring` (Fowler), `refactoring-guru` (design patterns), `clean-code`, `working-effectively-with-legacy-code` (seams, characterization) *(candidate)* | ciembor/agent-rules-books |
+| **Refactoring** | `clean-code`, `working-effectively-with-legacy-code` (seams, characterization) *(candidate)* | ciembor/agent-rules-books |
 | Build & verify | `tdd`, `implement` | mattpocock/skills |
-| | `verification-before-completion` (evidence before claims) *(hackathon)* | obra/superpowers |
-| Review & debugging | `code-review`, `pr`, `diagnosing-bugs` | mattpocock/skills |
-| | `receiving-code-review` (responding to review feedback with rigor) *(hackathon)* | obra/superpowers |
+| Review & debugging | `code-review`, `diagnosing-bugs` | mattpocock/skills |
 | Orchestration | `dispatching-parallel-agents`, `using-git-worktrees` (isolation for parallel local workers) *(hackathon)* | obra/superpowers |
 | Runtime & environments | `docker-expert` *(hackathon)* | sickn33/antigravity-awesome-skills |
 | | `multi-stage-dockerfile` *(hackathon)* | github/awesome-copilot |

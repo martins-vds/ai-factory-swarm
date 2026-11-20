@@ -4,6 +4,7 @@ import importlib.util
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -143,6 +144,31 @@ class CompareTest(unittest.TestCase):
         text, broken = ev.compare(now, base)
         self.assertEqual(broken, [])       # 1 of 2 isn't a majority, and the baseline failed anyway
         self.assertIn("the change holds", text)
+
+    def test_runs_that_never_tested_the_case_do_not_count(self):
+        """A session that started without its tools, or a case another run file covers, isn't a run (ADR-0054)."""
+        base = [_run("b", {"a": {"passed": True}})]
+        now = [_run("n", {"a": {"passed": False, "status": "setup-failure"}}),
+               _run("n2", {"a": {"passed": False, "status": "not-dispatched"}}),
+               _run("n3", {"a": {"passed": True, "status": "graded"}})]
+        text, broken = ev.compare(now, base)
+        self.assertEqual(broken, [])
+        self.assertIn("1/1 pass", text)
+
+
+class SetupFailureTest(unittest.TestCase):
+    def test_a_failed_target_setup_step_is_named_and_copilot_steps_are_not(self):
+        steps = [{"name": "Set up job", "conclusion": "failure"},
+                 {"name": "Starting User Configured Setup Step (Linux)", "conclusion": "failure"},
+                 {"name": "Install RTK 1.1.0 (x.tar.gz)", "conclusion": "failure"}]
+        replies = {"runs?": {"workflow_runs": [{"id": 2, "created_at": "b"}, {"id": 1, "created_at": "a"}]},
+                   "runs/1/jobs": {"jobs": [{"steps": steps}]}, "runs/2/jobs": {"jobs": []}}
+        fake = lambda path: next(v for k, v in replies.items() if k in path)  # noqa: E731
+        with mock.patch.object(ev, "gh_api", fake):
+            self.assertEqual(ev.setup_failure("o/r", "copilot/x"), "Install RTK 1.1.0 (x.tar.gz)")
+        steps[2]["conclusion"] = "success"
+        with mock.patch.object(ev, "gh_api", fake):
+            self.assertIsNone(ev.setup_failure("o/r", "copilot/x"))
 
 
 class UsageTest(unittest.TestCase):

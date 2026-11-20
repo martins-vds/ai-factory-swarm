@@ -69,8 +69,7 @@ strategy, UI direction), `profile.context.working_budget`.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
-(`afs-migration-contract` → Durable outputs). In the PR description, describe the change and **link** to
-the return file; never paste its contents (a description can't be updated later, so a copy goes stale).
+(`afs-migration-contract` → Durable outputs); link it from the PR description, never paste it.
 ```yaml
 plan: <path or draft issue link>
 slices: [{name: <slice>, anchor: <flow/entry point>, tickets: <n>, blocked_by: [<slice>]}]
