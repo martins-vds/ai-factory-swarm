@@ -401,7 +401,7 @@ def prepare(a, cases):
         trees = list(pushes)
         found = {}
         for tree, sha, name in pushes:
-            found[name] = errors = validate_errors(tree)
+            found[name] = errors = validate_errors(tree) + self_heal_problems(tree, case)
             print(f"{case['id']}: {name}: {len(errors)} validation error(s) before the agent starts"
                   + "".join(f"\n    {e[:200]}" for e in errors[:5]))
         if any(found.values()) and not a.allow_errors:
@@ -975,6 +975,22 @@ def work_check(changed):
 
 def new_errors(base_errors, head_errors):
     return sorted(set(head_errors) - set(base_errors))
+
+
+def self_heal_problems(tree, case):
+    """The live targets run with the finish check on (ADR-0034). A case base from before they turned it on
+    must normalize it on, or the run measures the harness without it: p5r-r3 LL-01 stopped on a stale gate
+    the check had logged as "would have blocked". A case about the check being off says `self_heal: off`."""
+    if not case.get("install", True) or case.get("self_heal") == "off":
+        return []
+    try:
+        prof = yaml.safe_load((pathlib.Path(tree) / ".migration/profile.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    if (prof.get("self_heal") or {}).get("enabled") is True:
+        return []
+    return ["case: the profile has self_heal.enabled off; add a normalize `yaml_set` of self_heal "
+            "{enabled: true, max_blocks: 2} as the live targets have it, or set `self_heal: off` on the case"]
 
 
 def validate_errors(tree):

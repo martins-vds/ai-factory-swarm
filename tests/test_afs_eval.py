@@ -557,3 +557,15 @@ class EvalEnvironmentTest(unittest.TestCase):
         with mock.patch.object(ev, "gh_api", side_effect=[{"workflow_runs": [{"id": 1}]}, {"jobs": [{"id": 2}]}]), \
                 mock.patch.object(ev, "sh", return_value=mock.Mock(stdout=log)):
             self.assertIsNone(ev.rate_limited_setup("o/e", "b"))
+
+
+class SelfHealCaseTest(unittest.TestCase):
+    def test_a_case_tree_with_the_finish_check_off_is_refused_unless_it_says_so(self):
+        with tempfile.TemporaryDirectory() as d:
+            prof = pathlib.Path(d, ".migration/profile.yaml")
+            prof.parent.mkdir()
+            prof.write_text("self_heal: {enabled: false}\n")
+            self.assertTrue(ev.self_heal_problems(d, case()))
+            self.assertEqual(ev.self_heal_problems(d, case(self_heal="off")), [])
+            prof.write_text("self_heal: {enabled: true, max_blocks: 2}\n")
+            self.assertEqual(ev.self_heal_problems(d, case()), [])
