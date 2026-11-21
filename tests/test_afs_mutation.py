@@ -372,5 +372,23 @@ class KeptMtimesTest(unittest.TestCase):
             self.assertEqual(same.stat().st_mtime, 1000)
             self.assertNotEqual(edited.stat().st_mtime, 1000)
 
+
+class WriteFailureTest(unittest.TestCase):
+    def test_a_failure_replaces_the_survivors_with_its_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            cwd = pathlib.Path.cwd()
+            try:
+                m.os.chdir(d)
+                pathlib.Path(".migration/evidence/mutants").mkdir(parents=True)
+                pathlib.Path(".migration/evidence/mutants/DM-05D.md").write_text("# Surviving mutants: DM-05D\n")
+                with mock.patch.dict(m.os.environ, {"AFS_TICKET": "DM-05D"}):
+                    m.write_failure([("src/exporter.py", "collected 3 items\nE   ImportError: x")], "abc")
+                text = pathlib.Path(".migration/evidence/mutants/DM-05D.md").read_text()
+            finally:
+                m.os.chdir(cwd)
+        self.assertIn("# Mutation failed: DM-05D", text)
+        self.assertIn("ImportError: x", text)
+        self.assertNotIn("Surviving mutants", text)
+
 if __name__ == "__main__":
     unittest.main()

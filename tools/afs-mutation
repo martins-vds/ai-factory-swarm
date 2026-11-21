@@ -437,6 +437,7 @@ def main():
             print(f"afs-mutation: mutmut failed on {path}; its mutants were not tested:\n{tail}", file=sys.stderr)
         print(f"AFS-RESULT gate=mutation score=n/a error=mutmut-failed failed_files={len(failed)} "
               f"files={len(paths)} base={base}")
+        write_failure(failed, base)
         return 2
     for xml_text, tail, _, shard_diffs in results:
         diffs.update(shard_diffs)
@@ -459,6 +460,25 @@ def main():
         print(f"  survived: {loc}")
     write_survivors(locations, score, threshold, killed, survived, base, diffs)
     return 0 if ok else 1
+
+
+def write_failure(failed, base):
+    """Replace the ticket's survivors file with why mutmut failed (eval p5r DM-05D: two crashes left only the
+    earlier run's survivors committed, and the error itself stayed in the uncommitted run log)."""
+    ticket = os.environ.get("AFS_TICKET", "")
+    if not ticket or ticket == "adhoc" or not os.path.isdir(".migration"):
+        return None
+    folder = pathlib.Path(".migration/evidence/mutants")
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = [f"# Mutation failed: {ticket}",
+             f"Written by `afs-mutation` on its last run (base `{base}`): mutmut failed, so no mutant of these files "
+             "was tested and there is no score. The survivors of any earlier run no longer apply. The last lines of "
+             "each failure:", ""]
+    for path, tail in failed:
+        lines += [f"- `{path}`", "  ```", *("  " + t for t in (tail or "").strip().splitlines()[-40:]), "  ```"]
+    out = folder / f"{ticket}.md"
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out
 
 
 def write_survivors(locations, score, threshold, killed, survived, base, diffs=None):
