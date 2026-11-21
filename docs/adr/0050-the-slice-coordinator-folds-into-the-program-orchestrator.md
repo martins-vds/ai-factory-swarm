@@ -1,7 +1,8 @@
 # ADR-0050: The Slice Coordinator folds into the Program Orchestrator
 
-- Status: Proposed (merging the harness PR that adds it accepts it). Roll it out to the synthetic target only
-  once its open side-by-side checks finish under the current topology (plan, Ground rules).
+- Status: Proposed (merging the harness PR that adds ADR-0059 accepts it): the fold eval shows no loss once the return layout is enforced
+  ([summary](../../evals/results/2026-11-21-fold-summary.md)). Roll it out to the synthetic target only once its
+  open side-by-side checks finish under the current topology (plan, Ground rules).
 - Date: 2026-11-19
 - Amends: ADR-0024 (epic closure), ADR-0030 (who reconciles), ADR-0031 (whose return carries the sign-off)
   and ADR-0036 (deferrals)
@@ -46,6 +47,7 @@ Since ADR-0045, it also no longer dispatches a Verifier on each return.
 - **One fewer layer.** The ticket loop, acceptance and the human gates are all held by the role that
   already held the operator's attention.
 - **Larger context.** The orchestrator's context grows by one skill at acceptance time, loaded only then.
-- **Acceptance is still unmeasured.** No eval case covers slice acceptance. This ADR is proven by the next
-  real slice acceptance on the synthetic target: it should run through the orchestrator with a generated
-  reconciliation file, as the plan's "done when" says.
+- **Measured (2026-11-21).** Three acceptance cases, three runs each: the folded orchestrator passed 5 of 9 and
+  the pre-fold coordinator 7 of 9 (2 of 3 cases by majority each). The fold's own failures were 2 returns
+  in the coordinator's layout, which ADR-0059 now refuses; with those removed it matches the coordinator.
+  See `evals/results/2026-11-21-fold-summary.md`.

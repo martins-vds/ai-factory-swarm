@@ -42,6 +42,7 @@ VERIFIER_VERDICT_RULE_V1 = "VERIFIER_VERDICT_RULE_V1"  # Phase 3e: returns commi
 VERIFIER_RULES_RULE_V1 = "VERIFIER_RULES_RULE_V1"  # Phase 3e (rules checked): earlier returns are exempt.
 LEDGER_RULES_RULE_V1 = "LEDGER_RULES_RULE_V1"  # Phase 3e (rules in the ledger): earlier returns are exempt.
 MIGRATOR_SELF_VERIFY_RULE_V1 = "MIGRATOR_SELF_VERIFY_RULE_V1"
+ACCEPTANCE_BLOCK_RULE_V1 = "ACCEPTANCE_BLOCK_RULE_V1"  # ADR-0059: earlier orchestrator returns are exempt.
 PLAN_ANCHORS_RULE_V1 = "PLAN_ANCHORS_RULE_V1"  # ADR-0048 (builds: for target anchors): earlier plans are exempt.  # ADR-0045: earlier Migrator returns are exempt.
 
 
@@ -408,6 +409,33 @@ def journal_as_of(ret, journal):
     return read_journal(journal)[0] if journal.is_file() else []
 
 
+ACCEPTANCE_TOP_LEVEL = ("slice", "tickets", "human_check", "human_check_issues", "human_check_issue",
+                        "human_check_due", "mutation_score", "coverage_gaps", "report", "gates")
+ACCEPTANCE_REQUIRED = ("slice", "tickets", "report", "gates", "human_check")
+
+
+def check_acceptance_block(path, doc, errors):
+    """ADR-0059: an orchestrator's slice-acceptance fields live in its `acceptance` block, because that is all
+    check_signoff.py and check_slice_returns.py read (ADR-0050). Fold eval: 2 of 9 folded acceptances wrote
+    them at the top level, in the retired Slice Coordinator's layout, where the sign-off check can't see
+    `human_check`."""
+    if doc.get("role") != "afs-program-orchestrator":
+        return
+    block = doc.get("acceptance")
+    stray = [k for k in ACCEPTANCE_TOP_LEVEL if k in doc]
+    if stray and (block is not None or "human_check" in doc or "slice" in doc):
+        errors.append(f"{path}: {', '.join(stray)} must be inside the `acceptance` block, which is all the "
+                      "sign-off checks read (ADR-0050, ADR-0059); the retired Slice Coordinator's layout doesn't "
+                      "apply to an orchestrator return")
+    if isinstance(block, dict):
+        missing = [k for k in ACCEPTANCE_REQUIRED if k not in block]
+        if missing:
+            errors.append(f"{path}: the acceptance block needs {', '.join(missing)} (afs-slice-acceptance, "
+                          "\"The acceptance return\")")
+    elif block is not None:
+        errors.append(f"{path}: acceptance must be a mapping of the slice-acceptance fields (ADR-0059)")
+
+
 def check_return_evidence(folder, path, doc, profile, pr_roles, errors):
     """ADR-0017: a finished return reports every gate, and every score matches a gate run's AFS-RESULT."""
     ticket = doc.get("ticket")
@@ -672,6 +700,8 @@ def main():
                     check_verifier_rules(folder, path, doc, errors)
                 if not predates_rule(path, folder, LEDGER_RULES_RULE_V1):
                     check_migrator_ledger_rules(folder, path, doc, errors)
+                if not predates_rule(path, folder, ACCEPTANCE_BLOCK_RULE_V1):
+                    check_acceptance_block(path, doc, errors)
             if isinstance(doc, dict) and "ticket" in doc and "role" in doc:
                 want = f"{doc['ticket']}.{doc['role']}"
                 if path.stem != want:
