@@ -208,7 +208,14 @@ def is_number(v):
 
 def failing_gates(gates):
     """Gates the return itself reports as failing: a non-zero exit, or mutation below the profile's minimum."""
-    bad = [f"`{g}: {gates[g]}`" for g in EXIT_GATES if is_number(gates.get(g)) and gates[g] != 0]
+    bad = []
+    for g in EXIT_GATES:
+        v = gates.get(g)
+        if is_number(v) and not isinstance(v, int):
+            # eval p5u: `crap: 26.0` was the worst method's score (passing, under 30), not the gate's exit code
+            bad.append(f"`{g}: {v}` (an exit gate takes the gate command's exit code, 0 when it passed, not a score)")
+        elif is_number(v) and v != 0:
+            bad.append(f"`{g}: {v}`")
     m, floor = gates.get("mutation_changed"), mutation_min()
     if is_number(m) and m < floor:
         bad.append(f"`mutation_changed: {m}` (minimum {floor})")

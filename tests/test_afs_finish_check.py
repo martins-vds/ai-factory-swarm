@@ -122,6 +122,7 @@ class FinishCheckTest(unittest.TestCase):
         for i, (gates, handoff, refused) in enumerate((
                 ({"mutation_changed": 0.667, "idiom": 0}, None, True),
                 ({"mutation_changed": 0.86, "idiom": 1}, None, True),
+                ({"mutation_changed": 0.86, "crap": 26.0}, None, True),
                 ({"mutation_changed": 0.86, "idiom": 0}, None, False),
                 ({"mutation_changed": "n/a: no mutable code changed", "idiom": 0}, None, False),
                 ({"mutation_changed": 0.667, "idiom": 0}, ".migration/handoffs/BK-05D.md", False))):
@@ -130,6 +131,8 @@ class FinishCheckTest(unittest.TestCase):
             self.returned(gates, handoff)
             out, _ = self.run_hook(session=f"f{i}")
             self.assertEqual("reports failing gates" in (out or {}).get("reason", ""), refused, gates)
+            if gates.get("crap") == 26.0:
+                self.assertIn("not a score", out["reason"])
 
     def test_the_profile_minimum_sets_the_mutation_bar(self):
         (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({
