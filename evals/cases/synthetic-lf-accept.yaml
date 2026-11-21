@@ -55,6 +55,7 @@ expect:
   - - '0.975'
   - - /ui/fees
     - /fees/
+    - overdue
   - - fees.calculation
   - - fees.page
   - - integration.payment-gateway
