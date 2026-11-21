@@ -1,0 +1,238 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1814,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1823,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1817,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1820,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1831,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1825,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1828,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-dm-05d": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1833,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-dm-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1835,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-billing-understand": {
+      "checks": [],
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1837,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-01": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1839,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1845,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1842,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1851,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1848,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1858,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1854,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-05.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.9",
+          "ok": true
+        },
+        {
+          "check": "changes the ticket's code or tests",
+          "detail": "8 file(s) outside .migration/",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1862,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 16.1,
+        "output_tokens": 0,
+        "requests": 152,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-05-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1860,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-sy-01-bootstrap": {
+      "checks": [],
+      "kind": "bootstrap",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1863,
+      "setup_step": "Start test services from the target's compose file",
+      "status": "setup-failure"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-20T01:31:02+00:00",
+  "run": "2026-11-19-p5x-r2"
+}

@@ -59,13 +59,25 @@ DEFAULT_EXCLUDE = ["*/migrations/*", "*/settings.py", "*/settings/*", "*/wsgi.py
 
 
 def changed_files(since, src):
+    """Python files under src that differ from the base: committed, uncommitted and untracked (ADR-0055).
+
+    The working tree counts, so a session that runs mutation before committing measures the code it
+    changed instead of reporting `no-mutable-code-changed`. In CI the tree is clean, so it's the same.
+    """
     for ref in ([since] if since else []) + [os.environ.get("AFS_BASE", ""), "origin/main", "main"]:
         if not ref:
             continue
-        r = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{ref}...HEAD", "--", src],
+        mb = subprocess.run(["git", "merge-base", ref, "HEAD"], capture_output=True, text=True)
+        if mb.returncode != 0:
+            continue
+        r = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", mb.stdout.strip(), "--", src],
                            capture_output=True, text=True)
-        if r.returncode == 0:
-            return ref, [p for p in r.stdout.split() if p.endswith(".py")]
+        if r.returncode != 0:
+            continue
+        new = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", src],
+                             capture_output=True, text=True)
+        paths = sorted(set(r.stdout.split()) | set(new.stdout.split() if new.returncode == 0 else []))
+        return ref, [p for p in paths if p.endswith(".py")]
     raise SystemExit("afs-mutation: no base ref found (tried --changed-since, $AFS_BASE, origin/main, main)")
 
 

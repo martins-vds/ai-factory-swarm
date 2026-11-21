@@ -1,6 +1,6 @@
 # ADR-0054: An eval run measures the harness only when the session started with its tools
 
-- Status: Proposed (merging the harness PR that adds it accepts it)
+- Status: Accepted (harness #212, 2026-11-20; the final eval shows no must-pass flip, see `evals/results/2026-11-19-p5-summary.md`)
 - Date: 2026-11-19
 - Source: phase 5 final eval (p5-r1, p5-r2, p5s-r1, p5s-r2)
 

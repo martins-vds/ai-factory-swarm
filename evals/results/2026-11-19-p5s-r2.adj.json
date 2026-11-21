@@ -1,0 +1,165 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05f-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-dm-05d": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-dm-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "synthetic-billing-understand": {
+      "checks": [],
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "synthetic-ll-01": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1733,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1740,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1737,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1744,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1743,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1750,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1749,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1754,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1753,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-sy-01-bootstrap": {
+      "checks": [],
+      "kind": "bootstrap",
+      "must_pass": false,
+      "passed": false,
+      "status": "not-dispatched"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-19T23:19:22+00:00",
+  "run": "2026-11-19-p5s-r2"
+}

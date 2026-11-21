@@ -44,6 +44,8 @@ jobs:
         run: |
           git -C .source remote set-url --push origin DISABLED-read-only-source
           chmod -R a-w .source
+          # ADR-0055: keep the checkout out of the agent's commits, even before bootstrap writes .gitignore
+          echo ".source/" >> .git/info/exclude
           echo "Source pinned at $(git -C .source rev-parse HEAD)"
 
       - name: Install RTK {rtk_version} ({rtk_asset})
@@ -75,7 +77,13 @@ jobs:
       # The same compose services the CI gates use (profile `services`), so agents run integration tests
       # against the real database instead of skipping them. afs-setup-check confirms they are healthy.
       - name: Start test services from the target's compose file
-        run: python .migration/harness/tools/afs-services up
+        run: |
+          # ADR-0055: before bootstrap installs the harness there is nothing to start (setup, SY-01)
+          if [ ! -d .migration/harness/tools ]; then
+            echo "harness not installed yet; no test services"
+          else
+            python .migration/harness/tools/afs-services up
+          fi
 
       # ADR-0032: data tickets start with the newest snapshot from the AFS data snapshot workflow, in the
       # gitignored data.snapshot_dir. Only when the profile defines data.snapshot; agents never make one.

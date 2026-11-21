@@ -238,10 +238,6 @@ class AfsMutationTest(unittest.TestCase):
             self.assertIn("survived: ", high.stdout)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ImportTimeSelectionTest(unittest.TestCase):
     """Synthetic LL-04: 5 of 8 mutants "survived": removed `@require_GET` decorators and mutated `urlpatterns`.
     Code that runs at import is under no test's coverage context, so coverage selection never ran the tests
@@ -309,3 +305,57 @@ class ShardWorkspaceTest(unittest.TestCase):
             for gone in (".migration/harness", ".migration/runs", ".migration/evidence", ".migration/costs",
                          ".git", "src/app/__pycache__", ".source"):
                 self.assertFalse((dst / gone).exists(), gone)
+
+
+class ChangedFilesTest(unittest.TestCase):
+    """ADR-0055: the working tree counts, so mutation before a commit measures the changed code."""
+
+    def git(self, *args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=self.root, check=True,
+                       capture_output=True)
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self._d.name)
+        self.git("init", "-q", "-b", "main")
+        (self.root / "src").mkdir()
+        (self.root / "src/old.py").write_text("A = 1\n")
+        (self.root / "src/edited.py").write_text("B = 1\n")
+        self.git("add", ".")
+        self.git("commit", "-q", "-m", "base")
+        self.git("checkout", "-q", "-b", "work")
+        (self.root / "src/committed.py").write_text("C = 1\n")
+        self.git("add", ".")
+        self.git("commit", "-q", "-m", "work")
+        (self.root / "src/edited.py").write_text("B = 2\n")      # uncommitted change to a tracked file
+        (self.root / "src/untracked.py").write_text("D = 1\n")   # a new file not yet added
+        (self.root / "src/notes.txt").write_text("x\n")
+
+    def tearDown(self):
+        self._d.cleanup()
+
+    def test_committed_uncommitted_and_untracked_files_count(self):
+        with mock.patch.dict(m.os.environ, {"AFS_BASE": ""}):
+            cwd = pathlib.Path.cwd()
+            try:
+                m.os.chdir(self.root)
+                ref, paths = m.changed_files("main", "src")
+            finally:
+                m.os.chdir(cwd)
+        self.assertEqual(ref, "main")
+        self.assertEqual(paths, ["src/committed.py", "src/edited.py", "src/untracked.py"])
+
+    def test_an_unknown_base_falls_through_to_the_next(self):
+        with mock.patch.dict(m.os.environ, {"AFS_BASE": "no-such-ref"}):
+            cwd = pathlib.Path.cwd()
+            try:
+                m.os.chdir(self.root)
+                ref, paths = m.changed_files(None, "src")
+            finally:
+                m.os.chdir(cwd)
+        self.assertEqual(ref, "main")
+        self.assertIn("src/untracked.py", paths)
+
+
+if __name__ == "__main__":
+    unittest.main()
