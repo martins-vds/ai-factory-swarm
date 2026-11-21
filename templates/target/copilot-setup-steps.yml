@@ -47,7 +47,8 @@ jobs:
           # ADR-0055: keep the checkout out of the agent's commits, even before bootstrap writes .gitignore
           echo ".source/" >> .git/info/exclude
           # ADR-0057: a source kept in this repo is built in place; its build output is never committed
-          src=$(awk '/^path:/{{print $2}}' .migration/source.lock | sed 's#^/##; s#/$##')
+          # before bootstrap there may be no source.lock (SY-01); then there is no in-repo source either
+          src=$( [ -f .migration/source.lock ] && awk '/^path:/{{print $2}}' .migration/source.lock | sed 's#^/##; s#/$##' || true)
           if [ "${{{{ steps.lock.outputs.repo }}}}" = "${{{{ github.repository }}}}" ] && [ -n "$src" ] && [ "$src" != "." ]; then
             for p in {source_build_outputs}; do echo "/$src/$p" >> .git/info/exclude; done
           fi
