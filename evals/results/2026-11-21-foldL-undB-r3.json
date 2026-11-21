@@ -1,0 +1,89 @@
+{
+  "cases": {
+    "synthetic-legacy-understand": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/SY-04.afs-analyst.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "ledger covers the golden rules",
+          "detail": "0/14; missing due-date-14-days, fee-waived-two-days, fee-25-cents-a-day, fee-capped-at-10, lend-needs-member-and-isbn, unknown-loan-404, gateway-failure-502, export-joins-with-semicolons, return-overwrites-date, seed-loans, restart-loses-data, monthly-report-spec, about-page, default-port-8080",
+          "ok": false
+        },
+        {
+          "check": "characterization records the golden values",
+          "detail": "0/6",
+          "ok": false
+        },
+        {
+          "check": "both roles' returns committed",
+          "detail": ".migration/returns/SY-05.afs-characterizer.yaml",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "failure",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "understand",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 19
+      },
+      "must_pass": false,
+      "passed": false,
+      "pr": 2232,
+      "skills": {
+        "afs-handoff": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1
+      },
+      "status": "graded",
+      "understand": {
+        "characterization_found": 0,
+        "characterization_total": 6,
+        "ledger_found": 0,
+        "ledger_missing": [
+          "due-date-14-days",
+          "fee-waived-two-days",
+          "fee-25-cents-a-day",
+          "fee-capped-at-10",
+          "lend-needs-member-and-isbn",
+          "unknown-loan-404",
+          "gateway-failure-502",
+          "export-joins-with-semicolons",
+          "return-overwrites-date",
+          "seed-loans",
+          "restart-loses-data",
+          "monthly-report-spec",
+          "about-page",
+          "default-port-8080"
+        ],
+        "ledger_total": 14
+      },
+      "usage": {
+        "minutes": 1.3,
+        "output_tokens": 0,
+        "requests": 19,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-21T23:18:53+00:00",
+  "run": "2026-11-21-foldL-undB-r3"
+}

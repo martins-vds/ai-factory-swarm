@@ -1,0 +1,78 @@
+{
+  "cases": {
+    "synthetic-legacy-understand": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/SY-05.afs-characterizer.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "ledger covers the golden rules",
+          "detail": "13/14; missing lend-needs-member-and-isbn",
+          "ok": true
+        },
+        {
+          "check": "characterization records the golden values",
+          "detail": "6/6",
+          "ok": true
+        },
+        {
+          "check": "both roles' returns committed",
+          "detail": ".migration/returns/SY-05.afs-characterizer.yaml",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": null,
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": null,
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": null,
+        "Migrator work is verified before it merges": null,
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": null
+      },
+      "kind": "understand",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 38
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2246,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 2,
+        "afs-migration-contract": 2,
+        "afs-quirk-ticket": 1,
+        "afs-setup-check": 2
+      },
+      "status": "graded",
+      "understand": {
+        "characterization_found": 6,
+        "characterization_total": 6,
+        "ledger_found": 13,
+        "ledger_missing": [
+          "lend-needs-member-and-isbn"
+        ],
+        "ledger_total": 14
+      },
+      "usage": {
+        "minutes": 17.8,
+        "output_tokens": 0,
+        "requests": 168,
+        "sessions": 2
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-21T23:33:11+00:00",
+  "run": "2026-11-21-foldL-undAc-r3"
+}

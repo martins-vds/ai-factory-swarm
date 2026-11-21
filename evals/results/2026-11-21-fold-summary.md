@@ -109,8 +109,42 @@ Copilot chose the model per session. Re-grading the run files with the model eac
 The verdicts above stand as written for the mixed runs, but they aren't a measurement of either model.
 Both folds are re-run with the model pinned to `gpt-6-luna`, the baseline's (ADR-0060).
 
+## Pinned to `gpt-6-luna`: the result that counts (added after ADR-0060)
+Three more runs per configuration, every session on `gpt-6-luna`, harness `2e64302` and later (ADR-0059 in
+force):
+
+| | Run 1 | Run 2 | Run 3 | Total | Median minutes |
+|---|---|---|---|---|---|
+| Acceptance, folded orchestrator | 3/3 | 3/3 | 3/3 | **9 of 9** | 5.5 |
+| Acceptance, pre-fold coordinator | 2/3 | 3/3 | 3/3 | **8 of 9** | 4.8 |
+| Understand, two sessions (rules, values, minutes) | pass (14, 6, 26) | pass (14, 6, 31) | pass (13, 6, 25) | **3 of 3** | |
+| Understand, one session (rules, values, minutes) | pass (14, 6, 12) | pass (14, 6, 13) | fail (0, 0, 1) | **2 of 3** | |
+
+- **Slice acceptance:** the folded orchestrator passed every run. No return had the old layout.
+  - The coordinator's one miss was loan circulation in run 1: it wrote
+    `gates: "all-green (acceptance run …)"` instead of `all-green`.
+  - **The fold holds:** it is no worse than the coordinator, and slightly better here.
+- **Understand on the whole `legacy/` source:** on `gpt-6-luna`, one session extended the
+  characterization and recorded every golden value in two of three runs, in about half the time.
+  - Its third run stopped at setup. My case text says "The source is `legacy/` at the pinned commit". The
+    agent checked the in-repo `legacy/` folder against the lock, found it writable and not ignored, and
+    handed off. The pinned source is `.source/legacy`.
+  - That sentence is the case's fault. Both configurations got it, and the Analyst sessions read it
+    correctly.
+  - **On this model the fold doesn't fail at this scope.** The 0-of-3 result above was
+    `mai-code-2-flash`. Two of three on one model is not enough to widen ADR-0051's scope rule. It is
+    enough to say the earlier failure was the model's.
+
+**Revised verdicts:**
+- **ADR-0050 (the Slice Coordinator fold):** keep it. 9 of 9 on the pinned model, with ADR-0059.
+- **ADR-0051 (one understand session):**
+  - The large-scope failure belongs to `mai-code-2-flash`. On `gpt-6-luna` one session did the work in
+    about half the time, 2 of 3.
+  - Decision 1 (small scopes only) stays until a pinned run with the case text fixed shows it holds at
+    this size. Decision 2's finish check would make a combined session's missing half impossible.
+
 ## Run files
-`2026-11-21-fold-{accF,accU}-r{1,2,3}.json` (acceptance),
+`2026-11-21-fold-{accF,accU}-r{1,2,3}.json` (acceptance, mixed models), `2026-11-21-foldL-*-r{1,2,3}.json` (pinned to `gpt-6-luna`),
 `2026-11-21-fold-undB-r{1,2,3}.json` (one session),
 `2026-11-21-fold-undA-r{1,2,3}.json` and `-undAc-r{1,2,3}.json` (the Analyst, then the Characterizer on its
 PR; the chained file grades both sessions' work together).

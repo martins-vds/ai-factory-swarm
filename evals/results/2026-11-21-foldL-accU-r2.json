@@ -1,0 +1,282 @@
+{
+  "cases": {
+    "synthetic-lc-accept": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LC-ACCEPT.afs-slice-coordinator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "acceptance fields present",
+          "detail": "role afs-slice-coordinator",
+          "ok": true
+        },
+        {
+          "check": "slice named",
+          "detail": "got 'loan-circulation'",
+          "ok": true
+        },
+        {
+          "check": "human_check requested, not passed",
+          "detail": "got 'requested'",
+          "ok": true
+        },
+        {
+          "check": "gates all-green",
+          "detail": "got 'all-green'",
+          "ok": true
+        },
+        {
+          "check": "mutation_score is the run's 0.92",
+          "detail": "got 0.92",
+          "ok": true
+        },
+        {
+          "check": "changes only .migration/",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "evidence report states the run's results",
+          "detail": "'.migration/evidence/loan-circulation/acceptance.md'; missing none",
+          "ok": true
+        },
+        {
+          "check": "ticket reconciliation covers every descendant once",
+          "detail": "issues [61, 78, 84, 94, 100, 108]; want [61, 78, 84, 94, 100, 108]",
+          "ok": true
+        },
+        {
+          "check": "its own ticket is completed",
+          "detail": "#108: completed",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "failure"
+      },
+      "kind": "acceptance",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 29
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2149,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-slice-acceptance": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 4.8,
+        "output_tokens": 0,
+        "requests": 52,
+        "sessions": 1
+      }
+    },
+    "synthetic-lf-accept": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LF-ACCEPT.afs-slice-coordinator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "acceptance fields present",
+          "detail": "role afs-slice-coordinator",
+          "ok": true
+        },
+        {
+          "check": "slice named",
+          "detail": "got 'fees-payments'",
+          "ok": true
+        },
+        {
+          "check": "human_check requested, not passed",
+          "detail": "got 'requested'",
+          "ok": true
+        },
+        {
+          "check": "gates all-green",
+          "detail": "got 'all-green'",
+          "ok": true
+        },
+        {
+          "check": "mutation_score is the run's 0.975",
+          "detail": "got 0.975",
+          "ok": true
+        },
+        {
+          "check": "changes only .migration/",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "evidence report states the run's results",
+          "detail": "'.migration/evidence/fees-payments/acceptance.md'; missing none",
+          "ok": true
+        },
+        {
+          "check": "ticket reconciliation covers every descendant once",
+          "detail": "issues [63, 90, 96, 114, 117]; want [63, 90, 96, 114, 117]",
+          "ok": true
+        },
+        {
+          "check": "its own ticket is completed",
+          "detail": "#117: completed",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "failure"
+      },
+      "kind": "acceptance",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 28
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2150,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-slice-acceptance": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 4.7,
+        "output_tokens": 0,
+        "requests": 54,
+        "sessions": 1
+      }
+    },
+    "synthetic-li-accept": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LI-ACCEPT.afs-slice-coordinator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "acceptance fields present",
+          "detail": "role afs-slice-coordinator",
+          "ok": true
+        },
+        {
+          "check": "slice named",
+          "detail": "got 'library-info'",
+          "ok": true
+        },
+        {
+          "check": "human_check requested, not passed",
+          "detail": "got 'requested'",
+          "ok": true
+        },
+        {
+          "check": "gates all-green",
+          "detail": "got 'all-green'",
+          "ok": true
+        },
+        {
+          "check": "mutation_score is the run's 0.976",
+          "detail": "got 0.976",
+          "ok": true
+        },
+        {
+          "check": "changes only .migration/",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "evidence report states the run's results",
+          "detail": "'.migration/evidence/library-info/acceptance.md'; missing none",
+          "ok": true
+        },
+        {
+          "check": "ticket reconciliation covers every descendant once",
+          "detail": "issues [65, 104, 113, 122, 127]; want [65, 104, 113, 122, 127]",
+          "ok": true
+        },
+        {
+          "check": "its own ticket is completed",
+          "detail": "#127: completed",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "failure"
+      },
+      "kind": "acceptance",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 33
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2151,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-slice-acceptance": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 6.1,
+        "output_tokens": 0,
+        "requests": 69,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-21T21:53:47+00:00",
+  "run": "2026-11-21-foldL-accU-r2"
+}
