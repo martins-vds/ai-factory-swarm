@@ -17,11 +17,16 @@ checks looks for it.
 ## Decision
 1. **A stack pack names its source build's output.** `source_build_outputs` lists paths relative to the
    source root; `java-to-django` names `target/` (Maven).
-2. **The setup steps exclude it locally.** When `source.lock` has a `path` (a source inside the target
-   repository), the step that makes `.source` read-only also writes `/<path>/<output>` for each entry to
-   `.git/info/exclude`. That works before bootstrap writes `.gitignore`.
-3. **Bootstrap adds the same entries to `.gitignore`.** A separate source repository (no `path`) needs
-   none: its builds happen in `.source/`, which is already ignored.
+2. **The setup steps exclude it locally.** When the source repository is the target repository and
+   `source.lock` has a `path`, the step that makes `.source` read-only also writes `/<path>/<output>` for
+   each entry to `.git/info/exclude`. That works before bootstrap writes `.gitignore`.
+3. **Bootstrap adds the same entries to `.gitignore`**, under the same condition, taking the repository
+   and path from the profile (it writes `.gitignore` before `source.lock`). A separate source repository
+   needs none: its `path` is inside that repository, and its builds happen in `.source/`, which is already
+   ignored. (The first version keyed on `path` alone and wrote nothing on the synthetic target, because it
+   read `source.lock` before bootstrap had written it.)
+4. **The eval repository is the exception.** Its cases carry another repository's source in-tree, so its
+   hand-kept setup steps exclude `/<path>/target/` whenever `path` is set.
 
 ## Consequences
 - An agent can build the legacy source in place for characterization without its output reaching the PR.
