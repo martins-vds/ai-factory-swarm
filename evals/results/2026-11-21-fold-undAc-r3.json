@@ -31,7 +31,7 @@
       "ci": {
         "Agent PR commits its return file": "success",
         "Capability gap issues follow the checklist": "skipped",
-        "Concurrent work owns distinct files": null,
+        "Concurrent work owns distinct files": "failure",
         "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
         "Human sign-off is an approver's review": "success",
         "Migration state and pinned harness files": "failure",
@@ -40,6 +40,10 @@
         "Ticket reconciliation holds once merged": "success"
       },
       "kind": "understand",
+      "model": "mai-code-2-flash",
+      "models": {
+        "mai-code-2-flash": 43
+      },
       "must_pass": false,
       "passed": true,
       "pr": 2000,
@@ -68,6 +72,6 @@
     }
   },
   "eval_repo": "martins-vds/ai-factory-eval",
-  "graded_at": "2026-11-21T07:43:37+00:00",
+  "graded_at": "2026-11-21T14:51:36+00:00",
   "run": "2026-11-21-fold-undAc-r3"
 }

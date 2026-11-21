@@ -40,6 +40,10 @@
         "Ticket reconciliation holds once merged": "success"
       },
       "kind": "understand",
+      "model": "mai-code-2-flash",
+      "models": {
+        "mai-code-2-flash": 32
+      },
       "must_pass": false,
       "passed": false,
       "pr": 1998,
@@ -73,6 +77,6 @@
     }
   },
   "eval_repo": "martins-vds/ai-factory-eval",
-  "graded_at": "2026-11-21T07:32:20+00:00",
+  "graded_at": "2026-11-21T14:51:42+00:00",
   "run": "2026-11-21-fold-undB-r3"
 }

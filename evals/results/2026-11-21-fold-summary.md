@@ -91,6 +91,24 @@ ADR-0051's second decision (a finish check that refuses a combined return withou
 part) would catch r3 but not the shortcut in r1 and r2. So for any scope larger than phase 4b's, the two
 sessions stay.
 
+## Correction: the runs mixed two models (added after ADR-0060)
+Copilot chose the model per session. Re-grading the run files with the model each session ran gives:
+
+| | `gpt-6-luna` | `mai-code-2-flash` |
+|---|---|---|
+| Acceptance, folded | 2 of 4 passed (LF r1: layout; LI r3: `needs_review`) | 3 of 5 (LC r1: own ticket; LC r2: layout) |
+| Acceptance, unfolded | 6 of 6 | 1 of 3 (LC r1 and r3: own ticket) |
+| Understand, both configurations | none | all 18 sessions |
+
+- **The loan-circulation "own ticket" failures were all `mai-code-2-flash`,** in both configurations.
+- **The layout failures were one on each model.**
+- **On `gpt-6-luna`** the folded orchestrator passed 2 of 4 and the coordinator 6 of 6. With ADR-0059 the
+  orchestrator would pass 3 of 4. These samples are too small to call the fold even.
+- **The understand comparison** is clean within one model, but it measured `mai-code-2-flash` only.
+
+The verdicts above stand as written for the mixed runs, but they aren't a measurement of either model.
+Both folds are re-run with the model pinned to `gpt-6-luna`, the baseline's (ADR-0060).
+
 ## Run files
 `2026-11-21-fold-{accF,accU}-r{1,2,3}.json` (acceptance),
 `2026-11-21-fold-undB-r{1,2,3}.json` (one session),
