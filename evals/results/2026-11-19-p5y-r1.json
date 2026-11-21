@@ -1,0 +1,263 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1876,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1874,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-dm-05d": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "pilot-dm-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "synthetic-billing-understand": {
+      "checks": [],
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "status": "not-dispatched"
+    },
+    "synthetic-ll-01": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1878,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1884,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1880,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1889,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1887,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1896,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-04.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "changes-required (expected changes-required)",
+          "ok": true
+        },
+        {
+          "check": "finds: about.html uses Tailwind utilities (py-8, mt-8, leading-relaxed) the committed CSS lacks",
+          "detail": "major: Three used utilities (py-8, leading-relaxed, mt-8) are absent from committed CSS, so the browser ignores them.",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1892,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "ui-ux-pro-max": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 13.9,
+        "output_tokens": 0,
+        "requests": 146,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-05": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1901,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05-verify": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-05.afs-verifier.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "verdict",
+          "detail": "pass (expected pass)",
+          "ok": true
+        },
+        {
+          "check": "no blocker or major finding",
+          "detail": "0 serious finding(s)",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": null,
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "failure",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1899,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "clean-architecture": 1,
+        "clean-code": 1,
+        "code-review": 1,
+        "domain-driven-design": 1,
+        "patterns-of-enterprise-application-architecture": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 10.5,
+        "output_tokens": 0,
+        "requests": 103,
+        "sessions": 1
+      }
+    },
+    "synthetic-sy-01-bootstrap": {
+      "checks": [],
+      "kind": "bootstrap",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1902,
+      "setup_step": "Start test services from the target's compose file",
+      "status": "setup-failure"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-20T02:07:08+00:00",
+  "run": "2026-11-19-p5y-r1"
+}

@@ -1,6 +1,6 @@
 # ADR-0053: Skills and prompts are audited after each milestone
 
-- Status: Proposed (merging the harness PR that adds it accepts it, once the final eval shows no must-pass flip)
+- Status: Accepted (harness #212, 2026-11-20; the final eval shows no must-pass flip, see `evals/results/2026-11-19-p5-summary.md`)
 - Date: 2026-11-19
 - Source: [agent-topology review](../reviews/agent-topology-review.md), findings 8 and 9;
   [plan](../reviews/agent-topology-plan.md), phase 5

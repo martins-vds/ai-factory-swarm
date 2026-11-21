@@ -1,0 +1,187 @@
+{
+  "cases": {
+    "pilot-bk-05e-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1654,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1663,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1657,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05f-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1660,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1671,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g-fresh": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1665,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-bk-05g-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1668,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-dm-05d": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1673,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "pilot-dm-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1675,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-billing-understand": {
+      "checks": [],
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1677,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-01": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1679,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1685,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-02-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1681,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1691,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-03-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1687,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1697,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-04-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1694,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05": {
+      "checks": [],
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1702,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-ll-05-verify": {
+      "checks": [],
+      "kind": "verifier",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1700,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    },
+    "synthetic-sy-01-bootstrap": {
+      "checks": [],
+      "kind": "bootstrap",
+      "must_pass": false,
+      "passed": false,
+      "pr": 1703,
+      "setup_step": "Install RTK 1.1.0 (rtk-oss-x86_64-unknown-linux-musl.tar.gz)",
+      "status": "setup-failure"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-19T23:18:16+00:00",
+  "run": "2026-11-19-p5-r2"
+}

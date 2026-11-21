@@ -117,6 +117,7 @@ humans, and approved for cutover.
 | 52 | The Auditor stays: the independent, read-only check after the loop, now the one reviewer that isn't the author | [0052](adr/0052-the-auditor-stays.md) |
 | 53 | Skills and prompts are audited after each milestone: skills by usage (12 per role, exceptions recorded), 6,000 characters per agent file, and an eval for any change | [0053](adr/0053-skills-and-prompts-are-audited-after-each-milestone.md) |
 | 54 | An eval run measures the harness only when the session started with its tools: RTK from the release URL, `setup-failure` rows that don't count, prepare refuses cases that start on validation errors | [0054](adr/0054-an-eval-run-measures-the-harness-only-when-the-session-started-with-its-tools.md) |
+| 55 | Setup works before bootstrap and mutation measures the working tree: `afs-mutation` counts uncommitted and untracked files, the services step skips when no harness is installed, `.source/` is excluded locally | [0055](adr/0055-setup-works-before-bootstrap-and-mutation-measures-the-working-tree.md) |
 
 ---
 
