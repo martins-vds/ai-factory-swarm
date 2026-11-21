@@ -46,6 +46,11 @@ jobs:
           chmod -R a-w .source
           # ADR-0055: keep the checkout out of the agent's commits, even before bootstrap writes .gitignore
           echo ".source/" >> .git/info/exclude
+          # ADR-0057: a source kept in this repo is built in place; its build output is never committed
+          src=$(awk '/^path:/{{print $2}}' .migration/source.lock | sed 's#^/##; s#/$##')
+          if [ -n "$src" ] && [ "$src" != "." ]; then
+            for p in {source_build_outputs}; do echo "/$src/$p" >> .git/info/exclude; done
+          fi
           echo "Source pinned at $(git -C .source rev-parse HEAD)"
 
       - name: Install RTK {rtk_version} ({rtk_asset})

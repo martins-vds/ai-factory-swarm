@@ -119,6 +119,7 @@ humans, and approved for cutover.
 | 54 | An eval run measures the harness only when the session started with its tools: RTK from the release URL, `setup-failure` rows that don't count, prepare refuses cases that start on validation errors | [0054](adr/0054-an-eval-run-measures-the-harness-only-when-the-session-started-with-its-tools.md) |
 | 55 | Setup works before bootstrap and mutation measures the working tree: `afs-mutation` counts uncommitted and untracked files, the services step skips when no harness is installed, `.source/` is excluded locally | [0055](adr/0055-setup-works-before-bootstrap-and-mutation-measures-the-working-tree.md) |
 | 56 | A return that reports failing or stale gates cannot finish: the finish check refuses a failing gate without a handoff, and a gate whose last journal run predates the newest code edit; mutation keeps file times | [0056](adr/0056-a-return-that-reports-failing-or-stale-gates-cannot-finish.md) |
+| 57 | A source's build output is never committed: the stack pack names it (`source_build_outputs`), the setup steps exclude it under the in-repo source path, bootstrap adds it to `.gitignore` | [0057](adr/0057-a-sources-build-output-is-never-committed.md) |
 
 ---
 

@@ -41,6 +41,9 @@
       }
     }
   },
+  "source_build_outputs": [
+    "target/"
+  ],
   "sources": {
     "awesome-copilot": {
       "repo": "github/awesome-copilot",

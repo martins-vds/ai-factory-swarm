@@ -506,7 +506,17 @@ def write_state(target, profile, profile_path, caps_doc):
         write(m / "ledger/.gitkeep", "")
 
 
-def write_copilot_files(target, lock, version, commit, profile=None):
+def build_outputs(packs):
+    """Paths a stack pack's legacy build writes inside the source tree (ADR-0057), in pack order."""
+    out = []
+    for pack in packs or []:
+        for p in pack.get("source_build_outputs") or []:
+            if p not in out:
+                out.append(p)
+    return out
+
+
+def write_copilot_files(target, lock, version, commit, profile=None, packs=None):
     rtk = lock["tools"][0]
     ua_src = lock["sources"]["understand-anything"]
     patches = [p for pl in lock.get("plugins", []) for p in pl.get("patches", [])]
@@ -516,6 +526,7 @@ def write_copilot_files(target, lock, version, commit, profile=None):
                rtk_repo=rtk["repo"], rtk_asset=rtk["asset"], python_version=check_runtime.python_version(profile or {}, DEFAULT_PYTHON),
                pip_packages=PIP_PACKAGES, ua_repo=ua_src["repo"], ua_commit=ua_src["commit"],
                ua_commit_short=ua_src["commit"][:7], ua_patch_steps=ua_patch_steps,
+               source_build_outputs=" ".join(build_outputs(packs)),
                project_marker="manage.py", copilot_cli_version=COPILOT_CLI_VERSION,
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
@@ -533,11 +544,23 @@ def write_copilot_files(target, lock, version, commit, profile=None):
     write(ci, text)
 
 
-def merge_gitignore(target):
+def source_path(target):
+    try:
+        lock = yaml.safe_load((target / ".migration/source.lock").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    return str(lock.get("path") or "").strip("/")
+
+
+def merge_gitignore(target, packs=None):
     gi = target / ".gitignore"
     lines = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
+    # ADR-0057: a source kept inside the target repo (path in source.lock) is built in place; its output
+    # is never the migration's work (synthetic SY-01 committed 50 files of legacy/target/).
+    src = source_path(target)
+    built = [f"/{src}/{p}" for p in build_outputs(packs)] if src and src != "." else []
     for entry in (".source/", ".migration/runs/", ".migration/data/snapshot/", ".migration/data/target-export/",   # ADR-0032: data never committed
-                  "__pycache__/"):   # synthetic SY-01: a session committed the harness tools' bytecode
+                  "__pycache__/", *built):   # synthetic SY-01: a session committed the harness tools' bytecode
         if entry not in lines:
             lines.append(entry)
     write(gi, "\n".join(lines) + "\n")
@@ -752,8 +775,8 @@ def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_is
         install_skills(staging, plan, cache, notes)
         install_harness(staging, lock)
         install_agents(staging)
-        write_copilot_files(staging, lock, version, commit, profile)
-        merge_gitignore(staging)
+        write_copilot_files(staging, lock, version, commit, profile, packs)
+        merge_gitignore(staging, packs)
         write_manifest(staging, version, commit, plan)
 
         created = []

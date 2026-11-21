@@ -128,6 +128,25 @@ class BootstrapTest(unittest.TestCase):
         self.run_bootstrap(offline=True)
         self.assertIn("__pycache__/", (self.target / ".gitignore").read_text().splitlines())
 
+    def test_an_in_repo_sources_build_output_is_ignored(self):
+        """ADR-0057: synthetic SY-01 built `legacy/` in place and committed 50 files of `legacy/target/`."""
+        pack = {"source_build_outputs": ["target/"]}
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / ".migration").mkdir()
+            (root / ".migration/source.lock").write_text("repo: o/r\nsha: abc\npath: legacy\n")
+            bootstrap.merge_gitignore(root, [pack])
+            self.assertIn("/legacy/target/", (root / ".gitignore").read_text().splitlines())
+            (root / ".migration/source.lock").write_text("repo: o/r\nsha: abc\n")   # a separate source repo
+            (root / ".gitignore").unlink()
+            bootstrap.merge_gitignore(root, [pack])
+            self.assertNotIn("target/", (root / ".gitignore").read_text())
+
+    def test_setup_steps_exclude_the_packs_build_output(self):
+        self.run_bootstrap(offline=True)
+        steps = (self.target / ".github/workflows/copilot-setup-steps.yml").read_text()
+        self.assertIn('for p in target/; do echo "/$src/$p" >> .git/info/exclude; done', steps)
+
     def test_a_profile_naming_a_missing_compose_file_is_refused(self):
         # synthetic SY-01: services.compose named compose.yaml before it existed; every CI job then failed
         (self.target / "compose.yaml").unlink()
