@@ -134,13 +134,24 @@ class BootstrapTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
             (root / ".migration").mkdir()
-            (root / ".migration/source.lock").write_text("repo: o/r\nsha: abc\npath: legacy\n")
-            bootstrap.merge_gitignore(root, [pack])
+            same = {"source": {"repo": "o/r", "path": "legacy"}, "target": {"repo": "o/r"}}
+            bootstrap.merge_gitignore(root, [pack], bootstrap.in_repo_source_path(same))
             self.assertIn("/legacy/target/", (root / ".gitignore").read_text().splitlines())
-            (root / ".migration/source.lock").write_text("repo: o/r\nsha: abc\n")   # a separate source repo
+            other = {"source": {"repo": "x/legacy", "path": "java"}, "target": {"repo": "o/r"}}   # built in .source/
             (root / ".gitignore").unlink()
-            bootstrap.merge_gitignore(root, [pack])
+            bootstrap.merge_gitignore(root, [pack], bootstrap.in_repo_source_path(other))
             self.assertNotIn("target/", (root / ".gitignore").read_text())
+
+    def test_bootstrap_ignores_the_build_output_of_the_profiles_source_path(self):
+        """The rollout of #216: source.lock is written after .gitignore, so the path must come from the profile."""
+        doc = yaml.safe_load(pathlib.Path(PROFILE).read_text())
+        doc["source"]["path"] = "legacy"
+        doc["source"]["repo"] = doc["target"]["repo"]   # the source lives in the target repo, like synthetic
+        prof = self.target.parent / f"{self.target.name}-profile.yaml"
+        prof.write_text(yaml.safe_dump(doc, sort_keys=False))
+        self.addCleanup(prof.unlink)
+        bootstrap.bootstrap(self.target, prof, CAPS, [PACK], offline=True)
+        self.assertIn("/legacy/target/", (self.target / ".gitignore").read_text().splitlines())
 
     def test_setup_steps_exclude_the_packs_build_output(self):
         self.run_bootstrap(offline=True)

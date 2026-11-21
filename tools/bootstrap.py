@@ -544,20 +544,20 @@ def write_copilot_files(target, lock, version, commit, profile=None, packs=None)
     write(ci, text)
 
 
-def source_path(target):
-    try:
-        lock = yaml.safe_load((target / ".migration/source.lock").read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
+def in_repo_source_path(profile):
+    """The source's path when the source lives in the target repository itself, else "" (ADR-0057)."""
+    src, tgt = profile.get("source") or {}, profile.get("target") or {}
+    if not src.get("repo") or src.get("repo") != tgt.get("repo"):
         return ""
-    return str(lock.get("path") or "").strip("/")
+    return str(src.get("path") or "")
 
 
-def merge_gitignore(target, packs=None):
+def merge_gitignore(target, packs=None, src=None):
     gi = target / ".gitignore"
     lines = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
     # ADR-0057: a source kept inside the target repo (path in source.lock) is built in place; its output
     # is never the migration's work (synthetic SY-01 committed 50 files of legacy/target/).
-    src = source_path(target)
+    src = (src or "").strip().strip("/")
     built = [f"/{src}/{p}" for p in build_outputs(packs)] if src and src != "." else []
     for entry in (".source/", ".migration/runs/", ".migration/data/snapshot/", ".migration/data/target-export/",   # ADR-0032: data never committed
                   "__pycache__/", *built):   # synthetic SY-01: a session committed the harness tools' bytecode
@@ -776,7 +776,7 @@ def _bootstrap_locked(target, profile_path, caps_path, pack_paths, create_gap_is
         install_harness(staging, lock)
         install_agents(staging)
         write_copilot_files(staging, lock, version, commit, profile, packs)
-        merge_gitignore(staging, packs)
+        merge_gitignore(staging, packs, in_repo_source_path(profile))
         write_manifest(staging, version, commit, plan)
 
         created = []
