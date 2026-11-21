@@ -6,7 +6,8 @@ by hand. It checks the session's own work, with the same rules CI applies:
 
   mechanical  the return file `.migration/returns/<ticket>.<role>.yaml` is committed on this branch, and
               `validate.py` (the CI check) reports nothing about a file this branch changed: schema, gates
-              matching the `afs-run` journal, PR reference, ledger evidence, handoff sections.
+              matching the `afs-run` journal, PR reference, ledger evidence, handoff sections. Without a
+              handoff, no gate in the return fails, and none was run before the newest code edit (ADR-0056).
   scope       every file this branch changed is in the ticket's planned files (`check_plan.py`), plus the
               session's own records, plus `AFS-SCOPE: <path>` lines in the issue (an operator extension).
               A file outside them needs a handoff that names it: an agent never widens its own scope.
@@ -188,6 +189,72 @@ def shared_test_files():
     return set(((profile.get("target") or {}).get("shared_test_files")) or [])
 
 
+# Gates a return reports as an exit code, and the journal rows that back them (ADR-0056).
+EXIT_GATES = ("build", "behavior", "idiom", "crap", "regression")
+JOURNAL_ROW = re.compile(r"^\| (\d{4}-\d\d-\d\dT[^|]+?) \| ([^|]+?) \| (-?\d+) \|")
+
+
+def mutation_min():
+    try:
+        prof = yaml.safe_load((MIG / "profile.yaml").read_text(encoding="utf-8")) or {}
+        return float(((prof.get("thresholds") or {}).get("mutation_score_min")) or 0.8)
+    except (OSError, yaml.YAMLError, TypeError, ValueError):
+        return 0.8
+
+
+def is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def failing_gates(gates):
+    """Gates the return itself reports as failing: a non-zero exit, or mutation below the profile's minimum."""
+    bad = [f"`{g}: {gates[g]}`" for g in EXIT_GATES if is_number(gates.get(g)) and gates[g] != 0]
+    m, floor = gates.get("mutation_changed"), mutation_min()
+    if is_number(m) and m < floor:
+        bad.append(f"`mutation_changed: {m}` (minimum {floor})")
+    return bad
+
+
+def journal_runs(ticket):
+    """{normalized gate-run name: latest epoch seconds} from the ticket's afs-run journal."""
+    path = MIG / "evidence" / "runs" / f"{ticket}.md"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    runs = {}
+    for line in lines:
+        m = JOURNAL_ROW.match(line)
+        if not m:
+            continue
+        try:
+            at = datetime.datetime.fromisoformat(m.group(1).strip().replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        name = m.group(2).strip().replace("-", "_")
+        runs[name] = max(at, runs.get(name, 0))
+    return runs
+
+
+def stale_gates(ticket, gates, changed):
+    """Gates whose last journal run is older than the newest edit to the branch's code: the result no longer
+    describes the code CI will check (eval p5w-r2: idiom passed, then mutation-test edits broke ruff)."""
+    code = [p for p in changed if not p.startswith(".migration/") and pathlib.Path(p).is_file()]
+    if not code:
+        return [], None
+    newest_path = max(code, key=lambda p: pathlib.Path(p).stat().st_mtime)
+    newest = pathlib.Path(newest_path).stat().st_mtime
+    runs = journal_runs(ticket)
+    stale = []
+    for g in (*EXIT_GATES, "mutation_changed"):
+        if not is_number(gates.get(g)):
+            continue
+        last = max((at for name, at in runs.items() if name.startswith(g)), default=None)
+        if last is not None and last + 1 < newest:
+            stale.append(g)
+    return stale, newest_path
+
+
 def in_scope(path, allowed):
     return any(path == a or (a.endswith("/") and path.startswith(a)) for a in allowed)
 
@@ -248,6 +315,19 @@ def findings(ticket, role, changed, prompt):
                 found.append(("stuck", "no-handoff",
                               f"Your return reports a handoff (`{handoff}`) but this branch didn't commit it. Write "
                               f"the `## Handoff` section with afs-handoff and commit `{hpath}`."))
+        else:
+            bad = failing_gates(gates)
+            if bad:
+                found.append(("mechanical", "failing-gates:" + ",".join(sorted(bad)),
+                              f"`{ret_rel}` reports failing gates and no handoff: " + ", ".join(bad) + ". CI will "
+                              "fail the same way. Fix the code or tests and re-run the gate through afs-run; if you "
+                              "can't, write a handoff (afs-handoff), set `handoff:` in your return, and stop."))
+            stale, newest = stale_gates(ticket, gates, changed)
+            if stale:
+                found.append(("mechanical", "stale-gates:" + ",".join(stale),
+                              "You changed `" + newest + "` after your last run of " + ", ".join(f"`{g}`" for g in stale)
+                              + ", so those results don't describe the code CI will check. Re-run each through "
+                              "afs-run and copy the new results into your return."))
 
     planned = check_plan.ticket_files(MIG, ticket) if role in SCOPED_ROLES else None
     if planned is not None:

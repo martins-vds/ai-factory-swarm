@@ -357,5 +357,20 @@ class ChangedFilesTest(unittest.TestCase):
         self.assertIn("src/untracked.py", paths)
 
 
+
+class KeptMtimesTest(unittest.TestCase):
+    def test_an_unchanged_file_keeps_its_time_and_a_changed_one_does_not(self):
+        with tempfile.TemporaryDirectory() as d:
+            same, edited = pathlib.Path(d, "same.py"), pathlib.Path(d, "edited.py")
+            for f in (same, edited):
+                f.write_text("A = 1\n")
+                m.os.utime(f, (1000, 1000))
+            with m.kept_mtimes([str(same), str(edited)]):
+                same.write_text("A = 2\n")      # a mutant, then restored
+                same.write_text("A = 1\n")
+                edited.write_text("A = 3\n")
+            self.assertEqual(same.stat().st_mtime, 1000)
+            self.assertNotEqual(edited.stat().st_mtime, 1000)
+
 if __name__ == "__main__":
     unittest.main()
