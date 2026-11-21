@@ -1,0 +1,160 @@
+id: synthetic-legacy-understand
+kind: understand
+must_pass: false
+agent: afs-analyst
+ticket: SY-04
+role: afs-analyst
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: 687b86626e5ebe83619e8057ffdff3a4a130da57
+reference: 'live martins-vds/ai-factory-synthetic-target#35 (SY-04, Analyst) then #44 (SY-05, Characterizer): 17
+  capabilities, tier A'
+issue:
+  title: SY-04 · Analyse and inventory the legacy source
+  body: '**Role:** `afs-analyst`, ticket `SY-04`: **understand the legacy source and inventory it** (Phase 2). **Base
+    branch:** `main`.
+
+
+    The bootstrap gate is clear: every capability is met or waived (`.migration/capabilities.yaml`). The full source
+    graph is merged at `.migration/graphs/source/full/` and passes the graph gate. The source is `legacy/` at the
+    pinned commit in `.migration/source.lock`.
+
+
+    Follow your procedure: graph first; enrich; **inventory every capability** of the source into the fidelity ledger
+    (`.migration/ledger/`, `status: pending`); build the best-effort risk map from the source CRAP tooling (`.migration/risk-map/`);
+    and raise quirks as they come up. Everything in `legacy/` is in scope: code, resources and the documents under
+    `legacy/docs/`.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first; run every tool through `afs-run`. Read-only on
+    `legacy/`.
+
+
+    **Return:** `.migration/returns/SY-04.afs-analyst.yaml` (`issue:` this issue), or a handoff. Never end with
+    neither.
+
+
+    **Only if your agent is `afs-understander`:** after SY-04, also do ticket **SY-05** in the same session: the
+    Characterizer''s procedure for every capability you inventoried, at tier A (the source runs, `.migration/references/characterization.md`).
+    A characterization harness exists at `.migration/characterization/source/`; extend it rather than starting over.
+    Record observed against predicted behaviour, set each entry''s characterization fields, inventory any legacy
+    tests, raise new quirks as drafts, and commit `.migration/returns/SY-05.afs-characterizer.yaml`.
+
+    '
+chain:
+  agent: afs-characterizer
+  ticket: SY-05
+  role: afs-characterizer
+  title: SY-05 · Characterize the legacy source's capabilities
+  body: '**Role:** `afs-characterizer`, ticket `SY-05`: **characterize every ledger capability** before planning.
+    **Base branch:** {work_pr}, where the Analyst''s inventory is (`.migration/ledger/`, `status: pending`, with
+    the risk map in `.migration/risk-map/`).
+
+
+    - **Tier:** the source runs (tier A, `.migration/references/characterization.md`).
+
+    - **Harness:** a characterization harness exists at `.migration/characterization/source/` (SY-03). Extend it
+    rather than starting over.
+
+
+    For each ledger entry, capture what the source actually does at the best tier available *for that capability*,
+    record observed versus predicted behaviour, and set the entry''s characterization fields (tier, evidence, verification
+    method). Inventory any legacy tests. Raise new quirks as drafts in `.migration/quirks/`, as your skill describes.
+    Record quirky behaviour as it is; don''t rule on it.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first. Run every tool through `afs-run`. Read-only on
+    `legacy/`.
+
+
+    **Return:** `.migration/returns/SY-05.afs-characterizer.yaml` (`issue:` this issue), or a handoff. Never end
+    with neither.
+
+    '
+normalize:
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
+expect:
+  ledger_rules:
+  - id: due-date-14-days
+    all_of:
+    - - '14'
+    - - due
+  - id: fee-waived-two-days
+    all_of:
+    - - 2 days
+      - two days
+      - <= 2
+      - grace
+      - waiv
+      - two-day
+  - id: fee-25-cents-a-day
+    all_of:
+    - - 25 cents
+      - '0.25'
+      - 25¢
+      - 25 per day
+      - $0.25
+      - 25-cent
+  - id: fee-capped-at-10
+    all_of:
+    - - '10.00'
+      - $10
+      - '1000'
+    - - cap
+      - max
+      - at most
+      - up to
+  - id: lend-needs-member-and-isbn
+    all_of:
+    - - '400'
+    - - member
+    - - isbn
+  - id: unknown-loan-404
+    all_of:
+    - - '404'
+  - id: gateway-failure-502
+    all_of:
+    - - '502'
+  - id: export-joins-with-semicolons
+    all_of:
+    - - semicolon
+  - id: return-overwrites-date
+    all_of:
+    - - overwrit
+      - replac
+  - id: seed-loans
+    all_of:
+    - - seed
+    - - l1
+      - ana
+  - id: restart-loses-data
+    all_of:
+    - - restart
+      - in-memory
+  - id: monthly-report-spec
+    all_of:
+    - - month
+    - - report
+  - id: about-page
+    all_of:
+    - - about
+  - id: default-port-8080
+    all_of:
+    - - '8080'
+  characterization_values:
+  - '10.00'
+  - '502'
+  - '404'
+  - '9780596007126'
+  - '2026-01-24'
+  - '201'
+  min_ledger: 12
+  min_characterization: 4
+notes: 'ADR-0051 follow-up: the larger scope. Configuration A is the Analyst (this case) then the Characterizer
+  (`chain`); configuration B is one `afs-understander` session (`--agent afs-understander`). The golden rules and
+  values were checked against the live SY-04 ledger (all 14) and SY-05 goldens (all 6); the fee for L3 is left out
+  because the live goldens don''t record it. Not must-pass: the measure is the two configurations against each other.'

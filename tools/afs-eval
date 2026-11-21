@@ -70,7 +70,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
-KINDS = ("migrator", "verifier", "bootstrap", "understand")
+from check_signoff import acceptance as acceptance_fields  # noqa: E402  (both return shapes, ADR-0050)
+KINDS = ("migrator", "verifier", "bootstrap", "understand", "acceptance")
 SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
 COPILOT = "copilot-swe-agent[bot]"
 # Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
@@ -129,6 +130,10 @@ def case_problems(doc):
         if not all(chain_spec.get(k) for k in ("agent", "ticket", "role", "title", "body")):
             out.append("an understand case needs chain: agent, ticket, role, title and body (configuration A's "
                        "second session)")
+    if doc["kind"] == "acceptance":
+        for key in ("slice", "epic", "reconciliation_issues", "report_keywords"):
+            if not exp.get(key):
+                out.append(f"an acceptance case needs expect.{key}")
     for op in doc.get("normalize") or []:
         if not (set(op) & {"replace", "copy_from", "yaml_set"}):
             out.append("normalize ops are replace, copy_from or yaml_set")
@@ -337,6 +342,23 @@ def prepare_role_map(a):
     return {**FOLDED_INTO, **role_map(a)}
 
 
+def agent_drift(src, eval_main, harness):
+    """Agents the eval repo's `main` serves that differ from the harness under test (ADR-0058).
+
+    Copilot reads custom agents from the default branch, not the case branch. Every harness agent and every
+    variant under `evals/variants/` must be there, byte for byte; other files (retired roles) may stay."""
+    harness = pathlib.Path(harness)
+    wanted = sorted(harness.glob("agents/afs-*.agent.md")) + sorted(harness.glob("evals/variants/*.agent.md"))
+    drift = []
+    for path in wanted:
+        shown = git(src, "show", f"{eval_main}:.github/agents/{path.name}", check=False)
+        if shown.returncode != 0:
+            drift.append(f"{path.name} (missing)")
+        elif shown.stdout != path.read_text(encoding="utf-8"):
+            drift.append(path.name)
+    return drift
+
+
 def prepare(a, cases):
     # A retired role's open tickets are always re-planned under its successor: today's check_plan refuses them,
     # and the agent would stop at setup (v3e-r1: every pilot Verifier case had AM-04D/BK-05F/BK-05G open).
@@ -351,11 +373,21 @@ def prepare(a, cases):
     sources = pathlib.Path(a.sources)
     sources.mkdir(parents=True, exist_ok=True)
     out, refused = [], []
+    checked_agents = False
     for case in cases:
         src = source_clone(sources, case["source"]["repo"])
         remote = f"https://github.com/{a.eval_repo}"
         git(src, "fetch", "-q", remote, "+refs/heads/main:refs/remotes/afs-eval/main")
         eval_main = "refs/remotes/afs-eval/main"
+        if not checked_agents:
+            checked_agents = True
+            drift = agent_drift(src, eval_main, harness)
+            if drift and not a.allow_agent_drift:
+                # 2026-11-20: main kept harness ca620b9's agents while phase 3d and phase 5 changed them, so those
+                # runs measured the old prompts. Sync main's .github/agents from a prepared case branch first.
+                raise SystemExit(f"afs-eval: {a.eval_repo} main serves agents that differ from the harness under "
+                                 f"test: {', '.join(drift)}. Update main's .github/agents (evals/README.md), or "
+                                 "pass --allow-agent-drift to measure them anyway")
         wt, head = build_branch(src, case["source"]["base"], case, harness, eval_main, [], a.allow_unreleased, "base")
         pushes = [(wt, head, branch(a.run, case))]
         if case["kind"] == "verifier":
@@ -567,6 +599,70 @@ def grade_understand(base, head, expect, changed):
              f"{len(found)}/{len(expect['ledger_rules'])}; missing {', '.join(missing) or 'none'}"),
             ("characterization records the golden values", len(values) >= need_char,
              f"{len(values)}/{metrics['characterization_total']}")], metrics
+
+
+DISPOSITIONS = ("completed", "superseded", "retained-open")
+
+
+def acceptance_view(ret):
+    """One view of a slice-acceptance return: the orchestrator's `acceptance` block, or a retired Slice
+    Coordinator's return with its nested `acceptance:` fields lifted (ADR-0050)."""
+    fields = dict(acceptance_fields(ret or {}))
+    nested = fields.get("acceptance")
+    if isinstance(nested, dict):
+        fields = {**fields, **nested}
+    return fields
+
+
+def grade_acceptance(head, ret, expect, changed):
+    """Slice acceptance (ADR-0050 fold eval): the return's acceptance fields, the evidence report, and the
+    ticket reconciliation, against what the live slice's tracker and archived acceptance run show."""
+    head = pathlib.Path(head)
+    view = acceptance_view(ret)
+    checks = [("acceptance fields present", bool(view), "role " + str((ret or {}).get("role")))]
+    checks.append(("slice named", view.get("slice") == expect["slice"], f"got {view.get('slice')!r}"))
+    # The one rule that must never break: the human check is requested, never passed by the agent (ADR-0031).
+    checks.append(("human_check requested, not passed", view.get("human_check") == "requested",
+                   f"got {view.get('human_check')!r}"))
+    checks.append(("gates all-green", view.get("gates") == "all-green", f"got {view.get('gates')!r}"))
+    if expect.get("mutation_score") is not None:
+        got = view.get("mutation_score")
+        if isinstance(got, str):
+            try:
+                got = float(got)
+            except ValueError:
+                pass
+        ok = (isinstance(got, (int, float)) and abs(got - expect["mutation_score"]) < 0.0015) or (
+            isinstance(got, str) and got.startswith("n/a: "))
+        checks.append((f"mutation_score is the run's {expect['mutation_score']}", ok, f"got {view.get('mutation_score')!r}"))
+    outside = [f for f in changed if not f.startswith(".migration/")]
+    checks.append(("changes only .migration/", not outside, ", ".join(outside[:5]) or "none"))
+    report = view.get("report")
+    text = ""
+    if isinstance(report, str) and (head / report).is_file():
+        text = (head / report).read_text(encoding="utf-8", errors="ignore").lower()
+    missing = [g[0] for g in expect["report_keywords"] if not any(k.lower() in text for k in g)]
+    checks.append(("evidence report states the run's results", bool(text) and not missing,
+                   f"{report!r}; missing {', '.join(map(str, missing)) or 'none'}" if text else f"no report at {report!r}"))
+    rec_path = head / f".migration/evidence/ticket-reconciliation/{expect['epic']}.yaml"
+    try:
+        rec = yaml.safe_load(rec_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        rec = {}
+    entries = [e for e in rec.get("issues") or [] if isinstance(e, dict)]
+    got_issues = [e.get("number") for e in entries]
+    want = sorted(expect["reconciliation_issues"])
+    bad = [e.get("number") for e in entries if e.get("disposition") not in DISPOSITIONS or "needs_review" in e]
+    detail = f"issues {sorted(n for n in got_issues if isinstance(n, int))}; want {want}"
+    if bad:
+        detail += f"; no final disposition for {bad}"
+    checks.append(("ticket reconciliation covers every descendant once",
+                   bool(entries) and sorted(got_issues) == want and not bad, detail))
+    if expect.get("self_issue"):
+        own = [e for e in entries if e.get("number") == expect["self_issue"]]
+        checks.append(("its own ticket is completed", bool(own) and own[0].get("disposition") == "completed",
+                       f"#{expect['self_issue']}: {own[0].get('disposition') if own else 'missing'}"))
+    return checks
 
 
 def chain_row(src, case, st):
@@ -949,7 +1045,17 @@ def grade(a, cases):
                               check=False).stdout.split()
                 found, metrics = grade_understand(trees["base"], trees["head"], case["expect"], changed)
                 checks += found
+                # ADR-0051: a combined session must commit both roles' returns (4b's understander missed the
+                # Characterizer's twice); a chained pair commits one each.
+                second = f".migration/returns/{case['chain']['ticket']}.{case['chain']['role']}.yaml"
+                checks.append(("both roles' returns committed", (trees["head"] / second).is_file()
+                               and (trees["head"] / f".migration/returns/{case['ticket']}.{case['role']}.yaml").is_file(),
+                               second))
                 row["understand"] = metrics
+            elif case["kind"] == "acceptance":
+                changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
+                              check=False).stdout.split()
+                checks += grade_acceptance(trees["head"], ret, case["expect"], changed)
             elif case["kind"] == "verifier":
                 checks += grade_verifier(ret, case["expect"])
                 gate = blocked_gate(ret, case["expect"])
@@ -1304,6 +1410,9 @@ def main(argv=None):
             p.add_argument("--dry-run", action="store_true")
             p.add_argument("--allow-errors", action="store_true",
                            help="push a case whose tree has validation errors (a case about a broken tree)")
+            p.add_argument("--allow-agent-drift", action="store_true",
+                           help="prepare even though the eval repo's main serves other agents than the harness "
+                                "under test (ADR-0058)")
     p = sub.add_parser("report")
     p.add_argument("--results", required=True)
     p.add_argument("--baseline")

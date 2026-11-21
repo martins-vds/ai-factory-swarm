@@ -13,6 +13,7 @@ fresh Copilot sessions against the harness under test, and the results are compa
 | `verifier` (defect) | Verdict `changes-required`, and at least one finding at or above `severity_min` that names the real defect (a keyword in `any_of`, or a path prefix in `where`). Each defect was found by the live Verifier and fixed before merge |
 | `verifier` (clean) | Verdict `pass`, with no blocker or major finding. These stop a configuration from passing by rejecting everything |
 | `bootstrap` | The listed profile and checklist fields have their live values |
+| `acceptance` | A slice acceptance: the return's acceptance fields (slice, `human_check: requested`, gates all green, the run's mutation score), an evidence report that states the run's results, and a ticket reconciliation with one final disposition for every descendant. Graded the same for the orchestrator's `acceptance` block and a retired Slice Coordinator's return (ADR-0050) |
 
 **Must-pass cases.** Every case is `must_pass` except the bootstrap case, which is tracked only: its live
 session ran before the harness was installed. Its `harness_copy` puts the agent and harness skills under
@@ -94,6 +95,9 @@ Copilot reads custom agents and `copilot-setup-steps.yml` from the default branc
 - copy it from any prepared case branch;
 - merge it through a PR, as the ruleset requires;
 - update it whenever the harness under test changes its agents, skills or setup steps.
+
+`prepare` refuses to run while `main`'s agents differ from the harness under test or its `evals/variants/`
+(ADR-0058). `--allow-agent-drift` overrides it for a run that means to measure other agents.
 
 Each case branch merges `main` with `-s ours`, which leaves its own tree intact. So `main`'s content never
 leaks into a case.
