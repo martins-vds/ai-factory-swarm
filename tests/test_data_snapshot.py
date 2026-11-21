@@ -93,5 +93,26 @@ class JdbcSnapshotJavaTest(unittest.TestCase):
             self.assertIn("selftest ok", r.stdout)
 
 
+class GhRetryTest(unittest.TestCase):
+    """Concurrent sessions share one token; a rate-limited fetch waits and retries instead of leaving the
+    agent without its snapshot (eval p5r-r2/r3)."""
+
+    def test_a_rate_limit_is_retried_and_another_error_is_not(self):
+        from unittest import mock
+        limited = mock.Mock(returncode=1, stderr="HTTP 403: API rate limit exceeded for installation", stdout="")
+        ok = mock.Mock(returncode=0, stdout="42\n", stderr="")
+        with mock.patch.object(ds.subprocess, "run", side_effect=[limited, ok]), mock.patch.object(ds.time, "sleep"):
+            self.assertEqual(ds.gh("run", "list"), "42")
+        other = mock.Mock(returncode=1, stderr="HTTP 404: Not Found", stdout="")
+        with mock.patch.object(ds.subprocess, "run", return_value=other) as run, mock.patch.object(ds.time, "sleep"):
+            with self.assertRaises(ds.SnapshotError):
+                ds.gh("run", "list")
+            self.assertEqual(run.call_count, 1)
+        with mock.patch.object(ds.subprocess, "run", return_value=limited) as run, mock.patch.object(ds.time, "sleep"):
+            with self.assertRaises(ds.SnapshotError):
+                ds.gh("run", "list", waits=(1, 1))
+            self.assertEqual(run.call_count, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

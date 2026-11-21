@@ -171,9 +171,13 @@ def rewrite_body(body, source_repo, work_pr=None):
 
 
 def eval_note(run, case):
+    # p5r-r2/r3 BK-05G: the agent took the live run's "Base branch" name literally, found a stale branch of that
+    # name in the eval repo, and handed off because it wasn't its checkout's ancestor.
     return (f"\n\n---\nEval case `{case['id']}` (run `{run}`). Work this exactly as a live ticket: same agent, "
             f"same rules, same checks. References to `{case['source']['repo']}` issues are the live run's "
-            "tracker; read them, never write to it.")
+            "tracker; read them, never write to it. Branch and PR names in this issue are the live run's too: your "
+            f"checkout already starts where that base was (`{case['source']['base'][:12]}`), so work from it and "
+            "don't fetch or merge a branch of that name.")
 
 
 # ---------------------------------------------------------------- shell helpers
@@ -1009,6 +1013,11 @@ def grade(a, cases):
             row["models"] = models
             row["model"] = max(models, key=models.get)
         failed_step = setup_failure(a.eval_repo, pr["head"]["ref"])
+        if not failed_step:
+            limited = rate_limited_setup(a.eval_repo, pr["head"]["ref"])
+            # Only a step the case needs: the BK cases pass without the data snapshot that DM cases start from.
+            if limited and (SNAPSHOT_STEP not in limited or "data-snapshot" in (case.get("needs") or [])):
+                failed_step = limited
         if failed_step:      # the session ran without its tools: that grades the runner, not the harness
             row.update(status="setup-failure", passed=False, setup_step=failed_step)
             continue
@@ -1149,6 +1158,26 @@ def session_models(eval_repo, head_ref):
             for m in MODEL.findall(log):
                 counts[m] = counts.get(m, 0) + 1
     return counts
+
+
+SNAPSHOT_STEP = "Fetch the newest data snapshot"
+RATE_LIMIT = re.compile(r"API rate limit exceeded|secondary rate limit", re.I)
+
+
+def rate_limited_setup(eval_repo, head_ref):
+    """A setup step that hit the GitHub API rate limit and went on with a warning (the data snapshot fetch does:
+    `|| echo ::warning::`), so the agent started without its inputs. p5r-r2/r3 DM-05D and DM-05F stopped,
+    correctly, on the missing snapshot: that grades the runner's API quota, not the harness (ADR-0054)."""
+    runs = (gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=20", check=False) or {})
+    for run in sorted(runs.get("workflow_runs") or [], key=lambda r: r.get("created_at") or "")[:1]:
+        for job in (gh_api(f"repos/{eval_repo}/actions/runs/{run['id']}/jobs", check=False) or {}).get("jobs") or []:
+            log = sh(["gh", "api", f"repos/{eval_repo}/actions/jobs/{job['id']}/logs"], check=False).stdout or ""
+            setup = log.split("[cca-engine]", 1)[0]          # everything before the agent's first turn
+            for line in setup.splitlines():
+                if RATE_LIMIT.search(line):
+                    step = re.findall(r"GITHUB_COPILOT_SETUP_STEP_NAME: (.+)", setup[:setup.find(line)])
+                    return f"{step[-1].strip() if step else 'setup'} (API rate limit)"
+    return None
 
 
 def agent_pr(eval_repo, issue, base):

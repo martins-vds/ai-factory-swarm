@@ -534,3 +534,26 @@ class ModelPinTest(unittest.TestCase):
         out = ev.compare([run("now", "mai-code-2-flash")], [run("base", "gpt-6-luna")])
         text = out if isinstance(out, str) else "\n".join(out if isinstance(out, list) else [str(out)])
         self.assertIn("More than one model ran", text)
+
+
+class EvalEnvironmentTest(unittest.TestCase):
+    def test_the_note_says_branch_names_are_the_live_runs(self):
+        note = ev.eval_note("r", case(source={"repo": "o/p", "base": "0eadc0f669fee330d98b3e"}))
+        self.assertIn("Branch and PR names in this issue are the live run's", note)
+        self.assertIn("0eadc0f669fe", note)
+
+    def test_a_rate_limited_setup_step_is_a_setup_failure(self):
+        log = ("x GITHUB_COPILOT_SETUP_STEP_NAME: Fetch the newest data snapshot\n"
+               "x ##[error]gh run list: HTTP 403: API rate limit exceeded for installation\n"
+               "x [cca-engine] turn=1 assistant.turn_start\n")
+        runs = {"workflow_runs": [{"id": 1, "created_at": "t"}]}
+        jobs = {"jobs": [{"id": 2}]}
+        with mock.patch.object(ev, "gh_api", side_effect=[runs, jobs]), \
+                mock.patch.object(ev, "sh", return_value=mock.Mock(stdout=log)):
+            self.assertEqual(ev.rate_limited_setup("o/e", "b"), "Fetch the newest data snapshot (API rate limit)")
+
+    def test_a_rate_limit_inside_the_agents_session_does_not_count(self):
+        log = "x [cca-engine] turn=1 start\nx tool: API rate limit exceeded\n"
+        with mock.patch.object(ev, "gh_api", side_effect=[{"workflow_runs": [{"id": 1}]}, {"jobs": [{"id": 2}]}]), \
+                mock.patch.object(ev, "sh", return_value=mock.Mock(stdout=log)):
+            self.assertIsNone(ev.rate_limited_setup("o/e", "b"))
