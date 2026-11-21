@@ -30,6 +30,9 @@ Three cases failed in the last phase 5 run, and none of the failures was the age
 2. **The services step skips cleanly before bootstrap.** When `.migration/harness/tools` doesn't exist, it
    says so and passes. Once the harness is installed, a missing `afs-services` fails as before (and the
    harness check catches the broken install).
+   The Understand Anything step does the same: its patches ship with the harness, and nothing builds a
+   graph before bootstrap. (Added after the eval repo's own check, on a branch without the harness, failed
+   at that step once the services step stopped masking it.)
 3. **The source checkout is excluded locally.** The setup steps add `.source/` to `.git/info/exclude`, so
    an agent can't commit it, whether or not the repository has a `.gitignore` yet.
 
