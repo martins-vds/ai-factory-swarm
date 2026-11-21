@@ -507,3 +507,30 @@ class AgentDriftTest(unittest.TestCase):
             ev.git(repo, "add", ".")
             ev.git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
             self.assertEqual(ev.agent_drift(repo, "main", harness), ["afs-b.agent.md", "afs-v.agent.md (missing)"])
+
+
+class ModelPinTest(unittest.TestCase):
+    """ADR-0060: Copilot's automatic model choice mixed two models into one run from 2026-11-20."""
+
+    def test_the_assignment_carries_the_pinned_model_only_when_named(self):
+        a = mock.Mock(eval_repo="o/e", model="gpt-6-luna", auto_model=False)
+        self.assertEqual(ev.assignment(a, "b", "afs-migrator")["model"], "gpt-6-luna")
+        a.model = None
+        self.assertNotIn("model", ev.assignment(a, "b", "afs-migrator"))
+
+    def test_dispatch_needs_a_model_or_an_explicit_auto(self):
+        with self.assertRaises(SystemExit):
+            ev.require_model(mock.Mock(model=None, auto_model=False))
+        ev.require_model(mock.Mock(model=None, auto_model=True))
+        ev.require_model(mock.Mock(model="gpt-6-luna", auto_model=False))
+
+    def test_the_model_is_read_from_the_session_log(self):
+        log = "[cca-engine] turn=3 assistant.usage: model=mai-code-2-flash input=1 output=2\n"
+        self.assertEqual(ev.MODEL.findall(log), ["mai-code-2-flash"])
+
+    def test_compare_flags_runs_on_different_models(self):
+        def run(name, model):
+            return {"run": name, "cases": {"c": {"status": "graded", "passed": True, "model": model}}}
+        out = ev.compare([run("now", "mai-code-2-flash")], [run("base", "gpt-6-luna")])
+        text = out if isinstance(out, str) else "\n".join(out if isinstance(out, list) else [str(out)])
+        self.assertIn("More than one model ran", text)

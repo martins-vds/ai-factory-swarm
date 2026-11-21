@@ -96,6 +96,9 @@ Copilot reads custom agents and `copilot-setup-steps.yml` from the default branc
 - merge it through a PR, as the ruleset requires;
 - update it whenever the harness under test changes its agents, skills or setup steps.
 
+`dispatch` and `chain` need `--model` (the baseline's is `gpt-6-luna`), or an explicit `--auto-model`;
+`grade` records the model each session ran (ADR-0060).
+
 `prepare` refuses to run while `main`'s agents differ from the harness under test or its `evals/variants/`
 (ADR-0058). `--allow-agent-drift` overrides it for a run that means to measure other agents.
 

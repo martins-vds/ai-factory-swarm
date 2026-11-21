@@ -70,6 +70,10 @@
         "Ticket reconciliation holds once merged": "failure"
       },
       "kind": "acceptance",
+      "model": "mai-code-2-flash",
+      "models": {
+        "mai-code-2-flash": 33
+      },
       "must_pass": false,
       "passed": true,
       "pr": 1973,
@@ -158,6 +162,10 @@
         "Ticket reconciliation holds once merged": "failure"
       },
       "kind": "acceptance",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 31
+      },
       "must_pass": false,
       "passed": true,
       "pr": 1974,
@@ -244,6 +252,10 @@
         "Ticket reconciliation holds once merged": "failure"
       },
       "kind": "acceptance",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 24
+      },
       "must_pass": false,
       "passed": true,
       "pr": 1975,
@@ -261,6 +273,6 @@
     }
   },
   "eval_repo": "martins-vds/ai-factory-eval",
-  "graded_at": "2026-11-21T06:42:16+00:00",
+  "graded_at": "2026-11-21T14:50:15+00:00",
   "run": "2026-11-21-fold-accU-r2"
 }

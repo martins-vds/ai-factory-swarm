@@ -448,6 +448,7 @@ def mapped(case, roles):
 
 
 def dispatch(a, cases):
+    require_model(a)
     state = load_state(a)
     cases = [mapped(c, role_map(a)) for c in cases]
     for case in cases:
@@ -470,14 +471,32 @@ def dispatch(a, cases):
                         "body": body})["number"]
         gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
             "assignees": [COPILOT],
-            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": base_branch,
-                                 "custom_agent": getattr(a, "agent", None) or case["agent"],
-                                 "custom_instructions": ""}})
+            "agent_assignment": assignment(a, base_branch, getattr(a, "agent", None) or case["agent"])})
         state[case["id"]] = {"issue": issue, "work_pr": work_pr, "base_branch": base_branch,
                              "agent": getattr(a, "agent", None) or case["agent"], "dispatched_at": now()}
         save_state(a, state)
         print(f"{case['id']}: issue #{issue} assigned to Copilot ({getattr(a, 'agent', None) or case['agent']}, "
               f"base {base_branch})")
+
+
+def assignment(a, base_branch, agent):
+    """The Copilot agent assignment, with the model pinned (ADR-0060). Left out, Copilot picks one per session:
+    from 2026-11-20 it mixed gpt-6-luna and mai-code-2-flash, so runs stopped measuring one model."""
+    out = {"target_repo": a.eval_repo, "base_branch": base_branch, "custom_agent": agent, "custom_instructions": ""}
+    if getattr(a, "model", None):
+        out["model"] = a.model
+    return out
+
+
+def require_model(a):
+    if not getattr(a, "model", None) and not getattr(a, "auto_model", False):
+        raise SystemExit("afs-eval: name the model with --model (ADR-0060), or pass --auto-model to let Copilot pick "
+                         "one per session; graded rows record which model ran either way")
+
+
+def add_model_args(p):
+    p.add_argument("--model", help="the model every session runs (ADR-0060), e.g. gpt-6-luna")
+    p.add_argument("--auto-model", action="store_true", help="let Copilot pick a model per session")
 
 
 def state_path(a):
@@ -519,6 +538,7 @@ def chain(a, cases):
 
     The Verifier's base is the Migrator's PR branch, as on a live target (ADR-0040). Cases the Migrator handed
     off, or that have no PR, are skipped: there is nothing to verify."""
+    require_model(a)
     source = load_state(argparse.Namespace(results_dir=a.results_dir, run=a.from_run))
     state = load_state(a)
     for case in cases:
@@ -545,8 +565,7 @@ def chain(a, cases):
             "title": f"[eval {a.run}] Verify {case['ticket']} (PR #{pr['number']})", "body": body})["number"]
         gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
             "assignees": [COPILOT],
-            "agent_assignment": {"target_repo": a.eval_repo, "base_branch": head["head"]["ref"],
-                                 "custom_agent": "afs-verifier", "custom_instructions": ""}})
+            "agent_assignment": assignment(a, head["head"]["ref"], "afs-verifier")})
         state[case["id"]] = {"issue": issue, "work_pr": pr["number"], "base_branch": head["head"]["ref"],
                              "chained_from": a.from_run, "dispatched_at": now()}
         save_state(a, state)
@@ -569,8 +588,7 @@ def chain_understand(a, case, st, head, state):
                                                            "body": body})["number"]
     gh_api(f"repos/{a.eval_repo}/issues/{issue}/assignees", "POST", {
         "assignees": [COPILOT],
-        "agent_assignment": {"target_repo": a.eval_repo, "base_branch": head["head"]["ref"],
-                             "custom_agent": c["agent"], "custom_instructions": ""}})
+        "agent_assignment": assignment(a, head["head"]["ref"], c["agent"])})
     state[case["id"]] = {"issue": issue, "work_pr": head["number"], "base_branch": head["head"]["ref"],
                          "origin_base": st["base_branch"], "chained_from": a.from_run, "dispatched_at": now()}
     save_state(a, state)
@@ -986,6 +1004,10 @@ def grade(a, cases):
             row.update(status="no-pr", passed=False)
             continue
         row["pr"] = pr["number"]
+        models = session_models(a.eval_repo, pr["head"]["ref"])
+        if models:
+            row["models"] = models
+            row["model"] = max(models, key=models.get)
         failed_step = setup_failure(a.eval_repo, pr["head"]["ref"])
         if failed_step:      # the session ran without its tools: that grades the runner, not the harness
             row.update(status="setup-failure", passed=False, setup_step=failed_step)
@@ -1112,6 +1134,21 @@ def setup_failure(eval_repo, head_ref):
                 if step.get("conclusion") == "failure" and not COPILOT_STEP.match(step.get("name") or ""):
                     return step["name"]
     return None
+
+
+MODEL = re.compile(r"assistant\.usage: model=([A-Za-z0-9._-]+)")
+
+
+def session_models(eval_repo, head_ref):
+    """{model: turns} from the Copilot session's job logs on this branch (ADR-0060), first run first."""
+    runs = (gh_api(f"repos/{eval_repo}/actions/runs?event=dynamic&branch={head_ref}&per_page=20", check=False) or {})
+    counts = {}
+    for run in sorted(runs.get("workflow_runs") or [], key=lambda r: r.get("created_at") or ""):
+        for job in (gh_api(f"repos/{eval_repo}/actions/runs/{run['id']}/jobs", check=False) or {}).get("jobs") or []:
+            log = sh(["gh", "api", f"repos/{eval_repo}/actions/jobs/{job['id']}/logs"], check=False).stdout or ""
+            for m in MODEL.findall(log):
+                counts[m] = counts.get(m, 0) + 1
+    return counts
 
 
 def agent_pr(eval_repo, issue, base):
@@ -1270,6 +1307,16 @@ def compare(runs, baseline_runs):
     shared = [cid for cid in now if cid in before]
     pb = sum(1 for cid in shared if before[cid]["passed"])
     lines += ["", f"By majority: **{pn}/{len(now)}** now; the baseline passes {pb}/{len(shared)} of the same cases."]
+    seen = {side: collections.Counter(row.get("model") or "unrecorded" for r in rs for row in r["cases"].values()
+                                      if row.get("status") not in NOT_A_RUN)
+            for side, rs in (("now", runs), ("baseline", baseline_runs))}
+    lines.append("Models (graded rows): " + "; ".join(
+        f"{side} " + ", ".join(f"{m} {n}" for m, n in sorted(c.items())) for side, c in seen.items() if c))
+    if any(len([m for m in c if m != "unrecorded"]) > 1 for c in seen.values()) or (
+            {m for m in seen["now"] if m != "unrecorded"} and {m for m in seen["baseline"] if m != "unrecorded"}
+            and set(seen["now"]) - {"unrecorded"} != set(seen["baseline"]) - {"unrecorded"}):
+        lines.append("**More than one model ran:** a difference here may be the model's, not the harness's "
+                     "(ADR-0060).")
     if totals["before"]:
         lines.append("Median usage over the cases both variants ran: " + ", ".join(
             f"{k.replace('_', ' ')} {totals['now'][k]:g} ({pct(totals['now'][k], totals['before'][k])})"
@@ -1402,6 +1449,7 @@ def main(argv=None):
             p.add_argument("--role-map", action="append", metavar="OLD=NEW",
                            help="dispatch and grade a case's role as another (a folded role)")
         if name == "dispatch":
+            add_model_args(p)
             p.add_argument("--agent", help="assign this custom agent instead of the case's, keeping the case's role "
                                            "and return file (a variant such as phase 4a's afs-migrator-selfverify)")
         if name == "prepare":
@@ -1421,6 +1469,7 @@ def main(argv=None):
     p.add_argument("--run", required=True)
     p.add_argument("--from-run", required=True, help="the Migrator run whose PRs the Verifiers verify")
     p.add_argument("--eval-repo", required=True)
+    add_model_args(p)
     p.add_argument("--case", action="append")
     p.add_argument("--results-dir", default=str(ROOT / "evals/results"))
     p = sub.add_parser("oracle")
