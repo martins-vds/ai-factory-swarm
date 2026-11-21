@@ -1,0 +1,67 @@
+id: synthetic-lc-accept
+kind: acceptance
+must_pass: false
+agent: afs-slice-coordinator
+ticket: LC-ACCEPT
+role: afs-slice-coordinator
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: 9c0db139afbc81d751aac6e6752ea639645e6f2d
+reference: live acceptance martins-vds/ai-factory-synthetic-target#108; the coordinator's PR is the comparison,
+  not the answer
+issue:
+  title: LC-ACCEPT · Accept the loan circulation slice from run 42752283868
+  body: '**Role:** `afs-slice-coordinator`, ticket `LC-ACCEPT` (slice epic #60, **Loan circulation**). **Base branch:**
+    `main`.
+
+
+    Every implementation ticket of the slice is merged and its audit (LC-AUDIT, then the re-audit LC-REAUDIT) is
+    done. Accept the slice.
+
+
+    **Don''t run the gates or mutation yourself.** The acceptance run is 42752283868, attempt 1, on commit `70fef8e7bc822092770b04b1bf9b5288e04d8bb6`.
+    Its result is archived at `.migration/evidence/acceptance-runs/42752283868-1.json`.
+
+
+    **The slice epic''s descendants** (this session can''t read the issue tree): #61 (LL-02) with its sub-issues
+    #78 and #84, #94 (LC-AUDIT) and #100 (LC-REAUDIT), and this ticket, #108. Your PR''s CI checks the reconciliation
+    as if your PR were merged.
+
+
+    Write the evidence report under `.migration/evidence/loan-circulation/`, the ticket reconciliation `.migration/evidence/ticket-reconciliation/60.yaml`,
+    your run journal `.migration/evidence/runs/LC-ACCEPT.md`, and your return `.migration/returns/LC-ACCEPT.afs-slice-coordinator.yaml`.
+    Request the human side-by-side check and say exactly what to compare, legacy against target. **Never** set `passed`
+    or approve anything (ADR-0031).
+
+    '
+normalize:
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.mutation_changed
+    value:
+    - python .migration/harness/tools/afs-mutation
+expect:
+  slice: loan-circulation
+  epic: 60
+  reconciliation_issues:
+  - 61
+  - 78
+  - 84
+  - 94
+  - 100
+  - 108
+  self_issue: 108
+  mutation_score: 0.92
+  report_keywords:
+  - - '42752283868'
+  - - '0.920'
+    - '0.92'
+  - - /ui/loans
+  - - loan.lend
+  - - loan.return-date
+  - - loan.return
+notes: 'ADR-0050 fold eval: the folded Program Orchestrator (default; afs-eval re-plans the retired role) against
+  the pre-fold Slice Coordinator (`--role-map afs-slice-coordinator=afs-slice-coordinator --agent afs-slice-coordinator`,
+  evals/variants/). The issue gives what a dispatcher knows (the run, the descendants) but not the answers the live
+  issue spelled out: the run''s results, which PRs landed what, and what to compare. Golden values: the archived
+  run and the tracker''s sub-issues.'

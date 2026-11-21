@@ -435,3 +435,75 @@ class UnderstandGradeTest(unittest.TestCase):
         self.assertTrue(all(ok for _, ok, _ in checks), checks)
         self.assertEqual(metrics["ledger_missing"], ["card"])
         self.assertEqual(metrics["characterization_found"], 2)
+
+
+class AcceptanceGradeTest(unittest.TestCase):
+    """ADR-0050 fold eval: a slice acceptance graded the same whether the orchestrator or the retired
+    Slice Coordinator wrote it."""
+
+    EXPECT = {"slice": "library-info", "epic": 64, "reconciliation_issues": [65, 122, 127], "self_issue": 127,
+              "mutation_score": 0.976, "report_keywords": [["42938753426"], ["0.976"], ["/about"]]}
+
+    def tree(self, h, report="Run 42938753426: mutation 0.976. Compare /about side by side.\n", issues=None):
+        rep = pathlib.Path(h, ".migration/evidence/library-info/acceptance.md")
+        rep.parent.mkdir(parents=True, exist_ok=True)
+        rep.write_text(report)
+        rec = pathlib.Path(h, ".migration/evidence/ticket-reconciliation/64.yaml")
+        rec.parent.mkdir(parents=True, exist_ok=True)
+        rec.write_text(yaml.safe_dump({"epic": 64, "issues": issues if issues is not None else [
+            {"number": 65, "disposition": "completed"}, {"number": 122, "disposition": "completed"},
+            {"number": 127, "disposition": "completed"}]}))
+
+    ORCH = {"role": "afs-program-orchestrator", "ticket": "LI-ACCEPT", "acceptance": {
+        "slice": "library-info", "report": ".migration/evidence/library-info/acceptance.md", "gates": "all-green",
+        "mutation_score": 0.976, "human_check": "requested"}}
+    COORD = {"role": "afs-slice-coordinator", "ticket": "LI-ACCEPT", "slice": "library-info",
+             "acceptance": {"report": ".migration/evidence/library-info/acceptance.md", "gates": "all-green",
+                            "mutation_score": "n/a: not re-run; see the archive"}, "human_check": "requested"}
+
+    def test_both_return_shapes_pass(self):
+        for ret in (self.ORCH, self.COORD):
+            with tempfile.TemporaryDirectory() as h:
+                self.tree(h)
+                checks = ev.grade_acceptance(h, ret, self.EXPECT, [".migration/returns/LI-ACCEPT.x.yaml"])
+            self.assertTrue(all(ok for _, ok, _ in checks), (ret["role"], checks))
+
+    def test_a_passed_human_check_a_wrong_score_and_a_missing_issue_fail(self):
+        ret = json_copy(self.ORCH)
+        ret["acceptance"].update(human_check="passed", mutation_score=0.92)
+        with tempfile.TemporaryDirectory() as h:
+            self.tree(h, issues=[{"number": 65, "disposition": "completed"},
+                                 {"number": 127, "disposition": "completed", "needs_review": "x"}])
+            failed = {c for c, ok, _ in ev.grade_acceptance(h, ret, self.EXPECT, ["src/views.py"]) if not ok}
+        self.assertEqual(failed, {"human_check requested, not passed", "mutation_score is the run's 0.976",
+                                  "changes only .migration/", "ticket reconciliation covers every descendant once"})
+
+    def test_the_case_schema_needs_the_acceptance_expectations(self):
+        problems = ev.case_problems(case(kind="acceptance", expect={"slice": "x"}))
+        self.assertTrue(any("expect.epic" in p for p in problems), problems)
+
+
+def json_copy(doc):
+    return yaml.safe_load(yaml.safe_dump(doc))
+
+
+class AgentDriftTest(unittest.TestCase):
+    """ADR-0058: Copilot serves custom agents from the eval repo's main, so main must hold the harness's."""
+
+    def test_missing_and_changed_agents_are_named_and_extra_ones_are_allowed(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            harness, repo = root / "h", root / "r"
+            (harness / "agents").mkdir(parents=True)
+            (harness / "evals/variants").mkdir(parents=True)
+            (harness / "agents/afs-a.agent.md").write_text("A\n")
+            (harness / "agents/afs-b.agent.md").write_text("B new\n")
+            (harness / "evals/variants/afs-v.agent.md").write_text("V\n")
+            (repo / ".github/agents").mkdir(parents=True)
+            (repo / ".github/agents/afs-a.agent.md").write_text("A\n")
+            (repo / ".github/agents/afs-b.agent.md").write_text("B old\n")
+            (repo / ".github/agents/afs-retired.agent.md").write_text("R\n")
+            ev.git(repo, "init", "-q", "-b", "main")
+            ev.git(repo, "add", ".")
+            ev.git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+            self.assertEqual(ev.agent_drift(repo, "main", harness), ["afs-b.agent.md", "afs-v.agent.md (missing)"])
