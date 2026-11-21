@@ -50,4 +50,5 @@ Since ADR-0045, it also no longer dispatches a Verifier on each return.
 - **Measured (2026-11-21).** Three acceptance cases, three runs each: the folded orchestrator passed 5 of 9 and
   the pre-fold coordinator 7 of 9 (2 of 3 cases by majority each). The fold's own failures were 2 returns
   in the coordinator's layout, which ADR-0059 now refuses; with those removed it matches the coordinator.
-  See `evals/results/2026-11-21-fold-summary.md`.
+  See `evals/results/2026-11-21-fold-summary.md`. Pinned to `gpt-6-luna` (ADR-0060), with ADR-0059, the folded
+  orchestrator passed 9 of 9 and the coordinator 8 of 9.

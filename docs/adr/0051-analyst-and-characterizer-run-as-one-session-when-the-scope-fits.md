@@ -43,3 +43,6 @@ context.
   return. The two sessions passed 3 of 3. That confirms decision 1: fold only a scope like phase 4b's (four
   files). Decision 2's check would catch the missing return but not a characterization that only re-runs the
   existing suite ([summary](../../evals/results/2026-11-21-fold-summary.md)).
+- **Correction (ADR-0060):** all 18 of those sessions ran `mai-code-2-flash`. Pinned to `gpt-6-luna`, one session
+  passed 2 of 3 (14 rules, 6 values, about half the minutes) and two sessions 3 of 3. The failure above is the
+  model's. Decision 1 stands until a pinned run at this size, with the case text fixed, settles it.

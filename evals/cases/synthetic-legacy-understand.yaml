@@ -16,8 +16,8 @@ issue:
 
 
     The bootstrap gate is clear: every capability is met or waived (`.migration/capabilities.yaml`). The full source
-    graph is merged at `.migration/graphs/source/full/` and passes the graph gate. The source is `legacy/` at the
-    pinned commit in `.migration/source.lock`.
+    graph is merged at `.migration/graphs/source/full/` and passes the graph gate. The source is the pinned, read-only
+    checkout `.source/` (`.migration/source.lock`, path `legacy`).
 
 
     Follow your procedure: graph first; enrich; **inventory every capability** of the source into the fidelity ledger
