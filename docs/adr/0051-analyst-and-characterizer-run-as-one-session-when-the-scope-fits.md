@@ -37,3 +37,9 @@ context.
   nothing is lost when a scope is too large.
 - Until the follow-up lands, nothing changes for live targets: this ADR records the evidence and the
   direction.
+- **The larger scope, measured (2026-11-21).** On the whole synthetic `legacy/` source (7 files, 17
+  capabilities, tier A), one session failed 3 of 3. It never extended the characterization (0 of 6 golden
+  values), wrote fewer ledger rules each run (12, 9, 8 of 14), and in one run committed no Characterizer
+  return. The two sessions passed 3 of 3. That confirms decision 1: fold only a scope like phase 4b's (four
+  files). Decision 2's check would catch the missing return but not a characterization that only re-runs the
+  existing suite ([summary](../../evals/results/2026-11-21-fold-summary.md)).

@@ -61,7 +61,8 @@ re-walk. The checker never closes work issues. A retained-open descendant remain
 to block epic closure under ADR-0024.
 ## 3. The acceptance return
 Commit it as `.migration/returns/<acceptance-ticket>.afs-program-orchestrator.yaml`, with your usual
-orchestrator return plus an `acceptance` block. `check_signoff.py` and `check_slice_returns.py` read the
+orchestrator return plus an `acceptance` block. Every acceptance field goes **inside** the block, none at
+the top level: the sign-off checks read only the block, and `validate.py` refuses anything else (ADR-0059). `check_signoff.py` and `check_slice_returns.py` read the
 block, as they read a retired Slice Coordinator's return:
 ```yaml
 acceptance:

@@ -57,6 +57,9 @@ expect:
   - - '0.920'
     - '0.92'
   - - /ui/loans
+    - '409'
+    - repeat
+    - repeated return
   - - loan.lend
   - - loan.return-date
   - - loan.return

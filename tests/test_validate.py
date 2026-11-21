@@ -395,6 +395,34 @@ class LedgerRulesTest(unittest.TestCase):
         self.assertFalse(props.is_valid([{"id": "Bad Id", "rule": "x"}]))
 
 
+class AcceptanceBlockTest(unittest.TestCase):
+    """ADR-0059: the fold eval's folded acceptances that put the fields where the sign-off check can't see them."""
+
+    BLOCK = {"slice": "fees-payments", "tickets": {"total": 5, "merged": 5, "open": 0, "blocked": []},
+             "report": ".migration/evidence/fees-payments/report.md", "gates": "all-green", "human_check": "requested"}
+
+    def errors(self, doc):
+        out = []
+        validate_mod.check_acceptance_block(pathlib.Path("r.yaml"), doc, out)
+        return out
+
+    def test_the_block_passes_and_other_roles_and_phases_are_untouched(self):
+        self.assertEqual(self.errors({"role": "afs-program-orchestrator", "acceptance": self.BLOCK}), [])
+        self.assertEqual(self.errors({"role": "afs-program-orchestrator", "phase": 6}), [])
+        self.assertEqual(self.errors({"role": "afs-slice-coordinator", "slice": "x", "human_check": "requested"}), [])
+
+    def test_the_coordinators_layout_and_a_stray_human_check_are_refused(self):
+        coord = {"role": "afs-program-orchestrator", "slice": "fees-payments", "human_check": "requested",
+                 "acceptance": {"report": "r.md", "gates": "all-green"}}      # fold eval LF r1
+        self.assertIn("must be inside the `acceptance` block", self.errors(coord)[0])
+        stray = {"role": "afs-program-orchestrator", "acceptance": {k: v for k, v in self.BLOCK.items()
+                                                                     if k != "human_check"},
+                 "human_check": "requested"}                                   # fold eval LC r2
+        found = self.errors(stray)
+        self.assertTrue(any("human_check must be inside" in e for e in found), found)
+        self.assertTrue(any("needs human_check" in e for e in found), found)
+
+
 if __name__ == "__main__":
     unittest.main()
 

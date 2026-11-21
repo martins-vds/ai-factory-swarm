@@ -121,6 +121,7 @@ humans, and approved for cutover.
 | 56 | A return that reports failing or stale gates cannot finish: the finish check refuses a failing gate without a handoff, and a gate whose last journal run predates the newest code edit; mutation keeps file times | [0056](adr/0056-a-return-that-reports-failing-or-stale-gates-cannot-finish.md) |
 | 57 | A source's build output is never committed: the stack pack names it (`source_build_outputs`), the setup steps exclude it under the in-repo source path, bootstrap adds it to `.gitignore` | [0057](adr/0057-a-sources-build-output-is-never-committed.md) |
 | 58 | An eval runs the agents under test: `afs-eval prepare` refuses while the eval repo's `main` serves agents that differ from the harness's or its variants' | [0058](adr/0058-an-eval-runs-the-agents-under-test.md) |
+| 59 | An orchestrator's return keeps slice acceptance in its `acceptance` block: `validate.py` refuses the fields at the top level, and a block missing slice, tickets, report, gates or human_check | [0059](adr/0059-an-orchestrator-return-keeps-acceptance-in-its-block.md) |
 
 ---
 
