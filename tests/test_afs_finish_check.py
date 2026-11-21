@@ -1,4 +1,5 @@
 """tools/afs-finish-check: the ADR-0034 stop hook, on a throwaway git repo."""
+import datetime
 import json
 import os
 import pathlib
@@ -104,6 +105,54 @@ class FinishCheckTest(unittest.TestCase):
                                            "gates": {"mutation_changed": value}}))
             out, _ = self.run_hook(session=f"s{i}")
             self.assertEqual("has no `gates.mutation_changed`" in (out or {}).get("reason", ""), refused, value)
+
+    def returned(self, gates, handoff=None):
+        ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"
+        ret.parent.mkdir(parents=True, exist_ok=True)
+        ret.write_text(yaml.safe_dump({"role": "afs-specialist-migrator", "ticket": "BK-05D", "gates": gates,
+                                       "handoff": handoff}))
+
+    def journal(self, *rows):
+        self.write(".migration/evidence/runs/BK-05D.md", "# Run journal: BK-05D\n\n| At | Name | Exit |\n|---|---|---|\n"
+                   + "".join(f"| {at} | {name} | {code} | 1.0 | `cmd` | `abc` |  |  |\n" for at, name, code in rows))
+
+    def test_a_return_with_a_failing_gate_and_no_handoff_is_refused(self):
+        """Eval p5w-r1: the return said mutation_changed 0.667 against 0.8, with no handoff, and was allowed."""
+        self.write("src/wizard.py")
+        for i, (gates, handoff, refused) in enumerate((
+                ({"mutation_changed": 0.667, "idiom": 0}, None, True),
+                ({"mutation_changed": 0.86, "idiom": 1}, None, True),
+                ({"mutation_changed": 0.86, "idiom": 0}, None, False),
+                ({"mutation_changed": "n/a: no mutable code changed", "idiom": 0}, None, False),
+                ({"mutation_changed": 0.667, "idiom": 0}, ".migration/handoffs/BK-05D.md", False))):
+            if handoff:
+                self.write(".migration/handoffs/BK-05D.md", "## Handoff\n")
+            self.returned(gates, handoff)
+            out, _ = self.run_hook(session=f"f{i}")
+            self.assertEqual("reports failing gates" in (out or {}).get("reason", ""), refused, gates)
+
+    def test_the_profile_minimum_sets_the_mutation_bar(self):
+        (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({
+            "self_heal": {"enabled": True, "max_blocks": 2}, "thresholds": {"mutation_score_min": 0.6}}))
+        self.write("src/wizard.py")
+        self.returned({"mutation_changed": 0.667})
+        out, _ = self.run_hook()
+        self.assertNotIn("reports failing gates", (out or {}).get("reason", ""))
+
+    def test_a_gate_run_before_the_last_code_edit_is_stale(self):
+        """Eval p5w-r2: idiom passed at 01:13, the mutation tests edited the code until 01:26, and CI's ruff failed."""
+        self.write("src/wizard.py")
+        edited = datetime.datetime(2026, 11, 21, 1, 0, tzinfo=datetime.timezone.utc).timestamp()
+        os.utime(self.repo / "src/wizard.py", (edited, edited))
+        self.returned({"idiom": 0, "mutation_changed": 0.9})
+        self.journal(("2026-11-21T00:50:00+00:00", "idiom-ruff-check", 0),
+                     ("2026-11-21T01:05:00+00:00", "mutation-changed-final", 0))
+        out, _ = self.run_hook(session="st1")
+        self.assertIn("after your last run of `idiom`, so", out["reason"])
+        self.journal(("2026-11-21T01:02:00+00:00", "idiom", 0),
+                     ("2026-11-21T01:05:00+00:00", "mutation_changed", 0))
+        out, _ = self.run_hook(session="st2")
+        self.assertNotIn("after your last run", (out or {}).get("reason", ""))
 
     def test_shared_test_files_from_the_profile_are_in_every_tickets_scope(self):
         (self.repo / ".migration" / "profile.yaml").write_text(yaml.safe_dump({

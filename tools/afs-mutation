@@ -42,7 +42,9 @@ Usage (run it through afs-run so the run lands in the journal):
   (overwritten each run), so the next session or a handoff can act on them without re-running the gate.
 """
 import argparse
+import contextlib
 import fnmatch
+import hashlib
 import os
 import pathlib
 import re
@@ -271,6 +273,28 @@ def shards(paths, n):
 MUTMUT_FATAL = 1   # mutmut 2.x exit codes are bit flags: 1 fatal, 2 survived, 4 timeout, 8 suspicious
 
 
+@contextlib.contextmanager
+def kept_mtimes(paths):
+    """mutmut rewrites each file in place and restores it. Put back the modification times of files whose
+    content is unchanged, so the finish check doesn't read mutation as an edit (ADR-0056)."""
+    before = {}
+    for p in paths:
+        try:
+            st = os.stat(p)
+            before[p] = (st.st_atime_ns, st.st_mtime_ns, hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest())
+        except OSError:
+            pass
+    try:
+        yield
+    finally:
+        for p, (atime, mtime, digest) in before.items():
+            try:
+                if hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() == digest:
+                    os.utime(p, ns=(atime, mtime))
+            except OSError:
+                pass
+
+
 def run_shard(i, workdir, paths, runners, env):
     """Run each file's mutants; return (junit xml or None, tail text, [(file, tail) that failed fatally])."""
     env = dict(env, AFS_MUTATION_WORKER=str(i))
@@ -392,7 +416,8 @@ def main():
     groups = shards(paths, jobs)
     results = []
     if len(groups) == 1:
-        results.append(run_shard(0, ".", groups[0], runners, env))
+        with kept_mtimes(groups[0]):
+            results.append(run_shard(0, ".", groups[0], runners, env))
     else:
         tmp = tempfile.mkdtemp(prefix="afs-mutation-")
         dirs = []
