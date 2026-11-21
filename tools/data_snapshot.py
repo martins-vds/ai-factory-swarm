@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 import yaml
@@ -124,11 +125,21 @@ def export(a):
     return 1 if problems else 0
 
 
-def gh(*args):
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if r.returncode:
-        raise SnapshotError(f"gh {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
-    return r.stdout.strip()
+RATE_LIMITED = ("rate limit exceeded", "secondary rate limit")
+
+
+def gh(*args, waits=(20, 60, 120)):
+    """Run gh; wait and retry while the API is rate limited. Concurrent Copilot sessions share one token, and
+    the eval's DM sessions lost their snapshot to it (p5r-r2/r3), so the agent started without its input."""
+    for wait in (*waits, None):
+        r = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if not r.returncode:
+            return r.stdout.strip()
+        err = r.stderr.strip() or r.stdout.strip()
+        if wait is None or not any(m in err.lower() for m in RATE_LIMITED):
+            raise SnapshotError(f"gh {' '.join(args)}: {err}")
+        print(f"data_snapshot: API rate limited; retrying in {wait}s", file=sys.stderr)
+        time.sleep(wait)
 
 
 def fetch(a):

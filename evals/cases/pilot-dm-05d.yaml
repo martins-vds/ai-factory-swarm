@@ -4,6 +4,7 @@ must_pass: true
 agent: afs-specialist-migrator
 ticket: DM-05D
 role: afs-specialist-migrator
+needs: [data-snapshot]   # graded as a setup failure if setup couldn't fetch it (rate limit)
 source:
   repo: martins-vds/ai-factory-pilot-target
   base: 5e076294aafd65a2e9bb4f89a29ce47943e67c95
