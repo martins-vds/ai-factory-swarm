@@ -14,6 +14,9 @@ by hand. It checks the session's own work, with the same rules CI applies:
   spec        (ADR-0062) only a Characterizer session changes `.migration/spec/`. Any other role's change to
               it is refused even with a handoff: a spec the work disagrees with is a handoff with the
               evidence, and the spec file stays as it was.
+  coupling    (ADR-0064) `afs-test-health --check` on the lines this branch added to its tests: patches of
+              the project's own code, private access, interaction assertions. Recorded in the trace; it
+              blocks only when the profile sets `test_health.block`.
   stuck gate  a return that reports a handoff (`handoff:` set) must have committed that handoff.
   own return  no other return file differs from the base branch: a session writes only its own (pilot:
               a Verifier rewrote the Migrator's return to point at its own PR).
@@ -44,6 +47,7 @@ import os
 import pathlib
 import re
 import subprocess
+import tempfile
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -368,6 +372,29 @@ def findings(ticket, role, changed, prompt):
     return found
 
 
+def test_health():
+    """(finding lines, block?) from `afs-test-health --check` on this branch; ([], False) if it can't run."""
+    tool = HERE / "afs-test-health"
+    if not tool.exists() or not pathlib.Path("tests").is_dir():
+        return [], False
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "th.json"
+        subprocess.run([sys.executable, str(tool), "--check", "--json", str(out)], capture_output=True, text=True)
+        try:
+            doc = json.loads(out.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return [], False
+    lines = [f"`{f['file']}:{f['line']}` {f['kind']} ({f['what']}): {f['hint']}" for f in doc.get("findings") or []]
+    return lines, doc.get("mode") == "block"
+
+
+def coupling_finding(coupled):
+    return ("mechanical", "coupling:" + str(len(coupled)),
+            "Your new tests lean on the code's internals, so a refactor that keeps the behaviour would break them "
+            "(ADR-0064):\n  " + "\n  ".join(coupled[:10]) + "\nRewrite each to check the outcome through a public "
+            "entry point. If a line truly needs it, end it with `# afs: allow-mock <why>`.")
+
+
 # ---------------------------------------------------------------- hook state
 
 def profile_self_heal():
@@ -487,6 +514,10 @@ def decide(args, payload, session, prompt, trace):
         trace.update(decision="allow", why="no ticket/role for this session")
         return None
     found = findings(ticket, role, changed, prompt)
+    coupled, block = test_health()
+    trace["test_health"] = {"block": block, "findings": coupled[:20]}
+    if block and coupled:
+        found.append(coupling_finding(coupled))
     spath = state_path(session)
     state = load_state(spath)
     trace.update(findings=[f"[{k}] {m}" for k, _, m in found], blocks_before=state["blocks"])
@@ -530,6 +561,12 @@ def main():
         print("afs-finish-check: pass --ticket and --role (couldn't tell from this branch)", file=sys.stderr)
         return 2
     found = findings(ticket, role, changed, os.environ.get("COPILOT_AGENT_PROMPT", ""))
+    coupled, block = test_health()
+    if coupled and not block:
+        print(f"[report] the coupling guard found {len(coupled)} line(s); it reports only (test_health.block is off):")
+        print("\n".join(f"  {c}" for c in coupled))
+    if block and coupled:
+        found.append(coupling_finding(coupled))
     for kind, _, msg in found:
         print(f"[{kind}] {msg}")
     print(f"AFS-RESULT gate=finish-check ticket={ticket} role={role} findings={len(found)}")

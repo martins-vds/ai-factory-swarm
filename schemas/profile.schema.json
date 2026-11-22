@@ -659,6 +659,17 @@
           "description": "Every rule of a capability that has a spec file must be proved by a case (or carry `no_spec`). Off until the target's slices have specs."
         }
       }
+    },
+    "test_health": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The coupling guard (ADR-0064): `afs-test-health --check` on the lines a branch adds to its tests. It reports until `block` is true; then a finding fails the finish check and CI.",
+      "properties": {
+        "block": {
+          "type": "boolean",
+          "default": false
+        }
+      }
     }
   },
   "$defs": {

@@ -3,8 +3,16 @@
 
 Usage:
   afs-test-health [--root .] [--tests tests] [--src src] [--since REF] [--json OUT] [--markdown OUT]
+  afs-test-health --check [--base REF] [--root .] [--tests tests] [--src src] [--json OUT]
 
-Report-only (test-trust plan, step 0.1). For every test file under --tests (characterization excluded,
+`--check` (test-trust plan, phase 3, ADR-0064) is the **coupling guard** for one branch. It scans only the
+lines this branch added to test files (committed, uncommitted or untracked, against the merge base with --base,
+default $AFS_BASE, then origin/main, then main), so a test written before the guard is never blamed. It
+reports own-code patches, private access and interaction assertions on anything but a boundary. A line that
+really needs one carries `# afs: allow-mock <why>` (a reason is required). With the profile's
+`test_health.block: true` a finding fails the check (exit 1); otherwise it is reported and the exit is 0.
+
+The full report (no --check) stays report-only (test-trust plan, step 0.1). For every test file under --tests (characterization excluded,
 since its goldens are the legacy app's own behaviour), an AST scan counts:
 
 * **own-code patches**: `patch(...)`, `patch.object(...)`, `monkeypatch.setattr(...)` whose target is the
@@ -25,7 +33,9 @@ import argparse
 import ast
 import collections
 import json
+import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -123,7 +133,7 @@ def patch_target(call, imports):
     return resolved
 
 
-def scan_file(path, own):
+def scan_file(path, own, keep_boundary_interactions=True):
     text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore")
     try:
         tree = ast.parse(text)
@@ -145,11 +155,13 @@ def scan_file(path, own):
             f = node.func
             if isinstance(f, ast.Attribute) and f.attr in INTERACTION:
                 out["interaction_asserts"] += 1
-                findings.append((node.lineno, "interaction assertion", f.attr))
+                if keep_boundary_interactions or not interaction_on_boundary(node):
+                    findings.append((node.lineno, "interaction assertion", f"{dotted(f) or f.attr}"))
         elif isinstance(node, ast.Attribute):
             if node.attr in ("call_count", "call_args", "call_args_list") and isinstance(node.ctx, ast.Load):
                 out["interaction_asserts"] += 1
-                findings.append((node.lineno, "interaction assertion", node.attr))
+                if keep_boundary_interactions or not interaction_on_boundary(node):
+                    findings.append((node.lineno, "interaction assertion", f"{dotted(node) or node.attr}"))
             elif (node.attr.startswith("_") and not node.attr.startswith("__") and node.attr not in ALLOWED_PRIVATE
                   and not (isinstance(node.value, ast.Name) and node.value.id in ("self", "cls"))):
                 # `self._x` inside a test file is the test's own double, not the code under test
@@ -163,6 +175,88 @@ def scan_file(path, own):
     if any(k in text for k in ("client.get(", "client.post(", "self.client", "Client(", "page.goto(", "page.click(")):
         out["public_entry_files"] += 1
     return out, findings
+
+
+ALLOW = re.compile(r"#\s*afs:\s*allow-mock\b(.*)$")
+HINTS = {
+    "own-code patch": "test through a public entry point instead, or patch only a boundary (clock, network, gateway)",
+    "private access": "assert on what the code returns or shows, not on a private helper or attribute",
+    "interaction assertion": "assert on the outcome (the response, the stored state), not on which call was made",
+}
+
+
+def interaction_on_boundary(node):
+    """An interaction assertion on a boundary double (`gateway.charge.assert_called_once_with`) checks what
+    leaves the system, which is behaviour; one on the project's own code pins how it works."""
+    target = node.func.value if isinstance(node, ast.Call) else node.value
+    name = (dotted(target) or "").lower()
+    segs = name.split(".")
+    return any(s in BOUNDARY for s in segs) or any(part in name for part in BOUNDARY_PARTS)
+
+
+def git_out(root, *args):
+    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def merge_base(root, base=None):
+    for ref in ([base] if base else []) + [os.environ.get("AFS_BASE"), "origin/main", "main"]:
+        if ref and git_out(root, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}"):
+            mb = (git_out(root, "merge-base", ref, "HEAD") or "").strip()
+            if mb:
+                return ref, mb
+    return None, None
+
+
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+
+def added_lines(root, tests, base=None):
+    """{test file: set of line numbers this branch added}, against the merge base (None: no base found)."""
+    ref, mb = merge_base(root, base)
+    if not mb:
+        return None, None
+    out = {}
+    diff = git_out(root, "diff", "-U0", "--no-color", "--diff-filter=AM", mb, "--", tests) or ""
+    current = None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            current = line[6:] if line.startswith("+++ b/") else None
+        elif current and (m := HUNK.match(line)):
+            start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+            out.setdefault(current, set()).update(range(start, start + count))
+    for rel in (git_out(root, "ls-files", "--others", "--exclude-standard", "--", tests) or "").splitlines():
+        n = len((pathlib.Path(root) / rel).read_text(encoding="utf-8", errors="ignore").splitlines())
+        out[rel] = set(range(1, n + 1))
+    keep = {}
+    for rel, lines in out.items():
+        parts = pathlib.PurePosixPath(rel).parts
+        if rel.endswith(".py") and not any(d in parts for d in EXCLUDED_DIRS):
+            keep[rel] = lines
+    return ref, keep
+
+
+def check(root=".", tests="tests", src="src", base=None):
+    """The coupling guard's findings on the lines this branch added: [{file, line, kind, what, hint}]."""
+    ref, added = added_lines(root, tests, base)
+    if added is None:
+        return None, []
+    own = own_packages(root, src)
+    found = []
+    for rel, lines in sorted(added.items()):
+        path = pathlib.Path(root) / rel
+        got = scan_file(path, own, keep_boundary_interactions=False)
+        if got is None:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for ln, kind, what in sorted(got[1]):
+            if ln not in lines:
+                continue
+            allow = ALLOW.search(text[ln - 1]) if ln <= len(text) else None
+            if allow and allow.group(1).strip(" :-—"):
+                continue
+            found.append({"file": rel, "line": ln, "kind": kind, "what": what, "hint": HINTS[kind]})
+    return ref, found
 
 
 def test_files(root, tests):
@@ -249,7 +343,12 @@ def main(argv=None):
     ap.add_argument("--since", help="count coupling only for commits after this ref")
     ap.add_argument("--json", help="write the full report here")
     ap.add_argument("--markdown", help="write the summary table here")
+    ap.add_argument("--check", action="store_true", help="the coupling guard: only lines this branch added")
+    ap.add_argument("--base", help="--check: compare with the merge base of this ref (default $AFS_BASE, origin/main)")
+    ap.add_argument("--profile", default=".migration/profile.yaml")
     a = ap.parse_args(argv)
+    if a.check:
+        return run_check(a)
     rep = report(a.root, a.tests, a.src, a.since)
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(rep, indent=1) + "\n", encoding="utf-8")
@@ -261,6 +360,38 @@ def main(argv=None):
     print(f"AFS-RESULT gate=test-health own_patches={t.get('patch_own', 0)} private={t.get('private_access', 0)} "
           f"interaction={t.get('interaction_asserts', 0)} coupling={(rep['coupling'] or {}).get('ratio')}")
     return 0
+
+
+def blocking(profile):
+    try:
+        import yaml
+        doc = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 (no profile or no PyYAML: report only)
+        return False
+    return bool((doc.get("test_health") or {}).get("block"))
+
+
+def run_check(a):
+    ref, found = check(a.root, a.tests, a.src, a.base)
+    block = blocking(pathlib.Path(a.root) / a.profile)
+    mode = "block" if block else "report"
+    if ref is None:
+        print("afs-test-health: no base to compare with (set $AFS_BASE or fetch origin/main); nothing checked")
+        print("AFS-RESULT gate=test-health-check files=0 findings=0 mode=" + mode + " base=none")
+        return 0
+    annotate = "error" if block else "warning"
+    for f in found:
+        print(f"{f['file']}:{f['line']}: {f['kind']}: {f['what']} — {f['hint']}, or mark the line "
+              "`# afs: allow-mock <why>`")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::{annotate} file={f['file']},line={f['line']},title=Coupled test ({f['kind']})::"
+                  f"{f['what']}: {f['hint']} (ADR-0064)")
+    if a.json:
+        pathlib.Path(a.json).write_text(json.dumps({"base": ref, "mode": mode, "findings": found}, indent=1) + "\n",
+                                        encoding="utf-8")
+    files = len({f["file"] for f in found})
+    print(f"AFS-RESULT gate=test-health-check files={files} findings={len(found)} mode={mode} base={ref}")
+    return 1 if (block and found) else 0
 
 
 if __name__ == "__main__":

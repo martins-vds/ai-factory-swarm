@@ -256,3 +256,11 @@ jobs:
                   rc = rc or r.returncode
           sys.exit(rc)
           PY
+      # ADR-0064: the coupling guard, on the lines this PR added to its tests. It reports (warnings on the PR)
+      # until the profile sets test_health.block, then a finding fails the job.
+      - name: Coupling guard (tests that lean on the code's internals)
+        if: ${{{{ always() }}}}
+        run: |
+          if [ ! -d tests ]; then echo "::notice::No tests yet; nothing to check."; exit 0; fi
+          .migration/harness/tools/afs-run --ticket ci --name test-health -- \
+            python .migration/harness/tools/afs-test-health --check

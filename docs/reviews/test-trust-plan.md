@@ -76,8 +76,8 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 ### Phase 3: coupling guard (gap 3)
 | # | Step | Status |
 |---|---|---|
-| 3.1 | `afs-test-health --check` on changed test files. It finds: patching project code; private access to project code (allowlist: `_meta`); interaction assertions on project code. An inline `# afs: allow-mock <why>` exempts a line. | ☐ |
-| 3.2 | The finish check and CI run it, report-only first. | ☐ |
+| 3.1 | `afs-test-health --check` on changed test files. It finds: patching project code; private access to project code (allowlist: `_meta`); interaction assertions on project code. An inline `# afs: allow-mock <why>` exempts a line. | ◐ PR (ADR-0064): only the lines a branch added; interaction assertions on boundary doubles pass; the exemption needs a reason |
+| 3.2 | The finish check and CI run it, report-only first. | ◐ PR (ADR-0064): CI annotates findings, the finish check records them; `test_health.block` makes both refuse |
 | 3.3 | Turn it on as a blocking rule after one eval shows no pass-rate loss. | ☐ |
 
 ### Phase 4: test types a migration needs (gap 5)
@@ -159,3 +159,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: step 1.2 proven. Synthetic PR #150 (harness `281a028`, five fee rules, a four-case spec) ran `afs-spec run` in the gates job: `gate=spec cases=10 failed=0`. A throwaway branch with one expected fee changed from $9.75 to $9.50 failed with `text: 'Fee: $9.50' not found` on that row, so the adapter can fail as well as pass. Requiring specs (`spec.required`) waits for phase 2.
 - 2026-11-22: phase 2 started. Steps 2.1 and 2.2 in one PR (ADR-0062): the Characterizer writes the spec before the code, each case naming its legacy oracle or a ruling; a capability not built yet is pending in `afs-spec run`; only the Characterizer may change `.migration/spec/` (plan, finish check, CI). The agent prompts changed, so the eval repo needs a sync before 2.4.
 - 2026-11-22: PR #233 (ADR-0062) and eval #2290 (agent sync) merged. Step 2.3 in its own PR (ADR-0063): the spec gate and the spec mutation report.
+- 2026-11-22: `spec.required` turned on: pilot #507 (with the harness re-roll from `a74a90c`) and synthetic #152 (the fees spec gains its oracles; the waiver-boundary rows are honestly marked source-predicted). Neither target has open build tickets, so it applies from the next plan. Phase 3 started: steps 3.1 and 3.2 in one PR (ADR-0064).
