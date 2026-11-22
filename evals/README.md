@@ -14,6 +14,7 @@ fresh Copilot sessions against the harness under test, and the results are compa
 | `verifier` (clean) | Verdict `pass`, with no blocker or major finding. These stop a configuration from passing by rejecting everything |
 | `bootstrap` | The listed profile and checklist fields have their live values |
 | `acceptance` | A slice acceptance: the return's acceptance fields (slice, `human_check: requested`, gates all green, the run's mutation score), an evidence report that states the run's results, and a ticket reconciliation with one final disposition for every descendant. Graded the same for the orchestrator's `acceptance` block and a retired Slice Coordinator's return (ADR-0050) |
+| `refactor` | A behaviour-preserving restructuring is done (`must_exist`, `must_not_define`), the characterization goldens are untouched and no test is deleted. Existing tests the agent had to modify are recorded as `refactor.tests_modified`, the measure of coupling (test-trust plan) |
 
 **Must-pass cases.** Every case is `must_pass` except the bootstrap case, which is tracked only: its live
 session ran before the harness was installed. Its `harness_copy` puts the agent and harness skills under

@@ -569,3 +569,38 @@ class SelfHealCaseTest(unittest.TestCase):
             self.assertEqual(ev.self_heal_problems(d, case(self_heal="off")), [])
             prof.write_text("self_heal: {enabled: true, max_blocks: 2}\n")
             self.assertEqual(ev.self_heal_problems(d, case()), [])
+
+
+class RefactorGradeTest(unittest.TestCase):
+    """Test-trust plan, step 0.3: a restructuring is graded on being done; modified tests are measured."""
+
+    EXPECT = {"must_exist": ["src/fees/presentation.py"], "must_not_define": {"src/fees/views.py": ["_fee_amount"]}}
+
+    def test_done_restructuring_and_the_coupled_tests_it_needed(self):
+        with tempfile.TemporaryDirectory() as h:
+            pathlib.Path(h, "src/fees").mkdir(parents=True)
+            pathlib.Path(h, "src/fees/presentation.py").write_text("def fee_amount(c):\n    return c\n")
+            pathlib.Path(h, "src/fees/views.py").write_text("from .presentation import fee_amount\n")
+            changes = [("A", "src/fees/presentation.py"), ("M", "src/fees/views.py"),
+                       ("M", "tests/fees/test_views.py"), ("A", "tests/fees/test_presentation.py")]
+            checks, metrics = ev.grade_refactor(h, changes, self.EXPECT)
+        self.assertTrue(all(ok for _, ok, _ in checks), checks)
+        self.assertEqual(metrics, {"tests_modified": ["tests/fees/test_views.py"],
+                                   "tests_added": ["tests/fees/test_presentation.py"]})
+
+    def test_an_unfinished_move_a_golden_edit_and_a_deleted_test_fail(self):
+        with tempfile.TemporaryDirectory() as h:
+            pathlib.Path(h, "src/fees").mkdir(parents=True)
+            pathlib.Path(h, "src/fees/views.py").write_text("def _fee_amount(c):\n    return c\n")
+            changes = [("M", ".migration/characterization/source/goldens/fees.json"), ("D", "tests/fees/test_x.py")]
+            failed = {c for c, ok, _ in ev.grade_refactor(h, changes, self.EXPECT)[0] if not ok}
+        self.assertEqual(failed, {"src/fees/presentation.py exists", "src/fees/views.py no longer defines _fee_amount",
+                                  "characterization untouched", "no existing test deleted"})
+
+    def test_yaml_append_adds_a_ticket_once(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = pathlib.Path(t, "plan.tickets.yaml")
+            p.write_text("slice: s\ntickets:\n- id: A\n")
+            op = {"yaml_append": {"file": "plan.tickets.yaml", "key": "tickets", "value": {"id": "REF-01"}}}
+            self.assertEqual(len(ev.apply_normalize(t, [op, op], None)), 1)
+            self.assertEqual([x["id"] for x in yaml.safe_load(p.read_text())["tickets"]], ["A", "REF-01"])

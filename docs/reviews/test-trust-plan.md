@@ -43,8 +43,8 @@ Status: ☐ not started · ◐ in progress · ☑ done (with the PR).
 |---|---|---|---|
 | 0.1 | 3, 6 | **`afs-test-health`**: a report-only tool with an AST scan of test files. It counts patches of the project's own code against boundaries (clock, random, network, gateways), private-name access to project code, interaction assertions, and HTTP-client and browser tests. From git history it computes the *coupling ratio*: the share of commits that change production code and also have to change existing tests. | ☑ PR #227 |
 | 0.2 | 6 | Run it on both targets and record the baseline below. | ☑ PR #227 |
-| 0.3 | 4 | **Eval case kind `refactor`**: "restructure this module, preserving behaviour, and touch no test". It passes when no test file changes, every gate passes, and the characterization goldens still match. Every test that would have to change counts as one coupled test. | ☐ |
-| 0.4 | 4 | Run the refactor cases, pinned, 3 runs each, on one pilot module and one synthetic module. | ☐ |
+| 0.3 | 4 | **Eval case kind `refactor`**: "restructure this module, preserving behaviour, and touch no test". It passes when no test file changes, every gate passes, and the characterization goldens still match. Every test that would have to change counts as one coupled test. | ☑ PR #228: kind `refactor`, cases `pilot-refactor-exporter` (expected coupled) and `synthetic-refactor-fee-views` (expected not); both dry-run clean |
+| 0.4 | 4 | Run the refactor cases, pinned, 3 runs each, on one pilot module and one synthetic module. | ☐ needs #227 and #228 merged (`prepare` runs only released harness code) |
 
 ### Phase 1: rule → test traceability (gap 2)
 | # | Step | Status |
@@ -123,3 +123,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 
 ## Log
 - 2026-11-22: plan written. Steps 0.1 and 0.2 done in PR #227 (`afs-test-health` and the baseline). Findings: the pilot already has differential tests for two slices and layering contracts (`check_layers.py`), so steps 4.2 and 4.4 extend what exists.
+- 2026-11-22: step 0.3 in PR #228. The `refactor` case kind grades the restructuring as done and records each existing test the agent had to change. A `yaml_append` normalize op adds the refactor ticket to the slice's plan.

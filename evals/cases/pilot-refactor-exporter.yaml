@@ -1,0 +1,64 @@
+id: pilot-refactor-exporter
+kind: refactor
+must_pass: false
+agent: afs-migrator
+ticket: REF-01
+role: afs-migrator
+source:
+  repo: martins-vds/ai-factory-pilot-target
+  base: 0f09125d1fd9eea0b496336f06be80b32e941f1e
+reference: 'none: a refactor written for the eval (test-trust plan, step 0.3); the target''s main is the base'
+issue:
+  title: REF-01 · Restructure the data exporter, preserving behaviour
+  body: '**Role:** `afs-migrator`, ticket `REF-01`: **restructure the data exporter without changing what it does**.
+    **Base branch:** `main`.
+
+
+    `src/cargotracker/data_migration/exporter.py` mixes three jobs: finding models and fields, formatting values,
+    and writing files. Move the model lookup (`_model_index`, `_field_for_column`) and the value formatting (`_format_value`,
+    `_timestamp_timezone`) into a new module, `src/cargotracker/data_migration/schema.py`, as public functions named
+    for what they do. `exporter.py` imports them and keeps only the export itself. Nothing the export writes may
+    change: the same files, byte for byte, for the same snapshot and mapping.
+
+
+    **Tests are the safety net, not part of the job.** Change an existing test only if the restructuring itself
+    makes it fail, and for every test you change say why in your return''s `notes`. Don''t keep aliases or wrappers
+    so the old private names still work.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first. Run every gate through `afs-run`, as for any
+    ticket: build, behaviour, idiom, CRAP, mutation on the changed code, regression. Commit your return `.migration/returns/REF-01.afs-migrator.yaml`,
+    or a handoff. Never end with neither.
+
+    '
+normalize:
+- yaml_append:
+    file: .migration/plan/data-migration.tickets.yaml
+    key: tickets
+    value:
+      id: REF-01
+      title: Restructure the data exporter, preserving behaviour
+      role: afs-migrator
+      specialty: null
+      files:
+      - src/cargotracker/data_migration/
+      - tests/data_migration/
+      blocked_by: []
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+expect:
+  must_exist:
+  - src/cargotracker/data_migration/schema.py
+  must_not_define:
+    src/cargotracker/data_migration/exporter.py:
+    - _model_index
+    - _field_for_column
+    - _format_value
+    - _timestamp_timezone
+notes: 'Refactor resistance. The pilot''s export tests call `exporter._model_index` and `exporter._format_value`
+  and patch `exporter.apps.get_models` (afs-test-health baseline), so this case is expected to show coupling: `refactor.tests_modified`
+  in the row counts it.'
