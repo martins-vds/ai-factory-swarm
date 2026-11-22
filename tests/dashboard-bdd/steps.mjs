@@ -84,8 +84,9 @@ Then("{string} says {string}", async function (id, message) {
 });
 
 const tables = { family: "families-data", case: "cases-data", history: "history", coverage: "coverage-data",
-    "active sessions": "active", "finished sessions": "finished", "run summary": "session-groups" };
-Then(/^the (family|case|history|coverage|active sessions|finished sessions|run summary) table contains exactly:$/, async function (name, data) {
+    "active sessions": "active", "finished sessions": "finished", "run summary": "session-groups",
+    health: "health-data", "health ticket": "health-tickets" };
+Then(/^the (family|case|history|coverage|active sessions|finished sessions|run summary|health|health ticket) table contains exactly:$/, async function (name, data) {
     const region = this.page.locator(`#${tables[name]}`);
     const headings = data.raw()[0];
     const expected = data.rows();
@@ -288,4 +289,12 @@ Then("the canvas has no GitHub write controls or endpoints", async function () {
     assert.ok(this.network.every(r => r.method === "GET" && r.url.startsWith(this.server.url)));
     const writes = await this.page.request.post(`${this.server.url}data`, { data: { human_check: "passed" } });
     assert.equal(writes.status(), 404);
+});
+
+Given("slice {string} finished ticket {string} with mutation {float}, CRAP {int}, tests {float}s and {int} flaky run(s)",
+    async function (slice, id, mutation, crap, seconds, flaky) {
+        await this.ticket(slice, id, { mutation, crap, seconds, flaky });
+    });
+When("I show slice {string}", async function (slice) {
+    await this.page.getByLabel("Slice").selectOption({ label: `target/${slice}` });
 });

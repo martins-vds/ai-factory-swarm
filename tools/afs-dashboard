@@ -4,6 +4,7 @@
     afs-dashboard needs --repo OWNER/REPO [--repo ...] --out needs.json
     afs-dashboard sessions --repo OWNER/REPO [--repo ...] --out sessions.json
     afs-dashboard trend [--results evals/results] [--target DIR ...] --out trend.json
+    afs-dashboard health --target DIR [--target DIR ...] --out health.json
 
 `needs` lists what only the operator can do, from the GitHub REST API:
 - Workflow runs waiting for approval, one row per branch. ADR-0039 has the operator approve every Copilot
@@ -17,6 +18,17 @@ The dashboard only shows these; it never approves, merges or signs off.
 `trend` reads every graded run family in the results folder (`<date>-<name>-r<N>.json`). It gives the majority
 per case, the cases that pass by majority per family, and median usage. With `--target`, it also lists the
 roles the live targets use that no eval case covers (`afs-eval coverage`).
+
+`health` (test-trust plan step 5.1, ADR-0071) reads each live target checkout's own committed records, per slice
+and per finished Migrator ticket in the order they landed:
+- the ticket's mutation score (its return's `gates.mutation_changed`);
+- the highest CRAP and the test runtime of its last passing runs (its `afs-run` journal);
+- its flaky runs (`.migration/evidence/flaky/`);
+- the slice's coupled-test findings (`afs-test-health`: own-code patches, private access, interaction and browser
+  assertions in the slice's planned test files);
+- its coupling ratio (commits changing the slice's code that also modified an existing slice test);
+- the number of its customer spec cases.
+The ticket rows are the trend. It writes `<out>` (one row per slice) and `<out stem>-tickets`.
 
 Writes JSON `{"rows": [...]}` files. A file has one table, so `trend` writes three: `<out>`, `<out stem>-cases`
 and `<out stem>-coverage`.
@@ -292,6 +304,134 @@ def coverage(targets, eval_root=ROOT):
     return [{"role": role, "has_case": role in cases} for role in sorted(used)]
 
 
+# ---------------------------------------------------------------- health (ADR-0071)
+
+JOURNAL_ROW = re.compile(r"^\| (\d{4}-\d\d-\d\dT[^|]+?) \| ([^|]+?) \| (-?\d+) \| ([\d.]+) \|")
+BUILDERS = ("afs-migrator", "afs-specialist-migrator")
+
+
+def journal_rows(path):
+    """[(command, exit, seconds, result dict)] of an afs-run journal, oldest first. Gate names are the session's
+    own labels, so rows are matched by command or by the tool's own result line, never by name."""
+    out = []
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = JOURNAL_ROW.match(line)
+        if not m:
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip())[1:-1]]
+        result = dict(kv.split("=", 1) for kv in (cells[7] if len(cells) > 7 else "").split() if "=" in kv)
+        command = cells[4].strip("`").replace("\\|", "|") if len(cells) > 4 else ""
+        out.append((command, int(m.group(3)), float(m.group(4)), result))
+    return out
+
+
+def last_number(rows, gate, key):
+    for _, _, _, result in reversed(rows):
+        if result.get("gate") == gate and key in result:
+            try:
+                return float(result[key])
+            except ValueError:
+                continue
+    return None
+
+
+def last_seconds(rows, commands):
+    for command, code, seconds, _ in reversed(rows):
+        if code == 0 and any(command == c or command.endswith(f"-c {c}") or command.endswith(f"-c '{c}'")
+                             for c in commands):
+            return seconds
+    return None
+
+
+def landed(target, path):
+    """When a file was last committed (ISO date), else its modification date: the order tickets landed in."""
+    r = subprocess.run(["git", "-C", str(target), "log", "-1", "--format=%cI", "--", str(path.relative_to(target))],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()[:10]
+    return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).date().isoformat()
+
+
+def under(path, planned):
+    return any(path == p or (p.endswith("/") and path.startswith(p)) for p in planned)
+
+
+def slice_coupling(target, code_paths, test_paths):
+    """(production commits, of which modified an existing test of the slice) on the first-parent line."""
+    log = subprocess.run(["git", "-C", str(target), "log", "--first-parent", "--diff-merges=first-parent",
+                          "--name-status", "--format=@%H"], capture_output=True, text=True)
+    if log.returncode:
+        return None
+    prod = touched = 0
+    for chunk in log.stdout.split("@")[1:]:
+        changes = [ln.split("\t") for ln in chunk.strip().splitlines()[1:] if "\t" in ln]
+        if any(under(c[-1], code_paths) and c[-1].endswith(".py") and "/migrations/" not in c[-1] for c in changes):
+            prod += 1
+            touched += any(c[0].startswith("M") and under(c[-1], test_paths) for c in changes)
+    return prod, touched
+
+
+def health(targets):
+    import yaml
+    th = runpy.run_path(str(HERE / "afs-test-health"), run_name="afs_test_health")
+    spec_tool = runpy.run_path(str(HERE / "afs-spec"), run_name="afs_spec")
+    slices, tickets = [], []
+    for target in map(pathlib.Path, targets):
+        mig = target / ".migration"
+        name = target.resolve().name
+        own = th["own_packages"](target, "src")
+        profile = yaml.safe_load((mig / "profile.yaml").read_text(encoding="utf-8")) if (mig / "profile.yaml").is_file() else {}
+        test_cmds = [c for c in ((profile or {}).get("gates") or {}).get("tests") or [] if "afs-spec" not in c]
+        for plan in sorted((mig / "plan").glob("*.tickets.yaml")):
+            doc = yaml.safe_load(plan.read_text(encoding="utf-8")) or {}
+            slice_ = doc.get("slice") or plan.name.split(".")[0]
+            planned = [f for t in doc.get("tickets") or [] for f in t.get("files") or []]
+            rows = []
+            for t in doc.get("tickets") or []:
+                ret = next((mig / "returns" / f"{t['id']}.{r}.yaml" for r in BUILDERS
+                            if (mig / "returns" / f"{t['id']}.{r}.yaml").is_file()), None)
+                if ret is None or t.get("role") not in BUILDERS:
+                    continue
+                gates = ((yaml.safe_load(ret.read_text(encoding="utf-8")) or {}).get("gates")) or {}
+                mutation = gates.get("mutation_changed")
+                journal = journal_rows(mig / "evidence" / "runs" / f"{t['id']}.md")
+                flaky = mig / "evidence" / "flaky" / f"{t['id']}.md"
+                rows.append({"target": name, "slice": slice_, "ticket": t["id"], "landed": landed(target, ret),
+                             "mutation": mutation if isinstance(mutation, (int, float)) else None,
+                             "crap_max": last_number(journal, "crap", "max"),
+                             "tests_seconds": last_seconds(journal, test_cmds),
+                             "flaky": flaky.read_text(encoding="utf-8").count("\n## ") if flaky.is_file() else 0})
+            rows.sort(key=lambda r: (r["landed"], r["ticket"]))
+            tickets += rows
+            counts = collections.Counter()
+            for path in sorted(target.glob("tests/**/*.py")):
+                rel = path.relative_to(target).as_posix()
+                if not under(rel, planned) or "characterization" in path.parts:
+                    continue
+                got = th["scan_file"](path, own)
+                if got:
+                    counts.update(kind for _, kind, _ in got[1])
+            coupling = slice_coupling(target, [p for p in planned if p.startswith("src/")],
+                                      [p for p in planned if p.startswith("tests/")])
+            spec_cases = sum(len(spec_tool["expand"](spec_tool["load"](p), p, target))
+                             for p in spec_tool["spec_files"](mig / "spec", slice_)) if (mig / "spec" / slice_).is_dir() else 0
+            scores = [r["mutation"] for r in rows if r["mutation"] is not None]
+            slices.append({
+                "target": name, "slice": slice_, "tickets": len(rows),
+                "mutation_first": scores[0] if scores else None, "mutation_last": scores[-1] if scores else None,
+                "crap_max": next((r["crap_max"] for r in reversed(rows) if r["crap_max"] is not None), None),
+                "tests_seconds": next((r["tests_seconds"] for r in reversed(rows) if r["tests_seconds"] is not None), None),
+                "flaky": sum(r["flaky"] for r in rows),
+                "own_patches": counts["own-code patch"], "private": counts["private access"],
+                "interaction": counts["interaction assertion"],
+                "browser": counts["non-waiting browser assertion"] + counts["header lookup with capitals"],
+                "coupling": round(coupling[1] / coupling[0], 3) if coupling and coupling[0] else None,
+                "spec_cases": spec_cases})
+    return slices, tickets
+
+
 def write(path, rows, source):
     """`{rows, meta}`: the rows, with this script's own text and its input, so a reader can check and rerun it."""
     meta = [{"label": "tools/afs-dashboard", "value": pathlib.Path(__file__).read_text(), "type": "code",
@@ -320,6 +460,9 @@ def main(argv=None):
         p = sub.add_parser(cmd)
         p.add_argument("--repo", action="append", required=True)
         p.add_argument("--out", required=True)
+    p = sub.add_parser("health")
+    p.add_argument("--target", action="append", required=True, help="a live target checkout")
+    p.add_argument("--out", required=True)
     p = sub.add_parser("trend")
     p.add_argument("--results", type=pathlib.Path)
     p.add_argument("--target", action="append", default=[])
@@ -335,6 +478,16 @@ def main(argv=None):
         write(a.out, rows, source)
         if a.out != "-":
             print(f"{len(rows)} {a.cmd} row(s) -> {a.out}")
+        return 0
+    if a.cmd == "health":
+        for target in a.target:
+            if not pathlib.Path(target, ".migration/plan").is_dir():
+                ap.error(f"target plan directory does not exist: {target}/.migration/plan")
+        slices, tickets = health(a.target)
+        out = pathlib.Path(a.out)
+        write(out, slices, source)
+        write(out.with_name(out.stem + "-tickets.json"), tickets, source)
+        print(f"{len(slices)} slice(s), {len(tickets)} ticket row(s) -> {out}")
         return 0
     results = a.results or a.eval_root / "evals/results"
     if not results.is_dir():

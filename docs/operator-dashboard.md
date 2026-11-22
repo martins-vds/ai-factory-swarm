@@ -31,6 +31,27 @@ files are outside `<eval-root>/evals/results`. The canvas reads
 `trend.json`, `trend-cases.json`, and `trend-coverage.json` from `.afs-dashboard/`.
 That directory is ignored by Git.
 
+**Test health** (ADR-0071) comes from the live target checkouts themselves, with no GitHub calls:
+
+```bash
+tools/afs-dashboard health \
+  --target /path/to/ai-factory-pilot-target \
+  --target /path/to/ai-factory-synthetic-target \
+  --out .afs-dashboard/health.json
+```
+
+It writes `health.json` (one row per slice) and `health-tickets.json` (one row per finished Migrator ticket, in
+the order they landed). Per slice:
+- the mutation score, first ticket → latest;
+- the highest CRAP and the test runtime of the latest ticket;
+- flaky runs recorded by `afs-run`;
+- tests that lean on the code's internals (`afs-test-health`);
+- the coupling ratio;
+- the number of customer spec cases.
+
+Pick a slice to see its tickets one by one. Pull the targets before generating, so the trend includes what
+landed since.
+
 `tools/afs-dashboard needs` and `tools/afs-dashboard sessions` accept one
 `--repo OWNER/REPO` per repository and `--out`. Use `.afs-dashboard/needs.json`
 or `.afs-dashboard/sessions.json` for local fallback snapshots. **Generator &

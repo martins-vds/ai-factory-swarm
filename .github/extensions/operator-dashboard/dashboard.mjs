@@ -243,6 +243,36 @@ function showCoverage() {
         data.coverage.doc ? "No roles found in the supplied returns." : "No coverage snapshot. Generate trend with --target to add live role coverage.");
 }
 
+const num = (value, digits = 2) => value == null ? "—" : Number(value).toFixed(digits);
+const firstLast = (a, b, digits) => a == null && b == null ? "—" : a === b ? num(b, digits) : `${num(a, digits)} → ${num(b, digits)}`;
+const sliceKey = row => `${row.target}/${row.slice}`;
+
+function showHealth() {
+    const rows = rowsOf("health");
+    const findings = r => {
+        const parts = [["own-code patches", r.own_patches], ["private", r.private], ["interaction", r.interaction],
+            ["browser", r.browser]].filter(([, n]) => n);
+        return parts.length ? state(parts.map(([label, n]) => `${n} ${label}`).join(", "), true) : "none";
+    };
+    table($("health-data"), ["Target", "Slice", "Tickets", "Mutation", "Max CRAP", "Test run (s)", "Flaky",
+        "Coupled tests", "Coupling", "Spec cases"], rows.map(r => ({ cells: [r.target, r.slice, r.tickets,
+        firstLast(r.mutation_first, r.mutation_last, 2), num(r.crap_max, 0), num(r.tests_seconds, 1),
+        r.flaky ? state(String(r.flaky), true) : "0", findings(r), num(r.coupling, 2), r.spec_cases || "—"] })),
+        data.health.doc ? "No slices in the supplied targets." :
+            "No test-health snapshot. Generate it with tools/afs-dashboard health --target <checkout>.");
+    showHealthTickets();
+}
+
+function showHealthTickets() {
+    const rows = rowsOf("healthTickets");
+    setOptions($("health-slice"), [...new Set(rows.map(sliceKey))].sort().map(key => [key, key]), "All slices");
+    const chosen = $("health-slice").value;
+    table($("health-tickets"), ["Landed", "Target", "Slice", "Ticket", "Mutation", "Max CRAP", "Test run (s)", "Flaky"],
+        rows.filter(r => !chosen || sliceKey(r) === chosen).map(r => ({ cells: [r.landed, r.target, r.slice, r.ticket,
+            num(r.mutation, 2), num(r.crap_max, 0), num(r.tests_seconds, 1), r.flaky ? state(String(r.flaky), true) : "0"] })),
+        data.healthTickets.doc ? "No finished Migrator tickets." : "No test-health snapshot.");
+}
+
 const activeSessions = () => splitSessions(rowsOf("sessions"), now);
 let rendered;
 function render() {
@@ -253,6 +283,7 @@ function render() {
     if (rendered?.families !== data.families.doc) showTrend();
     if (rendered?.cases !== data.cases.doc) showCases();
     if (rendered?.coverage !== data.coverage.doc) showCoverage();
+    if (rendered?.health !== data.health.doc || rendered?.healthTickets !== data.healthTickets.doc) showHealth();
     rendered = Object.fromEntries(Object.entries(data).map(([name, value]) => [name, value.doc]));
 }
 
@@ -290,4 +321,5 @@ $("group-run").addEventListener("change", () => {
     showSessions(active, finished);
 });
 for (const id of ["family", "kind", "passed", "case-id"]) $(id).addEventListener("change", () => { if (data) showCases(); });
+$("health-slice").addEventListener("change", () => { if (data) showHealthTickets(); });
 poll();

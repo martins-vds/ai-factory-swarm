@@ -17,7 +17,7 @@
   </header>
   <nav aria-label="Dashboard sections">
     <a href="#sessions">Sessions</a><a href="#needs">Needs</a><a href="#families">Eval trend</a>
-    <a href="#cases">Cases</a><a href="#coverage">Coverage</a>
+    <a href="#cases">Cases</a><a href="#coverage">Coverage</a><a href="#health">Test health</a>
   </nav>
   <p id="connection" role="status">Loading dashboard data…</p>
   <section id="sessions" aria-labelledby="sessions-title">
@@ -61,6 +61,16 @@
     <h2 id="coverage-title">Live role coverage</h2>
     <div id="coverage-meta"></div>
     <div id="coverage-data"></div>
+  </section>
+  <section id="health" aria-labelledby="health-title">
+    <h2 id="health-title">Test health by slice</h2>
+    <p class="note">From each target's own records. Mutation and runtime are first → latest ticket; findings are tests that lean on the code (ADR-0064, ADR-0065); coupling is the share of code changes that had to edit an existing test.</p>
+    <div id="health-meta"></div>
+    <div id="health-data"></div>
+    <h3>By ticket, in the order they landed</h3>
+    <div id="healthTickets-meta"></div>
+    <label class="filter">Slice <select id="health-slice"><option value="">All slices</option></select></label>
+    <div id="health-tickets"></div>
   </section>
 </main>
 </body>
