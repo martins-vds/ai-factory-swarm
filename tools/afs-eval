@@ -332,6 +332,7 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
         # must be there when it installs. Run the other way round, bootstrap never created the shared test fixture
         # (b3-r1, cancelled before any session ran).
         notes = apply_normalize(wt, case.get("normalize"), src, label)
+        notes += apply_normalize(wt, PROFILE_SETS, src, label)       # --profile-set: one arm of an A/B eval
         notes += replan_open_tickets(wt, ROLE_MAP_FOR_PREPARE)
         who = ["-c", "user.name=afs-eval", "-c", "user.email=afs-eval@users.noreply.github.com"]
         if notes:
@@ -357,6 +358,20 @@ def build_branch(src, sha, case, harness, eval_main, merge_also, allow_unrelease
     except Exception:
         git(src, "worktree", "remove", "--force", str(wt), check=False)
         raise
+
+
+PROFILE_SETS = []
+
+
+def profile_sets(values):
+    """`--profile-set KEY=YAML` as yaml_set ops on the profile: e.g. `test_health.block=true` for an A/B arm."""
+    ops = []
+    for item in values or []:
+        key, sep, raw = item.partition("=")
+        if not sep or not key.strip():
+            raise CaseError(f"--profile-set wants KEY=VALUE, got {item!r}")
+        ops.append({"yaml_set": {"file": ".migration/profile.yaml", "key": key.strip(), "value": yaml.safe_load(raw)}})
+    return ops
 
 
 def prepare_role_map(a):
@@ -386,6 +401,7 @@ def prepare(a, cases):
     # and the agent would stop at setup (v3e-r1: every pilot Verifier case had AM-04D/BK-05F/BK-05G open).
     ROLE_MAP_FOR_PREPARE.clear()
     ROLE_MAP_FOR_PREPARE.update(prepare_role_map(a))
+    PROFILE_SETS[:] = profile_sets(getattr(a, "profile_set", None))
     harness = pathlib.Path(a.harness).resolve()
     if not a.allow_unreleased:
         head = git(harness, "rev-parse", "HEAD").stdout.strip()
@@ -1082,6 +1098,28 @@ def grade_migrator(ret, gates_conclusion, threshold):
     return checks
 
 
+def coupled_lines(head, base_ref):
+    """ADR-0064: the coupling guard's findings on the test lines the session added (None if the tree has no guard)."""
+    tool = pathlib.Path(head) / ".migration/harness/tools/afs-test-health"
+    if not tool.is_file() or not (pathlib.Path(head) / "tests").is_dir():
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        out = pathlib.Path(d) / "th.json"
+        sh([sys.executable, str(tool), "--check", "--base", base_ref, "--json", str(out)], cwd=head, check=False)
+        try:
+            doc = json.loads(out.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    found = doc.get("findings") or []
+    return {"findings": len(found), "kinds": dict(collections.Counter(f["kind"] for f in found)),
+            "allowed": sum("afs: allow-mock" in line for line in _added_test_lines(head, base_ref))}
+
+
+def _added_test_lines(head, base_ref):
+    diff = git(head, "diff", "-U0", "--no-color", base_ref, "--", "tests", check=False).stdout
+    return [ln for ln in diff.splitlines() if ln.startswith("+") and not ln.startswith("+++")]
+
+
 def work_check(changed):
     """A Migrator case passes only on work: a change outside `.migration/`. m3j: two BK-05F sessions changed only
     their return, pointing at the base's old handoff, and passed because the base already held the work."""
@@ -1204,6 +1242,7 @@ def grade(a, cases):
                 changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
                               check=False).stdout.split()
                 checks.append(work_check(changed))
+                row["coupling"] = coupled_lines(trees["head"], "refs/afs-eval/base")
             elif case["kind"] == "understand":
                 changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
                               check=False).stdout.split()
@@ -1647,6 +1686,9 @@ def main(argv=None):
         if name == "prepare":
             p.add_argument("--harness", default=str(ROOT))
             p.add_argument("--allow-unreleased", action="store_true")
+            if name == "prepare":
+                p.add_argument("--profile-set", action="append", metavar="KEY=YAML",
+                               help="set a profile key on every case branch (an A/B arm), e.g. test_health.block=true")
             p.add_argument("--dry-run", action="store_true")
             p.add_argument("--allow-errors", action="store_true",
                            help="push a case whose tree has validation errors (a case about a broken tree)")

@@ -606,6 +606,40 @@ class RefactorGradeTest(unittest.TestCase):
             self.assertEqual([x["id"] for x in yaml.safe_load(p.read_text())["tickets"]], ["A", "REF-01"])
 
 
+class GuardArmTest(unittest.TestCase):
+    """Step 3.3: an A/B arm sets a profile key on every case branch; grading records the coupling guard."""
+
+    def test_profile_set_parses_yaml_values(self):
+        self.assertEqual(ev.profile_sets(["test_health.block=true", "spec={adapter: django}"]), [
+            {"yaml_set": {"file": ".migration/profile.yaml", "key": "test_health.block", "value": True}},
+            {"yaml_set": {"file": ".migration/profile.yaml", "key": "spec", "value": {"adapter": "django"}}}])
+        with self.assertRaises(ev.CaseError):
+            ev.profile_sets(["no-equals"])
+
+    def test_coupled_lines_counts_the_sessions_new_findings_and_exemptions(self):
+        import shutil
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            tools = root / ".migration/harness/tools"
+            tools.mkdir(parents=True)
+            shutil.copyfile(ROOT / "tools/afs-test-health", tools / "afs-test-health")
+            shutil.copyfile(ROOT / "tools/afs_trace.py", tools / "afs_trace.py")
+            (root / "src/shop").mkdir(parents=True)
+            (root / "src/shop/service.py").write_text("def pay():\n    return 1\n")
+            (root / "tests").mkdir()
+            (root / "tests/test_a.py").write_text("def test_a():\n    assert True\n")
+            run = lambda *a: subprocess.run(["git", *a], cwd=root, check=True, capture_output=True)
+            run("init", "-q", "-b", "main")
+            run("add", "-A")
+            run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+            (root / "tests/test_a.py").write_text(
+                "from unittest import mock\nfrom shop import service\n\ndef test_a():\n"
+                "    with mock.patch('shop.service.pay'):\n        pass\n"
+                "    with mock.patch('shop.service.log'):  # afs: allow-mock writes a file\n        pass\n"
+                "    assert service._x\n")
+            got = ev.coupled_lines(root, "main")
+        self.assertEqual(got, {"findings": 2, "kinds": {"own-code patch": 1, "private access": 1}, "allowed": 1})
 class SpecCaseTest(unittest.TestCase):
     """Step 2.4: the Characterizer's spec case, and the spec rules every other case is held to (ADR-0062)."""
 
