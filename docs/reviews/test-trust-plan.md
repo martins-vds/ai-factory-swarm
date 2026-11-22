@@ -32,8 +32,10 @@ a rule to its test, and nothing measures coupling.
   measured like the folds were, pinned to one model with the finish check on (ADR-0058, ADR-0060, #225).
 - **Deterministic first.** A validator, the finish check or CI enforces each rule. A skill only explains
   it.
-- **The customer reads specs, not code.** Trust comes from a short spec per slice (rule, example, test,
-  status) that is executed in CI, and from tests that the agent implementing the code can't rewrite.
+- **Behaviour, not implementation.** A customer test says what the software does, seen from outside, in the
+  domain's words. It never asserts that one function calls another, and it never names internal modules.
+- **The customer reads specs, not code.** Trust comes from the slice's spec as data (rule, example, status),
+  run in CI by a runner the agents can't change, and written by a role other than the implementer.
 
 ## Steps
 Status: ☐ not started · ◐ in progress · ☑ done (with the PR).
@@ -46,20 +48,30 @@ Status: ☐ not started · ◐ in progress · ☑ done (with the PR).
 | 0.3 | 4 | **Eval case kind `refactor`**: "restructure this module, preserving behaviour, and touch no test". It passes when no test file changes, every gate passes, and the characterization goldens still match. Every test that would have to change counts as one coupled test. | ☑ PR #228: kind `refactor`, cases `pilot-refactor-exporter` (expected coupled) and `synthetic-refactor-fee-views` (expected not); both dry-run clean |
 | 0.4 | 4 | Run the refactor cases, pinned, 3 runs each, on one pilot module and one synthetic module. | ☐ needs #227 and #228 merged (`prepare` runs only released harness code) |
 
-### Phase 1: rule → test traceability (gap 2)
-| # | Step | Status |
-|---|---|---|
-| 1.1 | Ledger rules get `verified_by: [tests/…::test_name]`. `validate.py` checks that each one names an existing test function. It applies to new entries only (`predates_rule`). | ☐ |
-| 1.2 | The Verifier's rule check uses `verified_by`, and the mutation evidence shows that at least one listed test fails on a mutant of the rule's code. | ☐ |
-| 1.3 | **Living spec**: `afs-spec <slice>` renders rule, example, test and last CI status as `.migration/evidence/<slice>/spec.md`. The acceptance report links it, and the human side-by-side check starts from it. | ☐ |
+### Phases 1–2: customer tests as data (gaps 1 and 2)
+Redesigned 2026-11-22 after Matteo Vaccari's [Tests as data](https://martinfowler.com/articles/tests-as-data.html)
+(martinfowler.com, 11 Nov 2026). Its argument fits this harness exactly:
+- When AI writes the code and the tests, the human is the *customer*. **Customer tests**, which say what
+  the software does and not how, are the contract between them.
+- Keeping that contract in **data files** run by a small generic runner makes it easy to read, review and
+  protect from the agent.
 
-### Phase 2: tests the implementer can't rewrite (gap 1, ATDD)
+So the acceptance tests of phase 2 and the traceability of phase 1 become one thing: a slice's behaviour
+written as tables and scenarios in the domain's language. Each row names the ledger rule it proves.
+
 | # | Step | Status |
 |---|---|---|
-| 2.1 | ADR: acceptance tests are written from the ledger rules before implementation, by a role other than the Migrator. Candidates are the Analyst or Characterizer, or a `*-SPEC` ticket per slice. They go under `tests/acceptance/<slice>/`. | ☐ |
-| 2.2 | Scope rule: a Migrator ticket may not change `tests/acceptance/`. The finish check, the plan check and CI refuse it. A wrong acceptance test is a handoff with the evidence. | ☐ |
-| 2.3 | Acceptance tests go through public entry points only (HTTP, use case, command), with no mocks except at boundaries. Phase 3's lint enforces this for that folder from day one. | ☐ |
-| 2.4 | Eval: a slice with acceptance tests written first, against today's flow. It measures pass rate and the coupling ratio. | ☐ |
+| 1.1 | **The spec format** (`schemas/spec.schema.json`): `.migration/spec/<slice>/*.yaml`, with two forms. A **table** is stateless rows of `input → expected`. A **scenario** is `given` (seed state) → `when` (one action through a public entry point: an HTTP request, a use case or a command) → `then` (expected response and resulting state). Every case carries `rule:` (a ledger rule id) and a mandatory, non-empty `then`/`expect`, so an empty or assertion-free case can't be written. The domain's words are used, with no module, class or function names. | ☐ |
+| 1.2 | **The runner** (`afs-spec`, harness-owned): it interprets the files through the stack pack's adapter. For Django: the test client for HTTP, the management command runner, side-channel seeding through fixtures. A **printer** turns responses and state into stable text, so a failure is a readable diff. The runner is harness code, installed and drift-checked like the other tools (`check_installed`), so a target agent can't change it. | ☐ |
+| 1.3 | **Traceability falls out:** `validate.py` checks that every ledger rule of a finished capability is named by at least one spec case (or `no_spec: <why>`), and that every `rule:` exists. This replaces the planned `verified_by` field. | ☐ |
+| 1.4 | **Living spec:** `afs-spec --render <slice>` writes the slice's spec as one readable page with each case's last CI result. The acceptance report links it, and the human side-by-side check starts from it. | ☐ |
+| 2.1 | **Who writes the spec:** a role other than the Migrator, before implementation. The Characterizer writes it from the ledger rules and the legacy goldens, which are an independent **oracle**: the article's "alternative implementation", here the running legacy app. Rows whose expected value comes from a quirk ruling cite the ruling, so a spec never silently preserves a legacy bug. ADR. | ☐ |
+| 2.2 | **Protected:** a Migrator ticket may not change `.migration/spec/`. The finish check, the plan check and CI refuse it, like any out-of-scope file. A spec that is wrong is a handoff with the evidence, and the human or the Characterizer decides. | ☐ |
+| 2.3 | **Gates:** the spec run is a gate (`spec`) next to behaviour and regression. Mutation testing also runs against the spec runner, so a mutant that no spec case kills is reported separately: the article's point that the tests themselves need validating. | ☐ |
+| 2.4 | **Eval:** one slice with the spec written first, against today's flow. It measures pass rate, the refactor-resistance result of phase 0, and how often the Migrator hands off a spec dispute. | ☐ |
+
+Code-level unit tests stay allowed, and phase 3's lint applies to them. But the spec is what a customer
+reads and trusts. Unit tests are the Migrator's own scaffolding.
 
 ### Phase 3: coupling guard (gap 3)
 | # | Step | Status |
@@ -71,7 +83,7 @@ Status: ☐ not started · ◐ in progress · ☑ done (with the PR).
 ### Phase 4: test types a migration needs (gap 5)
 | # | Step | Status |
 |---|---|---|
-| 4.1 | **Property-based tests** (Hypothesis) for rules with arithmetic or ranges. The Analyst marks the rule `kind: property`, the skill shows the pattern, and the stack pack pins Hypothesis. | ☐ |
+| 4.1 | **Property-based tests** (Hypothesis) for rules with arithmetic or ranges. The spec format gets a `property` form (for all inputs in a range, an invariant holds), run by the same runner. The stack pack pins Hypothesis. | ☐ |
 | 4.2 | **Differential tests**: replay recorded legacy inputs against the target on every PR, from the tier-A characterization recordings, and compare normalized outputs. **Partly in place:** the pilot has `tests/differential/` for two slices. The step makes it the rule for every slice with tier-A characterization. | ☐ |
 | 4.3 | **Contract tests** at boundaries: a schema snapshot of each REST or report contract in the ledger, and a stub contract for each gateway. | ☐ |
 | 4.4 | **Architecture tests**: the domain layer imports no Django or HTTP. **Already in place** as `check_layers.py` and the profile's `layering.contracts`; the pilot has them. The step checks that every target declares contracts, and adds them to the synthetic target. | ☐ |
@@ -124,3 +136,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 ## Log
 - 2026-11-22: plan written. Steps 0.1 and 0.2 done in PR #227 (`afs-test-health` and the baseline). Findings: the pilot already has differential tests for two slices and layering contracts (`check_layers.py`), so steps 4.2 and 4.4 extend what exists.
 - 2026-11-22: step 0.3 in PR #228. The `refactor` case kind grades the restructuring as done and records each existing test the agent had to change. A `yaml_append` normalize op adds the refactor ticket to the slice's plan.
+- 2026-11-22: phases 1 and 2 redesigned as customer tests as data, after Matteo Vaccari's *Tests as data* (martinfowler.com, 11 Nov 2026), which the user pointed to.
