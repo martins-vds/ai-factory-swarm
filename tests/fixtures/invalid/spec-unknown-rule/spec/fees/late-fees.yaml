@@ -1,0 +1,6 @@
+capability: fees.calculation
+cases:
+  - title: A long-overdue loan costs at most ten dollars
+    rule: fee-waived-forever
+    when: {http: {method: GET, path: /fees/L1}}
+    then: {status: 200, json: {fee: "10.00"}}

@@ -1,0 +1,10 @@
+id: fees.calculation
+kind: behavioral
+title: Calculate a loan late fee
+source: { location: "LateFeeView.java:31" }
+boundary: Late fees for overdue loans.
+status: pending
+verification: pending
+rules:
+  - id: fee-capped-at-10
+    rule: The fee never exceeds $10.

@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""afs-spec — run the customer spec: a slice's behaviour written as data (ADR-0061, test-trust plan phase 1).
+
+Usage:
+  afs-spec check  [--spec .migration/spec] [--ledger .migration/ledger] [--require]
+  afs-spec run    [--spec .migration/spec] [--slice S] [--adapter django] [--results FILE]
+  afs-spec render SLICE [--spec ...] [--ledger ...] [--results FILE] [--out FILE]
+
+Spec files live under `.migration/spec/<slice>/*.yaml` (schemas/spec.schema.json). Each names a ledger
+capability, and each case names the rule it proves, acts once through a public entry point (an HTTP request
+or a management command) and says what must come back. Nothing in a spec names a module, class or function
+of the code, so a refactor that keeps the behaviour can't break one.
+
+* `check`: every file is valid, every case has an assertion (the schema refuses an empty `then`), and every
+  `rule:` exists in its capability's ledger entry. With --require, every rule of every capability that has a
+  spec file must be proved by at least one case.
+* `run`: the cases run through the stack's adapter (`afs_spec_django.py` for Django). A failure prints the
+  expected and actual response as text, so it reads as a diff. Results go to --results (default
+  `.migration/runs/spec-results.json`) for `render`.
+* `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
+
+This file is the harness's. A target's agents may not change it, its adapter or `.migration/spec/` outside
+a spec ticket (ADR-0061).
+"""
+import argparse
+import contextlib
+import copy
+import datetime as dt
+import json
+import pathlib
+import re
+import sys
+
+import yaml
+
+HERE = pathlib.Path(__file__).resolve().parent
+SCHEMA = HERE.parent / "schemas" / "spec.schema.json"           # in the harness repository
+if not SCHEMA.exists():
+    SCHEMA = HERE / "schemas" / "spec.schema.json"              # installed: .migration/harness/tools/schemas
+PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+
+
+class SpecError(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- loading and checking
+
+def spec_files(spec_dir, slice_=None):
+    base = pathlib.Path(spec_dir)
+    if not base.is_dir():
+        return []
+    folders = [base / slice_] if slice_ else sorted(p for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return [p for folder in folders for p in sorted(folder.glob("*.yaml"))]
+
+
+def load(path):
+    try:
+        return yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise SpecError(f"{path}: not YAML: {e}")
+
+
+def schema_errors(doc, path):
+    try:
+        import jsonschema
+    except ImportError:                                 # the validator still checks rules and assertions below
+        return []
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    return [f"{path}: {'/'.join(str(p) for p in e.absolute_path) or '(top)'}: {e.message}"
+            for e in sorted(validator.iter_errors(doc), key=lambda e: list(e.absolute_path))]
+
+
+def ledger_rules(ledger_dir, capability):
+    path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
+    if not path.exists():
+        return None
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {r.get("id") for r in doc.get("rules") or [] if isinstance(r, dict)}
+
+
+def unspecced_rules(ledger_dir, capability):
+    """Rules the ledger says no case can prove (`no_spec: <why>`)."""
+    path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {} if path.exists() else {}
+    return {r.get("id") for r in doc.get("rules") or [] if isinstance(r, dict) and r.get("no_spec")}
+
+
+def case_rules(case):
+    r = case.get("rule")
+    return [r] if isinstance(r, str) else list(r or [])
+
+
+def check(spec_dir, ledger_dir, require=False):
+    """Problems with the spec, as strings; empty when it is sound."""
+    problems = []
+    proved = {}
+    for path in spec_files(spec_dir):
+        try:
+            doc = load(path)
+        except SpecError as e:
+            problems.append(str(e))
+            continue
+        errs = schema_errors(doc, path)
+        problems += errs
+        if errs or not isinstance(doc, dict):
+            continue
+        cap = doc["capability"]
+        known = ledger_rules(ledger_dir, cap)
+        if known is None:
+            problems.append(f"{path}: capability {cap} has no ledger entry (.migration/ledger/{cap}.yaml)")
+            continue
+        for i, case in enumerate(doc["cases"]):
+            for rule in case_rules(case):
+                if rule not in known:
+                    problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names rule {rule!r}, which "
+                                    f"{cap} doesn't list (its rules: {', '.join(sorted(known)) or 'none'})")
+                proved.setdefault(cap, set()).add(rule)
+            ex = case.get("examples")
+            if ex:
+                width = len(ex["columns"])
+                for j, row in enumerate(ex["rows"]):
+                    if len(row) != width:
+                        problems.append(f"{path}: case {i + 1} example row {j + 1} has {len(row)} values for "
+                                        f"{width} columns")
+                used = set(PLACEHOLDER.findall(json.dumps([case.get("given"), case["when"], case["then"]])))
+                missing = used - set(ex["columns"])
+                if missing:
+                    problems.append(f"{path}: case {i + 1} uses {{{', '.join(sorted(missing))}}} but its examples "
+                                    "have no such column")
+        if require:
+            for rule in sorted((known or set()) - proved.get(cap, set()) - unspecced_rules(ledger_dir, cap)):
+                problems.append(f"{path}: rule {rule!r} of {cap} has no case; add one that proves it, or a "
+                                "`no_spec` reason on the rule in the ledger")
+    return problems
+
+
+# ---------------------------------------------------------------- expanding and comparing
+
+def substitute(value, row):
+    if isinstance(value, str):
+        whole = PLACEHOLDER.fullmatch(value)
+        if whole:                                          # "{fee}" alone keeps the row value's own type
+            return row[whole.group(1)]
+        return PLACEHOLDER.sub(lambda m: str(row[m.group(1)]), value)
+    if isinstance(value, list):
+        return [substitute(v, row) for v in value]
+    if isinstance(value, dict):
+        return {k: substitute(v, row) for k, v in value.items()}
+    return value
+
+
+def merge_given(*parts):
+    out = {}
+    for g in parts:
+        for k, v in (g or {}).items():
+            out[k] = (out.get(k) or []) + list(v) if isinstance(v, list) else v
+    return out
+
+
+def expand(doc, path):
+    """The concrete cases of one spec file, with the background and example rows applied."""
+    bg = (doc.get("background") or {}).get("given")
+    out = []
+    for i, case in enumerate(doc["cases"]):
+        ex = case.get("examples")
+        rows = [dict(zip(ex["columns"], r)) for r in ex["rows"]] if ex else [{}]
+        for j, row in enumerate(rows):
+            title = case["title"] + (" — " + ", ".join(f"{k}={v}" for k, v in row.items()) if row else "")
+            out.append({"id": f"{path}#{i + 1}" + (f".{j + 1}" if ex else ""), "title": title,
+                        "capability": doc["capability"], "rules": case_rules(case),
+                        "given": substitute(merge_given(bg, case.get("given")), row),
+                        "when": substitute(copy.deepcopy(case["when"]), row),
+                        "then": substitute(copy.deepcopy(case["then"]), row)})
+    return out
+
+
+def contains(actual, expected):
+    """Objects match on the keys given; everything else matches exactly. Numbers and numeric strings agree."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(k in actual and contains(actual[k], v) for k, v in expected.items())
+    if isinstance(expected, list):
+        return isinstance(actual, list) and len(actual) == len(expected) and all(
+            contains(a, e) for a, e in zip(actual, expected))
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool) and isinstance(actual, str):
+        try:
+            return float(actual) == float(expected)
+        except ValueError:
+            return False
+    if isinstance(expected, str) and isinstance(actual, (int, float)) and not isinstance(actual, bool):
+        try:
+            return float(expected) == float(actual)
+        except ValueError:
+            return False
+    return actual == expected
+
+
+def verdict(then, result):
+    """The assertions that failed, as readable lines."""
+    failed = []
+    if "status" in then and result.get("status") != then["status"]:
+        failed.append(f"status: expected {then['status']}, got {result.get('status')}")
+    if "json" in then:
+        if result.get("json") is None:
+            failed.append("json: expected a JSON body, got none")
+        elif not contains(result["json"], then["json"]):
+            failed.append("json: expected it to contain\n" + printer(then["json"]) + "got\n" + printer(result["json"]))
+    body = result.get("text") or ""
+    for t in then.get("text") or []:
+        if str(t) not in body:
+            failed.append(f"text: {t!r} not found")
+    for t in then.get("not_text") or []:
+        if str(t) in body:
+            failed.append(f"not_text: {t!r} found")
+    for k, v in (then.get("headers") or {}).items():
+        got = (result.get("headers") or {}).get(k.lower())
+        if got != v:
+            failed.append(f"header {k}: expected {v!r}, got {got!r}")
+    return failed
+
+
+def printer(value):
+    """Stable, diffable text for a response part."""
+    return yaml.safe_dump(value, sort_keys=True, allow_unicode=True, default_flow_style=False, width=100)
+
+
+# ---------------------------------------------------------------- running
+
+def adapter_for(name):
+    if name == "django":
+        sys.path.insert(0, str(HERE))
+        import afs_spec_django
+        return afs_spec_django.DjangoAdapter()
+    raise SpecError(f"no spec adapter {name!r} (the stack pack's profile names one under spec.adapter)")
+
+
+def run_cases(cases, adapter):
+    results = []
+    with contextlib.ExitStack() as stack:
+        adapter.setup()
+        stack.callback(adapter.teardown)
+        for case in cases:
+            try:
+                with adapter.case(case["given"]):
+                    result = adapter.act(case["when"])
+                failed = verdict(case["then"], result)
+            except Exception as e:                     # a setup or action that raises is a failure, shown as one
+                failed, result = [f"error: {type(e).__name__}: {e}"], {}
+            results.append({"id": case["id"], "title": case["title"], "capability": case["capability"],
+                            "rules": case["rules"], "passed": not failed, "failures": failed})
+    return results
+
+
+def profile_adapter(profile=".migration/profile.yaml"):
+    try:
+        doc = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    except OSError:
+        return "django"
+    return ((doc.get("spec") or {}).get("adapter")) or "django"
+
+
+# ---------------------------------------------------------------- rendering
+
+def render(slice_, spec_dir, ledger_dir, results=None):
+    res = {r["id"]: r for r in (results or [])}
+    lines = [f"# Spec: {slice_}", "",
+             "What this slice does, as the customer tests state it. Each case acts through a public entry point "
+             "and names the ledger rule it proves (ADR-0061).", ""]
+    for path in spec_files(spec_dir, slice_):
+        doc = load(path)
+        cap = doc.get("capability")
+        rules = {}
+        lp = pathlib.Path(ledger_dir) / f"{cap}.yaml"
+        if lp.exists():
+            led = yaml.safe_load(lp.read_text(encoding="utf-8")) or {}
+            rules = {r.get("id"): r.get("rule") for r in led.get("rules") or [] if isinstance(r, dict)}
+        lines += [f"## {doc.get('title') or cap}", f"Capability `{cap}` · `{path}`", ""]
+        by_rule = {}
+        for case in expand(doc, path):
+            for r in case["rules"]:
+                by_rule.setdefault(r, []).append(case)
+        for rule_id in list(rules) + sorted(set(by_rule) - set(rules)):
+            cases = by_rule.get(rule_id, [])
+            lines.append(f"- **{rule_id}**: {rules.get(rule_id, '(not in the ledger)')}")
+            if not cases:
+                lines.append("  - _no case proves this rule yet_")
+            for c in cases:
+                r = res.get(c["id"])
+                mark = "✅" if r and r["passed"] else "❌" if r else "·"
+                lines.append(f"  - {mark} {c['title']}: {describe(c['when'])} → {describe_then(c['then'])}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def describe(when):
+    if "http" in when:
+        h = when["http"]
+        return f"`{h['method']} {h['path']}`"
+    c = when["command"]
+    return f"`{c['name']} {' '.join(str(a) for a in c.get('args') or [])}`".replace(" `", "`")
+
+
+def describe_then(then):
+    parts = []
+    if "status" in then:
+        parts.append(str(then["status"]))
+    if "json" in then:
+        parts.append(json.dumps(then["json"], ensure_ascii=False))
+    parts += [f"shows {t!r}" for t in then.get("text") or []]
+    parts += [f"never {t!r}" for t in then.get("not_text") or []]
+    return ", ".join(parts)
+
+
+# ---------------------------------------------------------------- CLI
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("check", "run", "render"):
+        p = sub.add_parser(name)
+        p.add_argument("--spec", default=".migration/spec")
+        p.add_argument("--ledger", default=".migration/ledger")
+        if name == "check":
+            p.add_argument("--require", action="store_true", help="every rule of a specced capability needs a case")
+        if name == "run":
+            p.add_argument("--slice")
+            p.add_argument("--adapter")
+            p.add_argument("--results", default=".migration/runs/spec-results.json")
+        if name == "render":
+            p.add_argument("slice")
+            p.add_argument("--results", default=".migration/runs/spec-results.json")
+            p.add_argument("--out")
+    a = ap.parse_args(argv)
+    if a.cmd == "check":
+        problems = check(a.spec, a.ledger, a.require)
+        for p in problems:
+            print(p)
+        n = len(spec_files(a.spec))
+        print(f"AFS-RESULT gate=spec-check files={n} problems={len(problems)}")
+        return 1 if problems else 0
+    if a.cmd == "run":
+        problems = check(a.spec, a.ledger)
+        if problems:
+            for p in problems:
+                print(p)
+            print(f"AFS-RESULT gate=spec cases=0 failed=0 problems={len(problems)}")
+            return 1
+        cases = [c for path in spec_files(a.spec, a.slice) for c in expand(load(path), path)]
+        results = run_cases(cases, adapter_for(a.adapter or profile_adapter()))
+        for r in results:
+            print(f"{'PASS' if r['passed'] else 'FAIL'} {r['id']}: {r['title']}")
+            for f in r["failures"]:
+                print("    " + f.replace("\n", "\n    "))
+        out = pathlib.Path(a.results)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                                   "results": results}, indent=1) + "\n", encoding="utf-8")
+        failed = sum(not r["passed"] for r in results)
+        print(f"AFS-RESULT gate=spec cases={len(results)} failed={failed}")
+        return 1 if failed else 0
+    if a.cmd == "render":
+        results = None
+        rp = pathlib.Path(a.results)
+        if rp.exists():
+            results = json.loads(rp.read_text(encoding="utf-8")).get("results")
+        text = render(a.slice, a.spec, a.ledger, results)
+        if a.out:
+            pathlib.Path(a.out).write_text(text, encoding="utf-8")
+        print(text)
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(HERE))
+    import afs_trace
+    afs_trace.run(main)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/ledger-entry.schema.json",
   "title": "AI Factory Swarm fidelity ledger entry",
-  "description": "One file per source capability under `.migration/ledger/` (architecture \u00a79). The file name must equal `<id>.yaml`.",
+  "description": "One file per source capability under `.migration/ledger/` (architecture §9). The file name must equal `<id>.yaml`.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -158,6 +158,11 @@
           "source": {
             "type": "string",
             "description": "Where the rule comes from: a legacy location, a quirk ruling, the plan."
+          },
+          "no_spec": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why no spec case proves this rule (ADR-0061), e.g. it is enforced by the database schema and has no observable behaviour of its own."
           }
         }
       }
