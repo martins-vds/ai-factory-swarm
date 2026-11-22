@@ -447,3 +447,65 @@ class MutationJournalTest(unittest.TestCase):
         old = validate_mod.cell("python .migration/harness/tools/afs-mutation --changed-since origin/main")
         self.assertIn(old, trusted)
         self.assertIn(validate_mod.cell("python .migration/harness/tools/afs-mutation"), trusted)
+
+
+class SpecGateTest(unittest.TestCase):
+    """ADR-0063: a Migrator ticket that builds a specced capability reports a passing spec gate, backed by the
+    journal, with its own capability actually run (not pending)."""
+
+    CMD = "python .migration/harness/tools/afs-spec run"
+    HEAD = "# Run journal: FE-01\n\n| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n"
+
+    def setUp(self):
+        import tempfile
+
+        import yaml
+        sys.path.insert(0, str(ROOT / "tools"))
+        import validate
+        self.v = validate
+        self.tmp = tempfile.TemporaryDirectory()
+        self.mig = pathlib.Path(self.tmp.name) / ".migration"
+        for d in ("plan", "returns", "spec/fees", "evidence/runs"):
+            (self.mig / d).mkdir(parents=True)
+        (self.mig / "plan/fees.tickets.yaml").write_text(
+            "slice: fees\ntickets:\n  - id: FE-01\n    capabilities: [fees.calc]\n")
+        (self.mig / "spec/fees/late.yaml").write_text(yaml.safe_dump({"capability": "fees.calc", "cases": []}))
+        self.profile = {"gates": {"spec": [self.CMD]}}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def journal(self, *rows):
+        lines = [f"| 2026-11-22T12:0{i}:00Z | spec-1 | {code} | 3 | `{self.CMD}` | abc | - | {result} |"
+                 for i, (code, result) in enumerate(rows)]
+        (self.mig / "evidence/runs/FE-01.md").write_text(self.HEAD + "\n".join(lines) + "\n")
+
+    def errs(self, **gates):
+        errors = []
+        doc = {"role": "afs-migrator", "ticket": "FE-01", "handoff": "none", "gates": gates}
+        self.v.check_spec_gate(self.mig, self.mig / "returns/FE-01.afs-migrator.yaml", doc, self.profile, errors)
+        return errors
+
+    def test_a_passing_spec_run_of_the_built_capability_is_accepted(self):
+        self.journal(("0", "gate=spec cases=6 failed=0 pending=0"))
+        self.assertEqual(self.errs(spec=0), [])
+
+    def test_a_missing_or_failing_gate_is_refused(self):
+        self.journal(("1", "gate=spec cases=6 failed=1 pending=0"))
+        self.assertIn("needs `gates.spec: 0`", self.errs()[0])
+        self.assertIn("the last spec run in", self.errs(spec=0)[0])
+        self.journal()
+        self.assertIn("has no run of the profile's spec gate", self.errs(spec=0)[0])
+
+    def test_a_run_that_skipped_the_ticket_s_own_capability_doesnt_count(self):
+        self.journal(("0", "gate=spec cases=0 failed=0 pending=3 pending_caps=fees.calc"))
+        self.assertIn("skipped fees.calc as not built yet", self.errs(spec=0)[0])
+        self.journal(("0", "gate=spec cases=3 failed=0 pending=2 pending_caps=loans.list"))
+        self.assertEqual(self.errs(spec=0), [])
+
+    def test_no_spec_gate_no_spec_file_or_a_handoff_means_no_check(self):
+        self.profile = {"gates": {}}
+        self.assertEqual(self.errs(), [])
+        self.profile = {"gates": {"spec": [self.CMD]}}
+        (self.mig / "spec/fees/late.yaml").unlink()
+        self.assertEqual(self.errs(), [])

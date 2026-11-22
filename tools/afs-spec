@@ -412,7 +412,10 @@ def main(argv=None):
                                    "results": results}, indent=1) + "\n", encoding="utf-8")
         failed = sum(r["passed"] is False for r in results)
         waiting = sum(bool(r.get("pending")) for r in results)
-        print(f"AFS-RESULT gate=spec cases={len(results) - waiting} failed={failed} pending={waiting}")
+        line = f"AFS-RESULT gate=spec cases={len(results) - waiting} failed={failed} pending={waiting}"
+        if pending:                                    # validate.py: a ticket's own capability can't be pending
+            line += " pending_caps=" + ",".join(sorted(pending))
+        print(line)
         return 1 if failed else 0
     if a.cmd == "render":
         results = None

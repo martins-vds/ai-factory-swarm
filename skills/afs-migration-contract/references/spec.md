@@ -36,6 +36,13 @@ Migrator builds the code, and the Migrator can't change it.
    a page the customer can follow. Until the Migrator marks a capability `in-progress` or `migrated` in the
    ledger, `afs-spec run` reports its cases as pending, so your PR's checks pass before the code exists.
 
+## The spec gate (ADR-0063)
+A Migrator ticket that builds a capability with a spec reports `gates.spec`, the exit of the profile's
+`gates.spec` (`afs-spec run`) through `afs-run`. Run it after the ledger marks the capability `migrated`:
+before that its cases are skipped as pending, and `validate.py` refuses a run that skipped the ticket's own
+capability. At slice acceptance, `afs-mutation --all --spec` runs every mutant against the spec alone; its
+survivors are behaviour no customer case pins down, for the human and the next Characterizer ticket.
+
 ## A case you believe is wrong (Migrator)
 Don't edit it, and don't make the code match a value you think is wrong. Write a handoff (`afs-handoff`)
 whose **Blockers / questions** start with `spec dispute:` and give:

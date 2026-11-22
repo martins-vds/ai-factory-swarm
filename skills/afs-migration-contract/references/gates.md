@@ -8,6 +8,7 @@ from this session, or verified durable Actions output for identical execution in
 |---|---|---|
 | 1 · Build | Compiles, loads and configures cleanly? (`gates.build`) | every PR |
 | 2 · Behavior | Characterization and transcribed legacy tests pass at the boundary? (`gates.tests`) | every PR |
+| 2s · Spec | The slice's customer spec passes for every capability the ticket builds? (`gates.spec`, `afs-spec run`, [spec.md](spec.md)). Reported as `gates.spec: <exit>` by a Migrator ticket whose capability has a spec, run after the ledger marks it `migrated` so its cases aren't skipped as pending (ADR-0063). At slice acceptance, `afs-mutation --all --spec` reports how many mutants the spec alone kills (`spec_mutation_score`, a report, not a threshold) | every PR / slice |
 | 3 · Idiom & architecture | Idiomatic for the target (`gates.idiom`); conforms to target ADRs — layers, DI, domain boundaries (review with `clean-architecture`, `domain-driven-design`, `code-review`) | every PR |
 | 4 · CRAP | No method above `thresholds.crap_max_per_method` (`gates.crap`) | every PR |
 | 5 · Mutation | Mutation score on the **files a PR changes** ≥ `thresholds.mutation_score_min` (`gates.mutation_changed`, run by `afs-mutation`: changed files only, each mutant runs its context's tests, shards run in parallel; CI runs it too). The full run (`gates.mutation_full`) happens **once, at slice acceptance**, never per ticket | every PR / slice |
@@ -16,7 +17,7 @@ from this session, or verified durable Actions output for identical execution in
 
 ## Per-PR gate function (Migrator, then Verifier)
 ```
-1 build ok? 2 behavior ok? 3 idiom ok? 4 CRAP ok? 5 mutation (changed) ok? 6 full suite ok?
+1 build ok? 2 behavior ok? 2s spec ok (if specced)? 3 idiom ok? 4 CRAP ok? 5 mutation (changed) ok? 6 full suite ok?
 all yes → open/mark the PR ready, ledger entries updated in the same PR
 any no  → fix; same failure after two honest attempts → stop, handoff, escalate
 ```
