@@ -105,6 +105,20 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("spec dispute", out["reason"])
         self.assertNotIn("outside ticket", out["reason"])          # one finding, not two
 
+    def test_the_coupling_guard_reports_and_blocks_only_when_the_profile_says_so(self):
+        self.write("src/wizard.py")
+        self.write("tests/test_wizard.py", "from src import wizard\n\ndef test_a():\n    assert wizard._steps == []\n")
+        out, _ = self.run_hook()
+        self.assertNotIn("lean on the code's internals", out["reason"])
+        trace = json.loads((self.repo / ".migration/evidence/finish-check/s1.json").read_text())[-1]
+        self.assertFalse(trace["test_health"]["block"])
+        self.assertIn("`tests/test_wizard.py:4` private access (wizard._steps)", trace["test_health"]["findings"][0])
+        prof = self.repo / ".migration/profile.yaml"
+        prof.write_text(prof.read_text() + "test_health: {block: true}\n")
+        out, _ = self.run_hook(session="s2")
+        self.assertIn("Your new tests lean on the code's internals", out["reason"])
+        self.assertIn("# afs: allow-mock <why>", out["reason"])
+
     def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):
         self.write("src/wizard.py")
         ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"

@@ -24,6 +24,14 @@ any no  → fix; same failure after two honest attempts → stop, handoff, escal
 Never weaken a threshold, skip a gate, disable a test, or use `--no-verify`. Thresholds are a human
 decision recorded in the profile.
 
+## Tests that survive a refactor (ADR-0064)
+Test what the code does, not how. Go through a public entry point (the HTTP client, a use case, a command)
+and assert on the outcome: the response, the stored state, what left the system. Patch only boundaries: the
+clock, randomness, the network, a gateway adapter. Don't patch the project's own functions, don't reach into
+private names (`_helper`, `obj._cache`), and don't assert which internal call was made (`assert_called_*` on
+your own code). The coupling guard (`afs-test-health --check`) flags these on the lines your branch adds. A
+line that truly needs one ends with `# afs: allow-mock <why>`; the reason is reviewed with the PR.
+
 ## Test isolation
 Tests leave shared state as they found it. A test that commits for real (a browser test against a live
 server, a transactional test) restores the database afterwards, so seed rows from data migrations survive
