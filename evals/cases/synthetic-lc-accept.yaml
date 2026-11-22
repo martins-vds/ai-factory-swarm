@@ -40,6 +40,12 @@ normalize:
     key: gates.mutation_changed
     value:
     - python .migration/harness/tools/afs-mutation
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
 expect:
   slice: loan-circulation
   epic: 60
