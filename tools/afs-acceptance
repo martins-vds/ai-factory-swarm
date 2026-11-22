@@ -29,6 +29,7 @@ import yaml
 sys.dont_write_bytecode = True
 HERE = pathlib.Path(__file__).resolve().parent
 GATES = ("build", "idiom", "tests", "crap", "mutation_full")
+OPTIONAL_GATES = ("spec",)   # ADR-0063: run when the profile declares it, after tests
 INPUTS = (".migration/profile.yaml", ".migration/source.lock", ".migration/harness/installed.json")
 REPORTS = ((".migration/evidence/", ".md"), (".migration/returns/", ".yaml"),
            (".migration/handoffs/", ".md"), (".migration/costs/", ".json"),
@@ -88,8 +89,10 @@ def commands(profile):
         ("graph-target", [sys.executable, str(HERE / "graph_gate.py"), "--side", "target", "--require-graph",
                           "--enforce-ownership"]),
     ]
-    for gate in GATES:
+    for gate in GATES[:3] + OPTIONAL_GATES + GATES[3:]:
         rows = gates.get(gate)
+        if gate in OPTIONAL_GATES and not rows:
+            continue
         if not isinstance(rows, list) or not rows or any(not isinstance(c, str) or not c.strip() for c in rows):
             raise EvidenceError(f"profile gates.{gate} must be a nonempty command list")
         plan += [(f"{gate}-{i}", ["bash", "-c", cmd]) for i, cmd in enumerate(rows)]
@@ -337,7 +340,7 @@ def verify(out, commit, run_id, attempt):
             raise EvidenceError(f"gate is not a recorded pass: {item['name']}")
         if step["command"] != declared["command"] or record["command"] != shlex.join(step["command"]):
             raise EvidenceError("gate command does not match the execution record")
-        if not any(item["name"].startswith(f"{gate}-") for gate in GATES):
+        if not any(item["name"].startswith(f"{gate}-") for gate in GATES + OPTIONAL_GATES):
             cmd = step["command"]
             if len(cmd) < 2 or pathlib.Path(cmd[1]).name != pathlib.Path(item["command"][1]).name \
                     or cmd[2:] != item["command"][2:]:
