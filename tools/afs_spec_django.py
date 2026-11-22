@@ -38,10 +38,17 @@ def parse_clock(value):
     return moment
 
 
+def _override_setting(name, value):
+    from django.test import override_settings
+    return override_settings(**{name: value})
+
+
 class DjangoAdapter:
-    def __init__(self, root="."):
+    def __init__(self, root=".", gateways=None):
         self.root = pathlib.Path(root).resolve()
         self._old_db = None
+        self.gateways = gateways or {}         # the profile's spec.gateways (ADR-0068)
+        self._stubs = {}
 
     def setup(self):
         settings_module, paths = pytest_settings(self.root)
@@ -83,6 +90,9 @@ class DjangoAdapter:
                 stack.enter_context(mock.patch("django.utils.timezone.now", lambda: aware))
                 stack.enter_context(mock.patch("django.utils.timezone.localdate",
                                                lambda value=None, timezone=None: moment.date()))
+            import afs_spec_stub
+            self._stubs = stack.enter_context(afs_spec_stub.gateways(given.get("gateways"), self.gateways,
+                                                                     point=_override_setting))
             stack.enter_context(transaction.atomic())
             try:
                 for fixture in given.get("fixtures") or []:
@@ -94,9 +104,10 @@ class DjangoAdapter:
                 transaction.set_rollback(True)
 
     def act(self, when):
-        if "http" in when:
-            return self._http(when["http"])
-        return self._command(when["command"])
+        import afs_spec_stub
+        result = self._http(when["http"]) if "http" in when else self._command(when["command"])
+        result["sent"] = afs_spec_stub.sent(self._stubs)
+        return result
 
     def _http(self, h):
         from django.test import Client

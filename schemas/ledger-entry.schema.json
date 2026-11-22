@@ -199,6 +199,11 @@
       "type": "string",
       "minLength": 3,
       "description": "Why no spec case can replay a recorded legacy exchange of this tier-A capability (ADR-0067), e.g. a stateful JSF conversation. Without it, a required spec replays at least one."
+    },
+    "no_contract": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Why no spec case can check this integration's contract at the boundary (ADR-0068), e.g. a queue replaced by an in-process call. Without it, a required spec has a then.schema or then.sent case."
     }
   },
   "allOf": [

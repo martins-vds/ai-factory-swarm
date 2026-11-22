@@ -130,6 +130,7 @@ humans, and approved for cutover.
 | 65 | Browser tests wait for the page: the coupling guard flags `assert` on Playwright reads that return at once (use `expect(...)`) and header lookups with capitals; `# afs: allow-browser <why>` exempts a line | [0065](adr/0065-browser-tests-wait-for-the-page.md) |
 | 66 | A target with code declares its layers: `validate.py` refuses a profile without `layering.contracts` once Python modules exist under `graph.target_paths`; contracts cite their ADR, and older breaks are `known` with what removes them | [0066](adr/0066-a-target-with-code-declares-its-layers.md) |
 | 67 | Recorded legacy exchanges are replayed: a spec case `when.replay: {recording, exchange}` sends the recorded request and compares status and body (`exact`, `text`, `json`, `ignore`, with masks); with `spec.required`, a tier-A capability replays one or says `no_replay` | [0067](adr/0067-recorded-legacy-exchanges-are-replayed.md) |
+| 68 | Contracts are checked at the boundary: `then.schema` (the shape of a JSON answer), `given.gateways` (a real local HTTP stub per gateway, found through the profile's `spec.gateways`) and `then.sent` (exactly what the target sent); a required spec of an `integration` capability has one or says `no_contract` | [0068](adr/0068-contracts-are-checked-at-the-boundary.md) |
 
 ---
 
