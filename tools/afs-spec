@@ -276,21 +276,32 @@ def render(slice_, spec_dir, ledger_dir, results=None):
             led = yaml.safe_load(lp.read_text(encoding="utf-8")) or {}
             rules = {r.get("id"): r.get("rule") for r in led.get("rules") or [] if isinstance(r, dict)}
         lines += [f"## {doc.get('title') or cap}", f"Capability `{cap}` · `{path}`", ""]
-        by_rule = {}
-        for case in expand(doc, path):
-            for r in case["rules"]:
-                by_rule.setdefault(r, []).append(case)
-        for rule_id in list(rules) + sorted(set(by_rule) - set(rules)):
-            cases = by_rule.get(rule_id, [])
-            lines.append(f"- **{rule_id}**: {rules.get(rule_id, '(not in the ledger)')}")
-            if not cases:
-                lines.append("  - _no case proves this rule yet_")
-            for c in cases:
-                r = res.get(c["id"])
-                mark = "✅" if r and r["passed"] else "❌" if r else "·"
-                lines.append(f"  - {mark} {c['title']}: {describe(c['when'])} → {describe_then(c['then'])}")
+        for i, case in enumerate(doc.get("cases") or []):
+            expanded = [c for c in expand({**doc, "cases": [case]}, path)]
+            for c in expanded:                                  # ids as the run wrote them
+                c["id"] = c["id"].replace(f"{path}#1", f"{path}#{i + 1}", 1)
+            lines.append(f"### {case['title']}")
+            lines += [f"- proves **{r}**: {rules.get(r, '(not in the ledger)')}" for r in case_rules(case)]
+            lines.append("")
+            lines.append(f"When {describe(case['when'])}, then {describe_then(case['then'])}.")
+            ex = case.get("examples")
+            if ex:
+                lines += ["", "| " + " | ".join(ex["columns"]) + " | result |",
+                          "|" + "---|" * (len(ex["columns"]) + 1)]
+                for row, c in zip(ex["rows"], expanded):
+                    lines.append("| " + " | ".join(str(v) for v in row) + f" | {mark(res.get(c['id']))} |")
+            else:
+                lines.append(f"Result: {mark(res.get(expanded[0]['id']))}")
+            lines.append("")
+        unproved = [r for r in rules if not any(r in case_rules(c) for c in doc.get("cases") or [])]
+        if unproved:
+            lines.append("Rules no case proves yet: " + ", ".join(f"**{r}**" for r in unproved))
         lines.append("")
     return "\n".join(lines)
+
+
+def mark(result):
+    return "✅ passed" if result and result["passed"] else "❌ failed" if result else "not run yet"
 
 
 def describe(when):

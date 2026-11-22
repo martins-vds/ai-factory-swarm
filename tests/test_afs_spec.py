@@ -140,9 +140,22 @@ class SpecTest(unittest.TestCase):
     def test_render_lists_each_rule_with_its_cases_and_results(self):
         results = [{"id": str(self.path) + "#1", "passed": True}, {"id": str(self.path) + "#2.1", "passed": False}]
         text = sp.render("fees-payments", self.root / "spec", self.root / "ledger", results)
-        self.assertIn("**fee-waived-two-days**: Up to two days late costs nothing.", text)
-        self.assertIn("✅ A loan returned two days late costs nothing: `GET /fees/L2` → 200", text)
-        self.assertIn("❌ Late fees by loan — loan=L3, fee=4.75", text)
+        self.assertIn("### A loan returned two days late costs nothing", text)
+        self.assertIn("- proves **fee-waived-two-days**: Up to two days late costs nothing.", text)
+        self.assertIn("Result: ✅ passed", text)
+        self.assertIn("| loan | fee | result |", text)
+        self.assertIn("| L3 | 4.75 | ❌ failed |", text)
+        self.assertIn("| L1 | 10.00 | not run yet |", text)
+
+    def test_a_clock_can_come_from_the_examples(self):
+        doc = yaml.safe_load(self.path.read_text())
+        doc["cases"][1]["given"] = {"clock": "{day}"}
+        doc["cases"][1]["examples"] = {"columns": ["loan", "fee", "day"],
+                                       "rows": [["L3", "4.75", "2026-02-01"], ["L1", "10.00", "2026-06-30"]]}
+        self.path.write_text(yaml.safe_dump(doc))
+        self.assertEqual(self.check(require=True), [])
+        cases = sp.expand(doc, "x.yaml")
+        self.assertEqual(cases[2]["given"]["clock"], "2026-06-30")
 
     def test_the_cli_runs_check(self):
         code = sp.main(["check", "--spec", str(self.root / "spec"), "--ledger", str(self.root / "ledger"), "--require"])
