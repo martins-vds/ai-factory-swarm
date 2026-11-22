@@ -1,0 +1,521 @@
+{
+  "cases": {
+    "pilot-bk-05f": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05F.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 'n/a: no mutable code changed from origin/main'",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1151,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-handoff": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "tdd": 1,
+        "ui-ux-pro-max": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 11.0,
+        "output_tokens": 0,
+        "requests": 99,
+        "sessions": 1
+      }
+    },
+    "pilot-bk-05g": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/BK-05G.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 'n/a: not run, handed off'",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1152,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-handoff": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "tdd": 1,
+        "ui-ux-pro-max": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 8.2,
+        "output_tokens": 0,
+        "requests": 63,
+        "sessions": 1
+      }
+    },
+    "pilot-dm-05d": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/DM-05D.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 'n/a: not run, handed off'",
+          "ok": false
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1154,
+      "skills": {
+        "afs-data-pipeline": 1,
+        "afs-evidence": 1,
+        "afs-handoff": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 6.1,
+        "output_tokens": 0,
+        "requests": 56,
+        "sessions": 1
+      }
+    },
+    "pilot-dm-05f": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/DM-05F.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 'n/a: no mutable code changed'",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1156,
+      "skills": {
+        "afs-data-pipeline": 1,
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "code-review": 1,
+        "django-tdd": 1,
+        "postgresql-code-review": 1,
+        "postgresql-optimization": 1,
+        "receiving-code-review": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 25.0,
+        "output_tokens": 0,
+        "requests": 228,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-01": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-01.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.833",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1158,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "django-security": 1,
+        "django-tdd": 1,
+        "tdd": 1,
+        "ui-ux-pro-max": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 29.8,
+        "output_tokens": 0,
+        "requests": 314,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-02": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-02.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: failure",
+          "ok": false
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.855",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "failure",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": false,
+      "pr": 1160,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "django-security": 1,
+        "receiving-code-review": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 26.1,
+        "output_tokens": 0,
+        "requests": 251,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-03": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-03.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.909",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1162,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "agent-browser": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "django-security": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 33.5,
+        "output_tokens": 0,
+        "requests": 264,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-04": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-04.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 1.0",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1163,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "django-patterns": 1,
+        "django-tdd": 1,
+        "tdd": 1,
+        "ui-ux-pro-max": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 10.3,
+        "output_tokens": 0,
+        "requests": 99,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-05": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-05.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.877",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "must_pass": true,
+      "passed": true,
+      "pr": 1164,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "django-tdd": 1,
+        "tdd": 1,
+        "verification-before-completion": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 17.9,
+        "output_tokens": 0,
+        "requests": 160,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-18T01:46:58+00:00",
+  "run": "2026-11-17-m3j-r1"
+}
