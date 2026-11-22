@@ -180,3 +180,42 @@ class CheckTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(th.main(argv), 1)
         self.assertIn("mode=block", out.getvalue())
+
+
+class BrowserTest(unittest.TestCase):
+    """ADR-0065: the two LL-03 browser failures of eval step 2.4, as the guard sees them."""
+
+    def scan(self, code):
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "test_b.py"
+            path.write_text(textwrap.dedent(code))
+            return th.scan_file(path, set())
+
+    def test_reads_asserted_right_after_a_click_and_capitalised_headers_are_found(self):
+        counts, findings = self.scan("""
+            from playwright.sync_api import sync_playwright, expect
+            def test_pay(page, live_server):
+                page.get_by_role('button', name='Pay late fee').click()
+                assert page.get_by_role('alert').inner_text().strip() == 'payment gateway unavailable'   # 2297
+                assert payment.value.request.headers.get('HX-Request') == 'true'                       # 2299
+                assert page.get_by_role('heading').is_visible()
+                expect(page.get_by_role('alert')).to_have_text('declined')                             # waits
+                assert response.headers.get('hx-request') == 'true'                                    # lowercase
+                assert response.headers['Content-Type'] == 'text/html'
+            """)
+        self.assertEqual(sorted((ln, k) for ln, k, _ in findings if k in th.BROWSER_KINDS), [
+            (5, "non-waiting browser assertion"), (6, "header lookup with capitals"),
+            (7, "non-waiting browser assertion"), (10, "header lookup with capitals")])
+        self.assertEqual(counts["browser_findings"], 4)
+
+    def test_a_file_without_a_browser_is_not_checked(self):
+        counts, findings = self.scan("""
+            def test_api(client):
+                r = client.get('/fees/L1')
+                assert r.headers['Content-Type'] == 'text/html'
+            """)
+        self.assertEqual(findings, [])
+
+    def test_the_allow_browser_marker_needs_a_reason_like_allow_mock(self):
+        self.assertTrue(th.ALLOW.search("x  # afs: allow-browser the count is static markup").group(1).strip())
+        self.assertFalse(th.ALLOW.search("x  # afs: allow-browser").group(1).strip())

@@ -37,6 +37,10 @@ Load `ui-ux-pro-max`. A screen whose look is still open is a decision-map questi
 - **The look follows the UI direction** on the decision map. A visual difference that follows that
   direction is not a defect. Any change in what users can do is a quirk ticket or a decision ticket.
 - **Tests.** End-to-end tests drive the screen, and the accessibility rules from `ui-ux-pro-max` apply.
+  After an action, assert with Playwright's `expect(locator).to_be_visible()` / `.to_have_text(...)`, which
+  retry until the page has updated; never `assert locator.is_visible()` or `assert locator.inner_text() == …`,
+  which read once. Header names are lowercase (`headers.get("hx-request")`). The coupling guard refuses both
+  (ADR-0065); eval 2.4 lost two LL-03 runs to them.
 
 **Evidence:** the end-to-end run.
 
