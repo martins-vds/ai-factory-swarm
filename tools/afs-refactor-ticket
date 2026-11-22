@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""afs-refactor-ticket — plan a behaviour-preserving refactor of one slice (ADR-0072, test-trust plan step 5.3).
+
+Usage (the AFS refactor workflow runs it monthly; the operator can too):
+  afs-refactor-ticket propose [--slice S] [--date YYYY-MM-DD] [--write] [--issue-out FILE]
+
+The phase 0 refactor eval measured coupling once: a restructuring that keeps behaviour should need no test change,
+and every test it does change is one that knows how the code is built. This tool makes that measurement recur on
+the live target. It picks:
+* the slice: among slices with finished Migrator work, the one whose latest refactor ticket (`refactor: true` in
+  its plan) is oldest, a slice with none first (then by name);
+* the module: in that slice's planned code, the module with the most module-level private functions (at least 2),
+  then the longest. Migrations and `__init__.py` are left out.
+
+The ticket asks the Migrator to move those helpers into a new module in the same package, as public functions
+named for what they do; to change an existing test only if the move makes it fail, saying why in the return's
+`notes`; and to keep no aliases. With --write it appends the ticket to `.migration/plan/<slice>.tickets.yaml`
+(`refactor: true`) and a section to `.migration/plan/<slice>.md`; --issue-out writes the issue text for the
+dispatcher. The tests the refactor had to change show on the dashboard (afs-dashboard health).
+"""
+import argparse
+import ast
+import datetime as dt
+import pathlib
+import re
+import sys
+
+import yaml
+
+BUILDERS = ("afs-migrator", "afs-specialist-migrator")
+
+
+def finished(mig, ticket):
+    return any((mig / "returns" / f"{ticket['id']}.{role}.yaml").is_file() for role in BUILDERS)
+
+
+def plans(mig):
+    out = {}
+    for path in sorted((mig / "plan").glob("*.tickets.yaml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        out[doc.get("slice") or path.name.split(".")[0]] = (path, doc)
+    return out
+
+
+def last_refactor(doc):
+    ids = [t["id"] for t in doc.get("tickets") or [] if t.get("refactor")]
+    dates = [m.group(1) for i in ids if (m := re.match(r"REF-(\d{8})-", i))]
+    return max(dates) if dates else ""
+
+
+def code_paths(root, doc):
+    """Python modules under the slice's planned code paths."""
+    planned = [f for t in doc.get("tickets") or [] for f in t.get("files") or []
+               if f.startswith("src/") and not f.startswith("src/tests")]
+    found = set()
+    for p in planned:
+        path = root / p
+        files = path.rglob("*.py") if p.endswith("/") and path.is_dir() else ([path] if path.is_file() else [])
+        for f in files:
+            if f.name != "__init__.py" and "migrations" not in f.parts and "tests" not in f.parts:
+                found.add(f)
+    return sorted(found)
+
+
+def private_helpers(path):
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    return [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name.startswith("_") and not n.name.startswith("__")]
+
+
+def candidate(root, doc):
+    best = None
+    for path in code_paths(root, doc):
+        helpers = private_helpers(path)
+        if len(helpers) < 2:
+            continue
+        key = (len(helpers), len(path.read_text(encoding="utf-8").splitlines()))
+        if best is None or key > best[0]:
+            best = (key, path, helpers)
+    return (best[1], best[2]) if best else (None, [])
+
+
+def choose(root, slice_=None):
+    """(slice, plan path, plan doc, module, helpers) for the next refactor, or None when nothing qualifies."""
+    mig = root / ".migration"
+    options = []
+    for name, (path, doc) in plans(mig).items():
+        if slice_ and name != slice_:
+            continue
+        if not any(t.get("role") in BUILDERS and finished(mig, t) for t in doc.get("tickets") or []):
+            continue
+        module, helpers = candidate(root, doc)
+        if module:
+            options.append((last_refactor(doc), name, path, doc, module, helpers))
+    if not options:
+        return None
+    options.sort(key=lambda o: (o[0], o[1]))
+    _, name, path, doc, module, helpers = options[0]
+    return name, path, doc, module, helpers
+
+
+def ticket_for(root, name, doc, module, helpers, day):
+    rel = module.relative_to(root).as_posix()
+    package = module.parent.relative_to(root).as_posix() + "/"
+    tests = sorted({f for t in doc.get("tickets") or [] for f in t.get("files") or [] if f.startswith("tests/")})
+    tid = f"REF-{day.replace('-', '')}-{re.sub(r'[^A-Z0-9]+', '-', name.upper()).strip('-')}"
+    entry = {"id": tid, "title": f"Move {rel}'s private helpers into their own module, preserving behaviour",
+             "role": "afs-migrator", "specialty": None, "files": [package, *tests], "capabilities": [],
+             "blocked_by": [], "refactor": True}
+    names = ", ".join(f"`{h}`" for h in helpers)
+    body = (f"**Role:** `afs-migrator`, ticket `{tid}`: **restructure `{rel}` without changing what it does** "
+            f"(ADR-0072, a periodic refactor of the `{name}` slice).\n\n"
+            f"`{rel}` keeps {len(helpers)} private helpers: {names}. Move them into a new module in `{package}`, "
+            "as public functions named for what they do, and have the code that used them import them from there. "
+            "Every page, response, command output and stored value stays exactly as it is.\n\n"
+            "**Tests are the safety net, not part of the job.** Change an existing test only if the restructuring "
+            "itself makes it fail, and for every test you change say why in your return's `notes`. Don't keep "
+            "aliases or wrappers so the old private names still work. The tests you had to change are this ticket's "
+            "measurement: each one knows how the code is built, not what it does.\n\n"
+            "Load `afs-migration-contract` and run `afs-setup-check` first. Run every gate through `afs-run`: build, "
+            "behaviour, spec, idiom, CRAP, mutation on the changed code, regression. Commit your return "
+            f"`.migration/returns/{tid}.afs-migrator.yaml`, or a handoff.")
+    return entry, body
+
+
+def insert_ticket(text, entry):
+    """The plan text with `entry` added as the last item of `tickets:`, every other line (comments included) kept."""
+    lines = text.splitlines(keepends=True)
+    start = next(i for i, ln in enumerate(lines) if re.match(r"^tickets:\s*(#.*)?$", ln))
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"^[A-Za-z_][\w-]*:", lines[i])), len(lines))
+    indent = next((m.group(1) for ln in lines[start + 1:end] if (m := re.match(r"^(\s*)- ", ln))), "  ")
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1                                          # keep blank lines before the next key after the new item
+    item = yaml.safe_dump([entry], sort_keys=False, allow_unicode=True, width=120)
+    snippet = "".join(indent + ln if ln.strip() else ln for ln in item.splitlines(keepends=True))
+    if end and not lines[end - 1].endswith("\n"):
+        lines[end - 1] += "\n"
+    return "".join(lines[:end]) + snippet + "".join(lines[end:])
+
+
+def write(path, doc, entry, plan_md, body):
+    text = insert_ticket(path.read_text(encoding="utf-8"), entry)
+    assert (yaml.safe_load(text) or {}).get("tickets", [])[-1] == entry, "the ticket didn't land at the end of tickets"
+    path.write_text(text, encoding="utf-8")
+    text = plan_md.read_text(encoding="utf-8") if plan_md.exists() else f"# {doc.get('slice')}\n"
+    plan_md.write_text(text.rstrip("\n") + f"\n\n## {entry['id']}: {entry['title']}\n\n{body}\n", encoding="utf-8")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("propose")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slice")
+    p.add_argument("--date", default=dt.date.today().isoformat())
+    p.add_argument("--write", action="store_true", help="append the ticket to the slice's plan")
+    p.add_argument("--issue-out", help="write the issue text here")
+    a = ap.parse_args(argv)
+    root = pathlib.Path(a.root).resolve()
+    picked = choose(root, a.slice)
+    if not picked:
+        print("afs-refactor-ticket: no slice has finished code with a module of two or more private helpers")
+        print("AFS-RESULT gate=refactor-ticket proposed=0")
+        return 0
+    name, path, doc, module, helpers = picked
+    entry, body = ticket_for(root, name, doc, module, helpers, a.date)
+    if any(t["id"] == entry["id"] for t in doc.get("tickets") or []):
+        print(f"afs-refactor-ticket: {entry['id']} is already planned")
+        print("AFS-RESULT gate=refactor-ticket proposed=0")
+        return 0
+    if a.write:
+        write(path, doc, entry, path.with_name(f"{name}.md"), body)
+    if a.issue_out:
+        pathlib.Path(a.issue_out).write_text(f"{entry['id']} · {entry['title']}\n\n{body}\n", encoding="utf-8")
+    print(f"{entry['id']}: {entry['title']}\n  slice {name}; helpers {', '.join(helpers)}; files {', '.join(entry['files'])}")
+    print(f"AFS-RESULT gate=refactor-ticket proposed=1 ticket={entry['id']} slice={name}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import afs_trace
+    afs_trace.run(main)

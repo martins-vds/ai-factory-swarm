@@ -93,6 +93,10 @@
               "minLength": 1
             },
             "description": "Files this ticket deletes (each also in files). A removed module's importing tests are in files, or owned by a ticket this one is blocked by (ADR-0048)."
+          },
+          "refactor": {
+            "type": "boolean",
+            "description": "A periodic behaviour-preserving refactor (ADR-0072): the tests it had to change measure coupling."
           }
         }
       }

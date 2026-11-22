@@ -177,3 +177,31 @@ class HealthTest(unittest.TestCase):
                          {"slice": "fees", "tickets": 2, "mutation_first": 0.8, "mutation_last": 0.93, "crap_max": 9.0,
                           "tests_seconds": 12.5, "flaky": 2, "own_patches": 1, "private": 1, "spec_cases": 2})
         self.assertEqual(row["coupling"], 0.0)               # one commit changed the code and only added tests
+
+
+class RefactorCostTest(unittest.TestCase):
+    """ADR-0072: the tests a refactor's landing commit had to modify are its coupling measurement."""
+
+    def test_the_merge_that_landed_the_refactor_is_measured(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            t = pathlib.Path(d)
+            run = lambda *a: subprocess.run(["git", *a], cwd=t, check=True, capture_output=True)
+            who = ["-c", "user.name=t", "-c", "user.email=t@t"]
+            (t / "tests/fees").mkdir(parents=True)
+            (t / "tests/fees/test_a.py").write_text("x = 1\n")
+            (t / "tests/fees/test_b.py").write_text("y = 1\n")
+            (t / ".migration/returns").mkdir(parents=True)
+            run("init", "-q", "-b", "main")
+            run("add", "-A")
+            run(*who, "commit", "-qm", "base")
+            run("checkout", "-q", "-b", "ref")
+            (t / "tests/fees/test_a.py").write_text("x = 2\n")              # the refactor had to change one test
+            (t / "tests/fees/test_new.py").write_text("z = 1\n")            # added tests don't count
+            ret = t / ".migration/returns/REF-1.afs-migrator.yaml"
+            ret.write_text("ticket: REF-1\n")
+            run("add", "-A")
+            run(*who, "commit", "-qm", "refactor")
+            run("checkout", "-q", "main")
+            run(*who, "merge", "-q", "--no-ff", "ref", "-m", "Merge REF-1")
+            self.assertEqual(dash.refactor_cost(t, ret, ["tests/fees/"]), 1)

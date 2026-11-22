@@ -101,6 +101,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-run`: run a gate once, keep the full log, show a summary
 - `afs-mutation`: mutation testing on changed code
 - `afs-test-health`: how much the tests lean on mocks and internals, and how often production changes edit existing tests (report-only; test-trust plan)
+- `afs-refactor-ticket`: plans a periodic behaviour-preserving refactor of the slice that has gone longest without one (the module with the most private helpers); the monthly AFS refactor workflow proposes it as a PR, and the tests it had to change show on the dashboard (ADR-0072)
 - `afs-flaky`: turns flaky runs (failed, then passed on the same code: `afs-run`'s records and CI re-runs) into one `afs-flaky` issue per test, from the AFS flaky tests workflow (ADR-0070)
 - `afs-spec`: the customer spec as data (`.migration/spec/`): check it, run it through the stack adapter (`afs_spec_django.py`), render a slice's living spec (ADR-0061); replay recorded legacy exchanges (ADR-0067); stub gateways with real local HTTP servers (`afs_spec_stub.py`) and check contracts at the boundary (ADR-0068)
 - `crap.py`: CRAP from complexity and coverage

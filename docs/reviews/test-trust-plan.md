@@ -92,9 +92,9 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 ### Phase 5: maintenance over time (gap 6)
 | # | Step | Status |
 |---|---|---|
-| 5.1 | The dashboard charts, per slice: mutation score, CRAP, test runtime, flaky count, coupling ratio and mock findings, from `afs-test-health` and the cost records. || ◐ PR (ADR-0071): `afs-dashboard health` per slice and per ticket; a Test health section on the operator dashboard |
+| 5.1 | The dashboard charts, per slice: mutation score, CRAP, test runtime, flaky count, coupling ratio and mock findings, from `afs-test-health` and the cost records. || ☑ PR #245 (ADR-0071): `afs-dashboard health` per slice and per ticket; a Test health section on the operator dashboard |
 | 5.2 | Flaky-test quarantine: a test that fails then passes on the same commit is recorded and gets a ticket instead of silently retrying. || ☑ PR #244 (ADR-0070): `afs-run` records a pass after a failure on the same code; the finish check wants the record committed; the AFS flaky tests workflow turns records and CI re-runs into one issue per test. No test is skipped |
-| 5.3 | A periodic refactor ticket per slice, run as the phase 0 case on the live target, keeps the coupling trend honest. | ☐ |
+| 5.3 | A periodic refactor ticket per slice, run as the phase 0 case on the live target, keeps the coupling trend honest. || ◐ PR (ADR-0072): `afs-refactor-ticket` and a monthly AFS refactor workflow; the dashboard shows the tests each refactor had to change |
 
 ## When to start
 **Phase 0 can start now.** It changes nothing agents do, so it can't disturb the fold results or the DM
@@ -170,3 +170,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: #242 and synthetic #156 merged (step 4.3 done). Step 4.1 (ADR-0069): property cases in the spec rather than Hypothesis in the target's tests, so they stay data and harness-run; a deliberately broken cap was shrunk to the exact boundary date in CI.
 - 2026-11-22: #243 merged; synthetic #157 open (phase 4 done once it merges). Phase 5 started with step 5.2 (ADR-0070): flaky runs are recorded by afs-run and in CI re-runs, and become one ticket per test.
 - 2026-11-22: synthetic #157 and #244 merged; phase 4 complete. Step 5.1 (ADR-0071): test health per slice and per ticket, from each target's own committed records, on the operator dashboard.
+- 2026-11-22: #245 merged. Step 5.3 (ADR-0072): a periodic refactor ticket per slice, chosen mechanically; its first synthetic pick is the phase 0 refactor itself.
