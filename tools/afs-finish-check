@@ -390,9 +390,11 @@ def test_health():
 
 def coupling_finding(coupled):
     return ("mechanical", "coupling:" + str(len(coupled)),
-            "Your new tests lean on the code's internals, so a refactor that keeps the behaviour would break them "
-            "(ADR-0064):\n  " + "\n  ".join(coupled[:10]) + "\nRewrite each to check the outcome through a public "
-            "entry point. If a line truly needs it, end it with `# afs: allow-mock <why>`.")
+            "Your new tests lean on the code's internals, so a refactor that keeps the behaviour would break them, "
+            "or read the browser without waiting (ADR-0064, ADR-0065):\n  " + "\n  ".join(coupled[:10])
+            + "\nRewrite each as its line says: check the outcome through a public entry point; in a browser, use "
+            "Playwright's `expect(...)`. If a line truly needs it, end it with `# afs: allow-mock <why>` (or "
+            "`# afs: allow-browser <why>`).")
 
 
 # ---------------------------------------------------------------- hook state

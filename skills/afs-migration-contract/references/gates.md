@@ -31,6 +31,9 @@ clock, randomness, the network, a gateway adapter. Don't patch the project's own
 private names (`_helper`, `obj._cache`), and don't assert which internal call was made (`assert_called_*` on
 your own code). The coupling guard (`afs-test-health --check`) flags these on the lines your branch adds. A
 line that truly needs one ends with `# afs: allow-mock <why>`; the reason is reviewed with the PR.
+In a browser test, assert with Playwright's `expect(...)`, which waits for the page, not with `assert` on
+`is_visible()` or `inner_text()`, which read once; and look headers up by their lowercase name (ADR-0065,
+`# afs: allow-browser <why>`).
 
 ## Test isolation
 Tests leave shared state as they found it. A test that commits for real (a browser test against a live
