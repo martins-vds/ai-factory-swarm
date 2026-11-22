@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""afs-test-health — how much a target's tests lean on mocks and internals, and how coupled they are.
+
+Usage:
+  afs-test-health [--root .] [--tests tests] [--src src] [--since REF] [--json OUT] [--markdown OUT]
+
+Report-only (test-trust plan, step 0.1). For every test file under --tests (characterization excluded,
+since its goldens are the legacy app's own behaviour), an AST scan counts:
+
+* **own-code patches**: `patch(...)`, `patch.object(...)`, `monkeypatch.setattr(...)` whose target is the
+  project's own code (a top-level name under --src), not a boundary. Boundaries are the clock, randomness,
+  sleeping, the network, the environment and mail (BOUNDARY below). A patched boundary is fine and
+  counted apart.
+* **private access**: `obj._name` (not dunder, not an allowlisted framework name such as Django's `_meta`)
+  and `from <project> import _name`.
+* **interaction assertions**: `assert_called*`, `assert_any_call`, `assert_not_called`, `call_count`,
+  `call_args*`. They pin how the code works rather than what it does.
+* **public entry points**: tests that drive the Django test client or a browser page.
+
+From git history (first parent of HEAD, --since if given) it computes the **coupling ratio**: of the
+commits that change production code under --src, the share that also *modify* an existing test file. A
+behaviour change can need that; a refactor never should. Treat it as a trend.
+"""
+import argparse
+import ast
+import collections
+import json
+import pathlib
+import subprocess
+import sys
+
+BOUNDARY = {
+    "time", "sleep", "monotonic", "perf_counter", "now", "today", "utcnow", "localdate", "localtime",
+    "datetime", "date", "timezone", "random", "randint", "choice", "shuffle", "uuid", "uuid4", "secrets",
+    "urlopen", "requests", "httpx", "urllib", "socket", "smtplib", "send_mail", "environ", "getenv",
+}
+# A module or object named like an adapter to the outside world is a boundary too, even in the project's own
+# code: the synthetic fee tests patch `fees.gateway._open`, the HTTP call inside the payment gateway adapter.
+BOUNDARY_PARTS = ("gateway", "http", "smtp", "mail", "logger", "logging")
+ALLOWED_PRIVATE = {"_meta", "_state", "_default_manager", "_base_manager", "_asdict", "_replace", "_fields"}
+INTERACTION = {"assert_called", "assert_called_once", "assert_called_with", "assert_called_once_with",
+               "assert_any_call", "assert_has_calls", "assert_not_called", "call_count", "call_args",
+               "call_args_list"}
+PATCHERS = {"patch", "setattr", "object", "dict", "multiple"}
+EXCLUDED_DIRS = ("characterization",)
+
+
+def own_packages(root, src):
+    base = pathlib.Path(root) / src
+    names = {src.strip("/").split("/")[-1]} if base.is_dir() else set()
+    if base.is_dir():
+        for p in base.iterdir():
+            if p.is_dir() and not p.name.startswith((".", "_")):
+                names.add(p.name)
+            elif p.suffix == ".py" and p.stem != "__init__":
+                names.add(p.stem)
+    return names
+
+
+def imported_names(tree):
+    """{local name: dotted module path} for this file's imports."""
+    names = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                names[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for a in node.names:
+                names[a.asname or a.name] = f"{node.module}.{a.name}"
+    return names
+
+
+def dotted(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def classify_target(path, own):
+    """`own`, `boundary` or `other` for a patch target's dotted path (already resolved through imports)."""
+    if not path:
+        return "other"
+    segs = path.split(".")
+    if any(s in BOUNDARY for s in segs[1:]) or segs[-1] in BOUNDARY:
+        return "boundary"
+    if any(part in s.lower() for s in segs[1:] for part in BOUNDARY_PARTS):
+        return "boundary"
+    return "own" if segs[0] in own else "other"
+
+
+def patch_target(call, imports):
+    """The dotted path a patching call replaces, or None when the call isn't a patch."""
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+    if name not in PATCHERS:
+        return None
+    base = dotted(func.value) if isinstance(func, ast.Attribute) else None
+    is_monkeypatch = base is not None and base.split(".")[0] == "monkeypatch"
+    is_mock = name in ("patch", "object", "dict", "multiple") and (
+        base is None or base.split(".")[-1] in ("mock", "patch") or base in ("mock", "unittest.mock"))
+    if name == "setattr" and not is_monkeypatch:
+        return None
+    if not (is_monkeypatch or is_mock):
+        return None
+    args = call.args
+    if not args:
+        return None
+    first = args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value                                   # patch("pkg.mod.attr"), setattr("pkg.mod.attr", v)
+    obj = dotted(first)
+    if obj is None:
+        return None
+    root, _, rest = obj.partition(".")
+    resolved = imports.get(root, root) + (f".{rest}" if rest else "")
+    if len(args) > 1 and isinstance(args[1], ast.Constant) and isinstance(args[1].value, str):
+        resolved += f".{args[1].value}"                      # patch.object(obj, "attr"), setattr(obj, "attr", v)
+    return resolved
+
+
+def scan_file(path, own):
+    text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return None
+    imports = imported_names(tree)
+    out = collections.Counter()
+    findings = []
+    out["tests"] = sum(1 for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       and n.name.startswith("test"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            target = patch_target(node, imports)
+            if target is not None:
+                kind = classify_target(target, own)
+                out[f"patch_{kind}"] += 1
+                if kind == "own":
+                    findings.append((node.lineno, "own-code patch", target))
+            f = node.func
+            if isinstance(f, ast.Attribute) and f.attr in INTERACTION:
+                out["interaction_asserts"] += 1
+                findings.append((node.lineno, "interaction assertion", f.attr))
+        elif isinstance(node, ast.Attribute):
+            if node.attr in ("call_count", "call_args", "call_args_list") and isinstance(node.ctx, ast.Load):
+                out["interaction_asserts"] += 1
+                findings.append((node.lineno, "interaction assertion", node.attr))
+            elif (node.attr.startswith("_") and not node.attr.startswith("__") and node.attr not in ALLOWED_PRIVATE
+                  and not (isinstance(node.value, ast.Name) and node.value.id in ("self", "cls"))):
+                # `self._x` inside a test file is the test's own double, not the code under test
+                out["private_access"] += 1
+                findings.append((node.lineno, "private access", f"{dotted(node) or '…'}"))
+        elif isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] in own:
+            for a in node.names:
+                if a.name.startswith("_") and not a.name.startswith("__"):
+                    out["private_access"] += 1
+                    findings.append((node.lineno, "private access", f"{node.module}.{a.name}"))
+    if any(k in text for k in ("client.get(", "client.post(", "self.client", "Client(", "page.goto(", "page.click(")):
+        out["public_entry_files"] += 1
+    return out, findings
+
+
+def test_files(root, tests):
+    base = pathlib.Path(root) / tests
+    for p in sorted(base.rglob("*.py")):
+        rel = p.relative_to(root)
+        if any(part in EXCLUDED_DIRS for part in rel.parts):
+            continue
+        yield p
+
+
+def coupling(root, src, tests, since=None):
+    """Commits on HEAD's first-parent line that change production code, and how many modify existing tests."""
+    # Each PR lands as one first-parent commit (a merge or a squash); a merge is diffed against its first parent.
+    args = ["git", "-C", str(root), "log", "--first-parent", "--diff-merges=first-parent", "--name-status",
+            "--format=@%H"]
+    if since:
+        args.append(f"{since}..HEAD")
+    log = subprocess.run(args, capture_output=True, text=True)
+    if log.returncode:
+        return None
+    prod = touched = 0
+    examples = []
+    for chunk in log.stdout.split("@")[1:]:
+        sha, *lines = chunk.strip().splitlines()
+        changes = [ln.split("\t") for ln in lines if "\t" in ln]
+        prod_changed = any(c[-1].startswith(f"{src}/") and c[-1].endswith(".py") and "/migrations/" not in c[-1]
+                           for c in changes)
+        tests_modified = [c[-1] for c in changes if c[0].startswith("M") and c[-1].startswith(f"{tests}/")
+                          and not any(d in c[-1] for d in EXCLUDED_DIRS)]
+        if prod_changed:
+            prod += 1
+            if tests_modified:
+                touched += 1
+                if len(examples) < 5:
+                    examples.append({"commit": sha[:10], "tests": tests_modified[:3]})
+    return {"production_commits": prod, "modified_existing_tests": touched,
+            "ratio": round(touched / prod, 3) if prod else None, "examples": examples}
+
+
+def report(root=".", tests="tests", src="src", since=None):
+    own = own_packages(root, src)
+    totals = collections.Counter()
+    per_file = {}
+    for path in test_files(root, tests):
+        got = scan_file(path, own)
+        if got is None:
+            continue
+        counts, findings = got
+        totals.update(counts)
+        totals["files"] += 1
+        if findings:
+            per_file[str(path.relative_to(root))] = [{"line": ln, "kind": k, "what": w} for ln, k, w in findings]
+    return {"own_packages": sorted(own), "totals": dict(totals), "findings": per_file,
+            "coupling": coupling(root, src, tests, since)}
+
+
+def markdown(rep):
+    t = rep["totals"]
+    c = rep["coupling"] or {}
+    lines = ["| Measure | Value |", "|---|---|",
+             f"| Test files / tests | {t.get('files', 0)} / {t.get('tests', 0)} |",
+             f"| Own-code patches | {t.get('patch_own', 0)} |",
+             f"| Boundary patches (clock, random, network, …) | {t.get('patch_boundary', 0)} |",
+             f"| Other patches (third-party) | {t.get('patch_other', 0)} |",
+             f"| Private access | {t.get('private_access', 0)} |",
+             f"| Interaction assertions | {t.get('interaction_asserts', 0)} |",
+             f"| Files driving the HTTP client or a browser | {t.get('public_entry_files', 0)} |",
+             f"| Coupling ratio (production commits that modify existing tests) | "
+             f"{c.get('modified_existing_tests', '?')} of {c.get('production_commits', '?')}"
+             f" = {c.get('ratio')} |"]
+    worst = sorted(rep["findings"].items(), key=lambda kv: -len(kv[1]))[:8]
+    if worst:
+        lines += ["", "Files with the most findings:", ""]
+        lines += [f"- `{f}`: {len(v)} ({', '.join(sorted({x['kind'] for x in v}))})" for f, v in worst]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", default=".")
+    ap.add_argument("--tests", default="tests")
+    ap.add_argument("--src", default="src")
+    ap.add_argument("--since", help="count coupling only for commits after this ref")
+    ap.add_argument("--json", help="write the full report here")
+    ap.add_argument("--markdown", help="write the summary table here")
+    a = ap.parse_args(argv)
+    rep = report(a.root, a.tests, a.src, a.since)
+    if a.json:
+        pathlib.Path(a.json).write_text(json.dumps(rep, indent=1) + "\n", encoding="utf-8")
+    md = markdown(rep)
+    if a.markdown:
+        pathlib.Path(a.markdown).write_text(md, encoding="utf-8")
+    sys.stdout.write(md)
+    t = rep["totals"]
+    print(f"AFS-RESULT gate=test-health own_patches={t.get('patch_own', 0)} private={t.get('private_access', 0)} "
+          f"interaction={t.get('interaction_asserts', 0)} coupling={(rep['coupling'] or {}).get('ratio')}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import afs_trace
+    afs_trace.run(main)
