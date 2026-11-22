@@ -227,3 +227,38 @@ class PlannerChecksTest(CheckPlanTest):
         errs = []
         check_plan.check_issue_drift(plans, {}, [{"number": 107, "title": "LL-04 · Report", "body": ok}], errs)
         self.assertEqual(errs, [])
+
+
+class SpecOwnerTest(CheckPlanTest):
+    """ADR-0062: the Characterizer writes the customer spec, before the Migrator builds what it describes."""
+
+    LEDGER = ".migration/ledger/fees.calc.yaml"
+
+    def require_specs(self):
+        (self.mig / "profile.yaml").write_text(yaml.safe_dump({"spec": {"adapter": "django", "required": True}}))
+
+    def test_only_a_characterizer_ticket_plans_spec_files(self):
+        self.plan("fees", [ticket("FE-01", ["src/fees.py", ".migration/spec/fees/late.yaml"]),
+                           ticket("FE-02", [".migration/spec/fees/"], role="afs-characterizer", blocked_by=["FE-01"])])
+        errs = self.errors()
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("FE-01 (afs-migrator) plans .migration/spec/fees/late.yaml: only an afs-characterizer", errs[0])
+
+    def test_with_specs_required_a_build_ticket_waits_for_its_slice_spec(self):
+        self.require_specs()
+        self.plan("fees", [ticket("FE-01", ["src/fees.py", self.LEDGER], capabilities=["fees.calc"])])
+        self.assertIn("FE-01 builds fees.calc, which has no spec yet: block it on an afs-characterizer ticket "
+                      "that plans .migration/spec/fees/", "\n".join(self.errors()))
+        self.plan("fees", [ticket("FE-00", [".migration/spec/fees/", self.LEDGER], role="afs-characterizer"),
+                           ticket("FE-01", ["src/fees.py", self.LEDGER], capabilities=["fees.calc"],
+                                  blocked_by=["FE-00"])])
+        self.assertEqual(self.errors(), [])
+
+    def test_a_committed_spec_is_enough_and_without_the_flag_nothing_is_required(self):
+        self.plan("fees", [ticket("FE-01", ["src/fees.py", self.LEDGER], capabilities=["fees.calc"])])
+        self.assertEqual(self.errors(), [])
+        self.require_specs()
+        spec = self.mig / "spec/fees/late.yaml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text(yaml.safe_dump({"capability": "fees.calc", "cases": []}))
+        self.assertEqual(self.errors(), [])

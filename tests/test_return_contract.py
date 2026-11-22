@@ -864,3 +864,16 @@ class StackedReturnTest(unittest.TestCase):
         (self.root / self.path).write_text("role: afs-verifier\nverdict: pass\n")
         self.git("commit", "-qam", "migrator edits the verifier's return")
         self.assertFalse(self.stacked(self.pull()))
+
+
+class SpecOwnerTest(unittest.TestCase):
+    """ADR-0062: in an agent PR, only a Characterizer's return goes with a change to `.migration/spec/`."""
+
+    def test_a_migrator_pr_that_changes_the_spec_fails_and_a_characterizer_pr_passes(self):
+        spec = [".migration/spec/fees/late.yaml"]
+        msg = crc.spec_owner_problem(spec, [".migration/returns/FE-01.afs-migrator.yaml"])
+        self.assertIn("changes the customer spec (.migration/spec/fees/late.yaml) but isn't a Characterizer's", msg)
+        self.assertIn("FE-01.afs-migrator.yaml", msg)
+        self.assertIn("none", crc.spec_owner_problem(spec, []))
+        self.assertIsNone(crc.spec_owner_problem(spec, [".migration/returns/FE-00.afs-characterizer.yaml"]))
+        self.assertIsNone(crc.spec_owner_problem([], [".migration/returns/FE-01.afs-migrator.yaml"]))

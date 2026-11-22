@@ -34,7 +34,9 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    first; source files only through the file-read gate). A ticket with `specialty:` → load
    `afs-specialty` now and follow it alongside these steps.
 2. **Tests first:** turn the characterization cases (and transcribed legacy-test behavior) into failing
-   target tests at the equivalence boundary.
+   target tests at the equivalence boundary. A customer spec (`.migration/spec/<slice>/`) is your
+   acceptance test: `afs-spec run` must pass once your capabilities are `migrated`. A case you believe is
+   wrong is a `spec dispute` handoff (references/spec.md).
 3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign it; never transliterate.
 4. **Gates** through `afs-run`: build, behavior, idiom & architecture, CRAP, mutation on changed code,
    full suite. Add tests until mutation reaches the threshold; never weaken anything.
@@ -62,6 +64,7 @@ their characterization evidence, the code graph, the target ADRs and glossary.
 - Mutation per ticket = `gates.mutation_changed` only (files you changed, via `afs-mutation`). Never run
   `gates.mutation_full`: it runs once at slice acceptance.
 - Exactly your ticket. Discovered work → new ticket via the orchestrator.
+- Never change `.migration/spec/` (ADR-0062): the finish check and CI refuse it, even with a handoff.
 - A quirk blocks only what depends on it: raise it, then continue with the rest or hand off.
 - Two honest failed attempts on the same failure → stop, hand off, escalate.
 

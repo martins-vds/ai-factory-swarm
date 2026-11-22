@@ -54,6 +54,11 @@ strategy, UI direction), `profile.context.working_budget`.
    - a shared test or setting the change will break (e.g. a test that asserts the exact installed apps);
    - a view or module owned by an earlier ticket that this one must extend (and a blocking edge to it).
 
+   **Customer spec (ADR-0062):** plan one `afs-characterizer` ticket per slice whose files include
+   `.migration/spec/<slice>/` and the slice's ledger entries, and block the slice's Migrator tickets on it.
+   No other ticket lists a spec file. With the profile's `spec.required`, `check_plan.py` refuses a Migrator
+   ticket whose capability has neither a spec file nor a spec ticket before it.
+
    Each target anchor of the slice spec goes under the ticket that builds it (`builds:`, written exactly as
    the spec writes it); a deleted file goes under `removes:` with the tests that import it; and pages sit in
    the profile's `graph.target_paths` (ADR-0048).

@@ -69,6 +69,11 @@
             }
           ]
         },
+        "oracle": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the expected values come from: a recorded legacy output or characterization test, as a path from the repo root (ADR-0062). The legacy app is the independent oracle; a value from anywhere else needs a `ruling`. With the profile's `spec.required`, every case names an oracle or a ruling, and the path must exist."
+        },
         "ruling": {
           "type": "string",
           "description": "The quirk ruling an expected value comes from, when it differs from what the legacy app did (ADR-0061: a spec never silently keeps a legacy bug)."

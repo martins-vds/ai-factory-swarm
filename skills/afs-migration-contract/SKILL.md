@@ -126,5 +126,6 @@ drafts into issues, links them and removes the drafts.
 - [gates.md](references/gates.md) — the seven gates, per-PR and slice acceptance, project acceptance.
 - [verification.md](references/verification.md) — the Verifier's review in detail: rules, error paths, findings and verdict.
 - [characterization.md](references/characterization.md) — tiers A/B/C and the tier-B recipe.
+- [spec.md](references/spec.md) — the customer spec: who writes it, how, and what to do when a case looks wrong.
 - [capability-coverage.md](references/capability-coverage.md) — gate 7 and graph enrichment.
 - [final-verification.md](references/final-verification.md) — the final audit and its A–G report.

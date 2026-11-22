@@ -17,6 +17,10 @@ finished PR-bearing returns changed against this PR's base, this event check als
 identify this PR unless first-parent merge history proves the file was inherited unchanged. Superseded
 attribution applies only to the same return path. Neither check proves worker completion or merge
 authorization.
+
+ADR-0062: an agent PR that changes the customer spec (`.migration/spec/`) must be a Characterizer's: one of
+its changed return files is `<ticket>.afs-characterizer.yaml`. Any other agent's spec change fails, stacked or
+not. A human's PR is not an agent PR, so the person who owns the migration can still correct a spec.
 Needs git, PyYAML and jsonschema.
 """
 import argparse
@@ -59,6 +63,29 @@ def changed_return_files(base, root=".", head="HEAD"):
     out = subprocess.run(["git", "-C", root, "diff", "--name-only", "--diff-filter=AM", f"{base}...{head}", "--",
                           ".migration/returns/"], capture_output=True, text=True, check=True).stdout
     return [p for p in out.split() if re.search(r"\.ya?ml$", p)]
+
+
+SPEC_DIR = ".migration/spec/"
+SPEC_AUTHOR = "afs-characterizer"
+
+
+def changed_spec_files(base, root=".", head="HEAD"):
+    out = subprocess.run(["git", "-C", root, "diff", "--name-only", f"{base}...{head}", "--", SPEC_DIR],
+                         capture_output=True, text=True, check=True).stdout
+    return [line for line in out.splitlines() if line]
+
+
+def spec_owner_problem(spec_files, return_files):
+    """The error for an agent PR that changes the spec without being a Characterizer's, else None."""
+    if not spec_files:
+        return None
+    roles = {pathlib.PurePosixPath(f).name.split(".")[1] for f in return_files
+             if len(pathlib.PurePosixPath(f).name.split(".")) >= 3}
+    if SPEC_AUTHOR in roles:
+        return None
+    return ("this agent PR changes the customer spec (" + ", ".join(spec_files) + ") but isn't a Characterizer's "
+            f"(its return files: {', '.join(return_files) or 'none'}). Only the Characterizer writes the spec "
+            "(ADR-0062): restore those files, and raise a spec dispute as a handoff instead")
 
 
 def pr_identity(value):
@@ -327,6 +354,10 @@ def main():
         print(f"base moved on since the PR's last event ({base[:7]} → {current[:7]}); comparing from the merge base")
         base = current
     files = changed_return_files(base, head=head)
+    spec_problem = spec_owner_problem(changed_spec_files(base, head=head), files)
+    if spec_problem:
+        print(f"::error title=Spec changed by the wrong role::{spec_problem}")
+        return 1
     event = json.loads(pathlib.Path(a.event).read_text(encoding="utf-8"))
     default = ((event.get("repository") or {}).get("default_branch")) or "main"
     if (pr.get("base") or {}).get("ref") not in (None, default):
