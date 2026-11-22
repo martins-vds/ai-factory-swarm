@@ -27,7 +27,8 @@ and per finished Migrator ticket in the order they landed:
 - the slice's coupled-test findings (`afs-test-health`: own-code patches, private access, interaction and browser
   assertions in the slice's planned test files);
 - its coupling ratio (commits changing the slice's code that also modified an existing slice test);
-- the number of its customer spec cases.
+- the number of its customer spec cases;
+- its latest periodic refactor ticket (ADR-0072) and how many existing slice tests that refactor had to change.
 The ticket rows are the trend. It writes `<out>` (one row per slice) and `<out stem>-tickets`.
 
 Writes JSON `{"rows": [...]}` files. A file has one table, so `trend` writes three: `<out>`, `<out stem>-cases`
@@ -373,6 +374,20 @@ def slice_coupling(target, code_paths, test_paths):
     return prod, touched
 
 
+def refactor_cost(target, ret, test_paths):
+    """Existing slice tests the commit that landed a refactor's return modified (None if git can't tell)."""
+    rel = ret.relative_to(target).as_posix()
+    log = subprocess.run(["git", "-C", str(target), "log", "--first-parent", "--diff-merges=first-parent",
+                          "--diff-filter=A", "--name-only", "--format=@%H", "--", rel], capture_output=True, text=True)
+    shas = re.findall(r"^@([0-9a-f]{40})$", log.stdout, re.M)       # the merge's patch text is printed too
+    sha = shas[-1] if shas else None
+    if log.returncode or not sha:
+        return None
+    show = subprocess.run(["git", "-C", str(target), "show", "--first-parent", "--diff-merges=first-parent",
+                           "--name-status", "--format=", sha], capture_output=True, text=True)
+    return sum(1 for ln in show.stdout.splitlines() if ln.startswith("M\t") and under(ln.split("\t")[-1], test_paths))
+
+
 def health(targets):
     import yaml
     th = runpy.run_path(str(HERE / "afs-test-health"), run_name="afs_test_health")
@@ -415,6 +430,13 @@ def health(targets):
                     counts.update(kind for _, kind, _ in got[1])
             coupling = slice_coupling(target, [p for p in planned if p.startswith("src/")],
                                       [p for p in planned if p.startswith("tests/")])
+            refactor, refactor_tests = None, None
+            for t in reversed(doc.get("tickets") or []):
+                ret = mig / "returns" / f"{t['id']}.afs-migrator.yaml"
+                if t.get("refactor") and ret.is_file():
+                    refactor = t["id"]
+                    refactor_tests = refactor_cost(target, ret, [p for p in planned if p.startswith("tests/")])
+                    break
             spec_cases = sum(len(spec_tool["expand"](spec_tool["load"](p), p, target))
                              for p in spec_tool["spec_files"](mig / "spec", slice_)) if (mig / "spec" / slice_).is_dir() else 0
             scores = [r["mutation"] for r in rows if r["mutation"] is not None]
@@ -428,7 +450,7 @@ def health(targets):
                 "interaction": counts["interaction assertion"],
                 "browser": counts["non-waiting browser assertion"] + counts["header lookup with capitals"],
                 "coupling": round(coupling[1] / coupling[0], 3) if coupling and coupling[0] else None,
-                "spec_cases": spec_cases})
+                "spec_cases": spec_cases, "refactor": refactor, "refactor_tests_changed": refactor_tests})
     return slices, tickets
 
 

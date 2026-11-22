@@ -254,10 +254,14 @@ function showHealth() {
             ["browser", r.browser]].filter(([, n]) => n);
         return parts.length ? state(parts.map(([label, n]) => `${n} ${label}`).join(", "), true) : "none";
     };
+    const refactor = r => !r.refactor ? "none yet" : r.refactor_tests_changed == null ? r.refactor
+        : r.refactor_tests_changed ? state(`${r.refactor}: ${r.refactor_tests_changed} test(s) changed`, true)
+        : `${r.refactor}: no test changed`;
     table($("health-data"), ["Target", "Slice", "Tickets", "Mutation", "Max CRAP", "Test run (s)", "Flaky",
-        "Coupled tests", "Coupling", "Spec cases"], rows.map(r => ({ cells: [r.target, r.slice, r.tickets,
+        "Coupled tests", "Coupling", "Spec cases", "Last refactor"], rows.map(r => ({ cells: [r.target, r.slice, r.tickets,
         firstLast(r.mutation_first, r.mutation_last, 2), num(r.crap_max, 0), num(r.tests_seconds, 1),
-        r.flaky ? state(String(r.flaky), true) : "0", findings(r), num(r.coupling, 2), r.spec_cases || "—"] })),
+        r.flaky ? state(String(r.flaky), true) : "0", findings(r), num(r.coupling, 2), r.spec_cases || "—",
+        refactor(r)] })),
         data.health.doc ? "No slices in the supplied targets." :
             "No test-health snapshot. Generate it with tools/afs-dashboard health --target <checkout>.");
     showHealthTickets();
