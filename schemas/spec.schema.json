@@ -113,6 +113,17 @@
               }
             }
           }
+        },
+        "forall": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/generator"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "description": "Property form (ADR-0069): `{name}` in given, when and then takes values from these ranges; the case must hold for every one. Not with `examples`."
         }
       }
     },
@@ -376,6 +387,26 @@
               "type": "object"
             }
           ]
+        },
+        "number": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pattern"
+          ],
+          "description": "A number taken from the body (the pattern's first group, or the whole match) must be within bounds: how a property states an invariant.",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "minLength": 1
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
         }
       }
     },
@@ -403,6 +434,74 @@
           "additionalProperties": {
             "type": "string"
           }
+        }
+      }
+    },
+    "generator": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "description": "A range or a list a property case draws from (ADR-0069).",
+      "properties": {
+        "int": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "type": "integer"
+            },
+            "to": {
+              "type": "integer"
+            }
+          }
+        },
+        "number": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "type": "number"
+            },
+            "to": {
+              "type": "number"
+            },
+            "places": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            }
+          }
+        },
+        "date": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        },
+        "one_of": {
+          "type": "array",
+          "minItems": 1
         }
       }
     }

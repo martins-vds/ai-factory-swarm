@@ -28,6 +28,11 @@ of the code, so a refactor that keeps the behaviour can't break one.
   local HTTP stub in front of each named gateway (`afs_spec_stub.py`; the profile's `spec.gateways` says how the
   target finds it), answering as the case says, and `then.sent` lists the requests the target must have sent.
   With --require, an `integration` capability with a spec has a contract case or a `no_contract` reason.
+* A **property** case (ADR-0069) has `forall:` instead of examples: named ranges (`int`, `number`, `date`) or
+  lists (`one_of`). The runner tries each range's edges, its middle and seeded random values (the seed is the
+  case's id, so every run tries the same inputs; `--samples` sets how many), and on a failure searches toward
+  the start of each range for the smallest input that still fails, which is the one it reports. `then.number`
+  checks a number taken from the response against bounds, which is how a property states an invariant.
 * `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
 
 This file is the harness's. A target's agents may not change it or its adapter, and only a Characterizer
@@ -35,6 +40,7 @@ ticket may change `.migration/spec/` (ADR-0061, ADR-0062).
 """
 import argparse
 import contextlib
+import random
 import copy
 import datetime as dt
 import html
@@ -121,6 +127,25 @@ def load_exchange(root, replay):
         raise SpecError(f"exchange {replay['exchange']!r} in {replay['recording']!r} needs request.method and a "
                         "request.path starting with /")
     return ex
+
+
+def forall_problems(case, path, i):
+    out = []
+    if case.get("examples"):
+        out.append(f"{path}: case {i + 1} has both `forall` and `examples`: a property draws its own inputs")
+    for name, gen in case["forall"].items():
+        try:
+            kind, lo, hi = bounds(gen)
+        except (StopIteration, ValueError, TypeError, KeyError) as e:
+            out.append(f"{path}: case {i + 1}: forall {name} isn't a valid range ({e})")
+            continue
+        if kind != "one_of" and lo > hi:
+            out.append(f"{path}: case {i + 1}: forall {name} runs from {lo} down to {hi}")
+    used = set(PLACEHOLDER.findall(json.dumps([case.get("given"), case["when"], case["then"]])))
+    missing = used - set(case["forall"])
+    if missing:
+        out.append(f"{path}: case {i + 1} uses {{{', '.join(sorted(missing))}}} but its forall has no such name")
+    return out
 
 
 def schema_problems(root, case, path, i):
@@ -222,6 +247,8 @@ def check(spec_dir, ledger_dir, require=False):
                     problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names rule {rule!r}, which "
                                     f"{cap} doesn't list (its rules: {', '.join(sorted(known)) or 'none'})")
                 proved.setdefault(cap, set()).add(rule)
+            if case.get("forall"):
+                problems += forall_problems(case, path, i)
             ex = case.get("examples")
             if ex:
                 width = len(ex["columns"])
@@ -314,6 +341,13 @@ def expand(doc, path, root=None):
     root = root or spec_root(path)
     out = []
     for i, case in enumerate(doc["cases"]):
+        if case.get("forall"):
+            cid = f"{path}#{i + 1}"
+            out.append({"id": cid, "title": case["title"], "capability": doc["capability"], "rules": case_rules(case),
+                        "property": {"forall": case["forall"], "samples": samples(case["forall"], cid, SAMPLES[0])},
+                        "template": {"given": merge_given(bg, case.get("given")), "when": case["when"],
+                                     "then": case["then"]}, "root": str(root)})
+            continue
         ex = case.get("examples")
         rows = [dict(zip(ex["columns"], r)) for r in ex["rows"]] if ex else [{}]
         for j, row in enumerate(rows):
@@ -325,6 +359,96 @@ def expand(doc, path, root=None):
                         "then": substitute(copy.deepcopy(case["then"]), row)})
             out[-1] = resolve_schema(resolve_replay(out[-1], root), root)
     return out
+
+
+SAMPLES = [25]           # inputs tried per property case; `run --samples` sets it
+
+
+def bounds(gen):
+    """(kind, low, high) of a range generator, or ("one_of", values, None)."""
+    if "one_of" in gen:
+        return "one_of", list(gen["one_of"]), None
+    kind = next(k for k in ("int", "number", "date") if k in gen)
+    r = gen[kind]
+    if kind == "date":
+        return kind, dt.date.fromisoformat(str(r["from"])), dt.date.fromisoformat(str(r["to"]))
+    return kind, r["from"], r["to"]
+
+
+def pick(gen, rng, where):
+    """A value of a generator: `where` is "low", "high", "mid", "low+1", "high-1" or "random"."""
+    kind, lo, hi = bounds(gen)
+    if kind == "one_of":
+        return lo[{"low": 0, "high": -1}.get(where, rng.randrange(len(lo)))] if where != "mid" else lo[len(lo) // 2]
+    span = (hi - lo).days if kind == "date" else hi - lo
+    step = 1 if kind != "number" else 10 ** -(gen["number"].get("places", 2))
+    offset = {"low": 0, "high": span, "mid": span / 2, "low+1": min(step, span), "high-1": max(span - step, 0)}.get(where)
+    if offset is None:
+        offset = rng.uniform(0, span) if kind == "number" else rng.randint(0, int(span))
+    if kind == "date":
+        return (lo + dt.timedelta(days=int(offset))).isoformat()
+    if kind == "int":
+        return int(lo + int(offset))
+    return round(lo + offset, gen["number"].get("places", 2))
+
+
+def samples(forall, seed, n):
+    """The inputs a property case tries: every range's edges and middle (others at their low end), then seeded
+    random combinations, without repeats, n in all."""
+    rng = random.Random(seed)
+    names = sorted(forall)
+    out, seen = [], set()
+
+    def add(row):
+        key = json.dumps(row, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            out.append(row)
+    for name in names:
+        for where in ("low", "low+1", "mid", "high-1", "high"):
+            add({k: pick(forall[k], rng, where if k == name else "low") for k in names})
+    tries = 0
+    while len(out) < n and tries < n * 20:
+        tries += 1
+        add({k: pick(forall[k], rng, "random") for k in names})
+    return out[:n]
+
+
+def shrink(forall, row, fails, budget=24):
+    """The smallest input that still fails: for each range, binary search from its low end toward the failing
+    value (a list moves toward its first value). `fails(row)` runs the case."""
+    best = dict(row)
+    for name in sorted(forall):
+        kind, lo, _ = bounds(forall[name])
+        if kind == "one_of":
+            for v in lo:
+                if v == best[name] or budget <= 0:
+                    break
+                budget -= 1
+                trial = dict(best, **{name: v})
+                if fails(trial):
+                    best = trial
+                    break
+            continue
+        as_num = (lambda v: dt.date.fromisoformat(v).toordinal()) if kind == "date" else (lambda v: v)
+        from_num = (lambda x: dt.date.fromordinal(int(x)).isoformat()) if kind == "date" else (
+            (lambda x: int(x)) if kind == "int" else (lambda x: round(x, forall[name]["number"].get("places", 2))))
+        low, high = as_num(lo.isoformat() if kind == "date" else lo), as_num(best[name])
+        step = 1 if kind != "number" else 10 ** -(forall[name]["number"].get("places", 2))
+        while high - low > step and budget > 0:
+            budget -= 1
+            mid = from_num((low + high) / 2)
+            trial = dict(best, **{name: mid})
+            if fails(trial):
+                best, high = trial, as_num(mid)
+            else:
+                low = as_num(mid)
+        if budget > 0 and best[name] != from_num(low):
+            budget -= 1
+            trial = dict(best, **{name: from_num(low)})
+            if fails(trial):
+                best = trial
+    return best
 
 
 def contains(actual, expected):
@@ -368,6 +492,8 @@ def verdict(then, result):
         failed += replay_verdict(then["replay"], result)
     if "sent" in then:
         failed += sent_verdict(then["sent"], result.get("sent") or {})
+    if "number" in then:
+        failed += number_verdict(then["number"], result)
     if "schema" in then:
         failed += schema_verdict(then["schema"], result)
     for k, v in (then.get("headers") or {}).items():
@@ -375,6 +501,23 @@ def verdict(then, result):
         if got != v:
             failed.append(f"header {k}: expected {v!r}, got {got!r}")
     return failed
+
+
+def number_verdict(spec, result):
+    """A number taken from the body (the pattern's first group) is within bounds."""
+    m = re.search(spec["pattern"], result.get("text") or "")
+    if not m:
+        return [f"number: {spec['pattern']!r} not found"]
+    try:
+        value = float(m.group(1) if m.groups() else m.group(0))
+    except ValueError:
+        return [f"number: {m.group(0)!r} isn't a number"]
+    out = []
+    if "min" in spec and value < float(spec["min"]):
+        out.append(f"number: {value:g} is below {spec['min']}")
+    if "max" in spec and value > float(spec["max"]):
+        out.append(f"number: {value:g} is above {spec['max']}")
+    return out
 
 
 def sent_verdict(expected, sent):
@@ -468,15 +611,38 @@ def run_cases(cases, adapter, pending=()):
         adapter.setup()
         stack.callback(adapter.teardown)
         for case in cases:
-            try:
-                with adapter.case(case["given"]):
-                    result = adapter.act(case["when"])
-                failed = verdict(case["then"], result)
-            except Exception as e:                     # a setup or action that raises is a failure, shown as one
-                failed, result = [f"error: {type(e).__name__}: {e}"], {}
+            failed = run_property(case, adapter) if case.get("property") else run_one(case, adapter)
             results.append({"id": case["id"], "title": case["title"], "capability": case["capability"],
                             "rules": case["rules"], "passed": not failed, "failures": failed})
     return results
+
+
+def run_one(case, adapter):
+    try:
+        with adapter.case(case["given"]):
+            result = adapter.act(case["when"])
+        return verdict(case["then"], result)
+    except Exception as e:                     # a setup or action that raises is a failure, shown as one
+        return [f"error: {type(e).__name__}: {e}"]
+
+
+def run_property(case, adapter):
+    """Every sample must pass; the first that fails is shrunk to the smallest failing input and reported."""
+    prop, tpl = case["property"], case["template"]
+
+    def concrete(row):
+        c = {"given": substitute(copy.deepcopy(tpl["given"]), row), "when": substitute(copy.deepcopy(tpl["when"]), row),
+             "then": substitute(copy.deepcopy(tpl["then"]), row)}
+        return resolve_schema(resolve_replay(c, case["root"]), case["root"])
+
+    for row in prop["samples"]:
+        failed = run_one(concrete(row), adapter)
+        if failed:
+            smallest = shrink(prop["forall"], row, lambda r: bool(run_one(concrete(r), adapter)))
+            again = run_one(concrete(smallest), adapter) or failed
+            shown = ", ".join(f"{k}={v}" for k, v in sorted(smallest.items()))
+            return [f"fails for {shown} (the smallest failing input found, from {len(prop['samples'])} tried)"] + again
+    return []
 
 
 def profile_gateways(profile=".migration/profile.yaml"):
@@ -521,6 +687,10 @@ def render(slice_, spec_dir, ledger_dir, results=None):
                 lines.append(f"- expected values from the legacy app: `{case['oracle']}`")
             if case.get("ruling"):
                 lines.append(f"- expected values set by quirk ruling {case['ruling']}")
+            for name, gen in (case.get("forall") or {}).items():
+                kind, lo, hi = bounds(gen)
+                lines.append(f"- for every **{name}** " + (f"in {', '.join(map(str, lo))}" if kind == "one_of"
+                                                            else f"from {lo} to {hi}"))
             lines.append("")
             lines.append(f"When {describe(case['when'])}, then {describe_then(case['then'])}.")
             ex = case.get("examples")
@@ -571,6 +741,10 @@ def describe_then(then):
     if "json" in then:
         parts.append(json.dumps(then["json"], ensure_ascii=False))
     parts += [f"shows {t!r}" for t in then.get("text") or []]
+    if "number" in then:
+        n = then["number"]
+        parts.append(f"`{n['pattern']}` is " + " and ".join(
+            x for x in (f"at least {n['min']}" if "min" in n else "", f"at most {n['max']}" if "max" in n else "") if x))
     parts += [f"never {t!r}" for t in then.get("not_text") or []]
     return ", ".join(parts)
 
@@ -590,6 +764,7 @@ def main(argv=None):
             p.add_argument("--slice")
             p.add_argument("--adapter")
             p.add_argument("--all", action="store_true", help="also run capabilities that aren't built yet")
+            p.add_argument("--samples", type=int, default=25, help="inputs each property case tries (default 25)")
             p.add_argument("--results", default=".migration/runs/spec-results.json")
         if name == "render":
             p.add_argument("slice")
@@ -610,6 +785,7 @@ def main(argv=None):
                 print(p)
             print(f"AFS-RESULT gate=spec cases=0 failed=0 problems={len(problems)}")
             return 1
+        SAMPLES[0] = max(1, a.samples)
         cases = [c for path in spec_files(a.spec, a.slice) for c in expand(load(path), path)]
         pending = set() if a.all else {c["capability"] for c in cases
                                         if ledger_status(a.ledger, c["capability"]) not in BUILT}
