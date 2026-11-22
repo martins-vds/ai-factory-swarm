@@ -7,7 +7,7 @@ import {
 } from "@cucumber/cucumber";
 import { chromium } from "playwright";
 import { startServer } from "../../.github/extensions/operator-dashboard/server.mjs";
-import { DashboardWorld, base, bot, evalRepo, github, list, repos } from "./world.mjs";
+import { DashboardWorld, base, bot, evalRepo, github, list, repos, snapshotFiles } from "./world.mjs";
 
 setDefaultTimeout(20_000);
 setWorldConstructor(DashboardWorld);
@@ -257,12 +257,12 @@ Then("{string} and {string} generation fail with that repository's gh error", as
             error.stderr.includes(`repos/martins-vds/${this.fixture.denied}/`) && error.stderr.includes("gh: Not Found (HTTP 404)"));
     }
 });
-Given("all five datasets were generated {int} minutes ago", async function (minutes) {
+Given("all datasets were generated {int} minutes ago", async function (minutes) {
     await this.generatedTimes(minutes);
 });
 Then("every dataset shows its Generated time and no stale datasets", async function () {
     const times = this.page.locator(".meta time");
-    assert.deepEqual(await times.evaluateAll(nodes => nodes.map(n => n.dateTime)), Array(5).fill(this.ago(4)));
+    assert.deepEqual(await times.evaluateAll(nodes => nodes.map(n => n.dateTime)), Array(snapshotFiles.length).fill(this.ago(4)));
     assert.equal(await this.page.getByText("Stale", { exact: true }).count(), 0);
 });
 Then("only {string} is stale", async function (names) {
@@ -296,5 +296,5 @@ Given("slice {string} finished ticket {string} with mutation {float}, CRAP {int}
         await this.ticket(slice, id, { mutation, crap, seconds, flaky });
     });
 When("I show slice {string}", async function (slice) {
-    await this.page.getByLabel("Slice").selectOption({ label: `target/${slice}` });
+    await this.page.locator("#health-slice").selectOption({ label: `target/${slice}` });
 });
