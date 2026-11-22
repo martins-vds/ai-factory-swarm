@@ -190,6 +190,27 @@
         },
         "command": {
           "$ref": "#/$defs/command"
+        },
+        "replay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recording",
+            "exchange"
+          ],
+          "description": "Replay one recorded legacy exchange (ADR-0067): its request is sent to the target, and `then.replay` compares the response with the recorded one. The recording is the oracle.",
+          "properties": {
+            "recording": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A JSON file of exchanges, from the repo root: {name: {request: {method, path, form?, json?, headers?}, response: {status, body, content_type?}}}."
+            },
+            "exchange": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The exchange's name in that file; may be `{column}` from the examples."
+            }
+          }
         }
       }
     },
@@ -247,6 +268,32 @@
           "type": "object",
           "additionalProperties": {
             "type": "string"
+          }
+        },
+        "replay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "body"
+          ],
+          "description": "With `when.replay`: the status must be the recorded one, and the body must match it after normalizing.",
+          "properties": {
+            "body": {
+              "enum": [
+                "exact",
+                "text",
+                "json",
+                "ignore"
+              ],
+              "description": "exact: the body, line endings and trailing spaces normalized; text: the visible text (tags dropped, entities decoded, whitespace collapsed); json: equal as JSON; ignore: only the status."
+            },
+            "mask": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Regular expressions replaced by <masked> on both sides: values that differ by design (dates, ids, tokens)."
+            }
           }
         }
       }
