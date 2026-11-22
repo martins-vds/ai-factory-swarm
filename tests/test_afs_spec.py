@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -282,6 +283,13 @@ class ReplayTest(unittest.TestCase):
         self.assertIn("body (text) differs", failure[0])
         self.assertIn("Fee: $4.50", failure[0])
 
+    def test_a_recording_may_nest_its_exchanges(self):
+        rec = self.mig / "characterization/goldens/gateway.json"
+        rec.write_text(json.dumps({"gateway_requests": [], "responses": self.RECORDING}))
+        ex = sp.load_exchange(self.repo, {"recording": ".migration/characterization/goldens/gateway.json",
+                                          "under": "responses", "exchange": "GET /fees/unknown"})
+        self.assertEqual(ex["response"]["status"], 404)
+
     def test_exact_json_masks_and_ignore(self):
         v = sp.replay_verdict
         self.assertEqual(v({"body": "exact", "expected": "a \r\nb\n"}, {"text": "a\nb"}), [])
@@ -317,3 +325,74 @@ class ReplayTest(unittest.TestCase):
         self.assertIn("the recorded exchange `{name}` (`.migration/characterization/goldens/{file}`) is replayed", text)
         self.assertIn("the same status and body as recorded (text)", text)
         self.assertIn("| http.json | GET /fees/unknown | not run yet |", text)
+
+
+class ContractTest(unittest.TestCase):
+    """ADR-0068: contracts at a boundary: a real HTTP stub per gateway, the requests sent, the shape of a response."""
+
+    def test_a_stub_answers_in_order_records_requests_and_is_found_through_the_environment(self):
+        import os
+        import urllib.error
+        import urllib.request
+        sys.path.insert(0, str(ROOT / "tools"))
+        import afs_spec_stub as stub
+        wanted = {"payment": {"respond": [{"status": 200, "body": "charged\n"}, {"status": 402, "body": "declined\n"}]},
+                  "maps": {"unreachable": True}}
+        config = {"payment": {"env": "PAYMENT_GATEWAY_URL"}, "maps": {"env": "MAP_URL"}}
+        with stub.gateways(wanted, config) as stubs:
+            base = os.environ["PAYMENT_GATEWAY_URL"]
+            first = urllib.request.urlopen(urllib.request.Request(base + "/charge?loan=L1", method="POST"))
+            self.assertEqual((first.status, first.read()), (200, b"charged\n"))
+            for _ in range(2):                                   # the last answer repeats
+                with self.assertRaises(urllib.error.HTTPError) as e:
+                    urllib.request.urlopen(urllib.request.Request(base + "/charge?loan=L2", method="POST", data=b"x=1"))
+                self.assertEqual(e.exception.code, 402)
+            with self.assertRaises(OSError):
+                urllib.request.urlopen(os.environ["MAP_URL"] + "/tiles", timeout=2)
+            got = stub.sent(stubs)
+        self.assertNotIn("PAYMENT_GATEWAY_URL", os.environ)
+        self.assertEqual([(r["method"], r["path"]) for r in got["payment"]],
+                         [("POST", "/charge?loan=L1"), ("POST", "/charge?loan=L2"), ("POST", "/charge?loan=L2")])
+        self.assertEqual(got["payment"][1]["body"], "x=1")
+        self.assertEqual(got["maps"], [])
+        with self.assertRaises(ValueError):
+            with stub.gateways({"sms": {"respond": {"status": 200}}}, config):
+                pass
+
+    def test_sent_and_schema_verdicts(self):
+        want = {"payment": [{"method": "post", "path": "/charge?loan=L2"}]}
+        ok = {"payment": [{"method": "POST", "path": "/charge?loan=L2", "body": ""}]}
+        self.assertEqual(sp.sent_verdict(want, ok), [])
+        self.assertIn("the target sent", sp.sent_verdict(want, {"payment": []})[0])
+        self.assertIn("didn't put a stub", sp.sent_verdict(want, {})[0])
+        schema = {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["legs"],
+                                                            "properties": {"legs": {"type": "array"}}}}
+        self.assertEqual(sp.schema_verdict(schema, {"json": [{"legs": []}, {"legs": [1]}]}), [])
+        bad = sp.schema_verdict(schema, {"json": [{"legs": []}, {"edges": []}]})
+        self.assertEqual(bad, ["schema: 1: 'legs' is a required property"])
+        self.assertEqual(sp.schema_verdict(schema, {"json": None}), ["schema: expected a JSON body, got none"])
+
+    def test_an_integration_has_a_contract_case_or_says_why_not(self):
+        with tempfile.TemporaryDirectory() as d:
+            mig = pathlib.Path(d) / ".migration"
+            (mig / "ledger").mkdir(parents=True)
+            (mig / "spec/fees").mkdir(parents=True)
+            led = {"id": "integration.payment-gateway", "kind": "integration", "characterization_tier": "B",
+                   "rules": [{"id": "declined-is-502", "rule": "a declined charge answers 502"}]}
+            (mig / "ledger/integration.payment-gateway.yaml").write_text(yaml.safe_dump(led))
+            case = {"title": "A declined charge is reported", "rule": "declined-is-502", "oracle": "x",
+                    "when": {"http": {"method": "POST", "path": "/payments/L2"}}, "then": {"status": 502}}
+            (pathlib.Path(d) / "x").write_text("{}")
+            spec_file = mig / "spec/fees/gateway.yaml"
+            spec_file.write_text(yaml.safe_dump({"capability": "integration.payment-gateway", "cases": [case]}))
+            check = lambda: "\n".join(sp.check(mig / "spec", mig / "ledger", True))
+            self.assertIn("is an integration, so its contract is checked at the boundary", check())
+            case.update(given={"gateways": {"payment": {"respond": {"status": 402, "body": "declined\n"}}}},
+                        then={"status": 502, "sent": {"payment": [{"method": "POST", "path": "/charge?loan=L2"}]}})
+            spec_file.write_text(yaml.safe_dump({"capability": "integration.payment-gateway", "cases": [case]}))
+            self.assertEqual(check(), "")
+            case["then"] = {"status": 200, "schema": "missing.json"}
+            spec_file.write_text(yaml.safe_dump({"capability": "integration.payment-gateway", "cases": [case]}))
+            self.assertIn("schema 'missing.json' can't be read as JSON", check())
+            text = sp.render("fees", mig / "spec", mig / "ledger")
+            self.assertIn("a body shaped as `missing.json`", text)

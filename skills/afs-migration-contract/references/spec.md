@@ -29,18 +29,30 @@ Migrator builds the code, and the Migrator can't change it.
    - says what must come back: `status`, a `json` subset, `text` that must appear, `not_text`, `headers`.
 4. **Replay what was recorded** (ADR-0067). For a tier-A capability, turn its recorded exchanges into replay
    cases instead of copying values: `when: {replay: {recording: <file>, exchange: <name>}}` and
-   `then: {replay: {body: text}}`. A recording is a JSON file of `{name: {request: {method, path, form?, json?,
+   `then: {replay: {body: text}}`. A recording is a JSON file of (or with `under: <key>`, nesting) `{name: {request: {method, path, form?, json?,
    headers?}, response: {status, body}}}`. `body` compares `exact`, `text` (markup and whitespace dropped),
    `json`, or `ignore` (status only). `mask` lists regular expressions for values that differ by design, such
    as a date or an id. Set the clock to the recording's date when the response depends on it. With
    `spec.required`, a tier-A capability with a spec replays at least one exchange, or its ledger entry says why
    none can be replayed (`no_replay: <why>`, for example a stateful JSF conversation).
-5. **Tables for ranges.** Boundaries go in `examples` rows: zero, the last free value, the first charged one,
+5. **Contracts at the boundary** (ADR-0068). For an `integration` capability:
+   - an API whose values can't be fixed (randomized routes, generated ids): `then.schema`, a JSON Schema the
+     body must satisfy, inline or a file such as `.migration/spec/<slice>/<name>.schema.json`;
+   - a gateway the target calls: `given.gateways: {<name>: {respond: {status, body}}}` puts a real local HTTP
+     stub in front of it (or `{unreachable: true}`). The profile's `spec.gateways: {<name>: {env: VAR}}` (or
+     `setting:`) says how the target finds it. `then.sent: {<name>: [{method, path, body?}]}` lists exactly
+     what the target must have sent, and `[]` means nothing.
+
+   Take the answers and the expected requests from the recordings, which are the oracle. A replay with
+   `given.gateways` covers both sides at once. With `spec.required`, an integration with a spec has such a
+   case, or its ledger entry says why none can exist (`no_contract`, for example a queue replaced by an
+   in-process call).
+6. **Tables for ranges.** Boundaries go in `examples` rows: zero, the last free value, the first charged one,
    the cap and past it, empty and missing input. `{column}` fills a row's value into `given`, `when` and
    `then`, the clock included.
-6. **The domain's words only.** No module, class or function names, no database tables: a case must survive
+7. **The domain's words only.** No module, class or function names, no database tables: a case must survive
    any restructuring that keeps the behaviour.
-7. **Check it:** `afs-spec check --require` (through `afs-run`) passes, and `afs-spec render <slice>` reads as
+8. **Check it:** `afs-spec check --require` (through `afs-run`) passes, and `afs-spec render <slice>` reads as
    a page the customer can follow. Until the Migrator marks a capability `in-progress` or `migrated` in the
    ledger, `afs-spec run` reports its cases as pending, so your PR's checks pass before the code exists.
 

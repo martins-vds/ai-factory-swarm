@@ -23,6 +23,11 @@ of the code, so a refactor that keeps the behaviour can't break one.
   runner sends its request and compares the response with the recorded one (`then.replay: {body, mask}`), so
   the recording itself is the oracle and no value is copied by hand. With --require, every tier-A capability
   with a spec replays at least one exchange, or its ledger entry says why not (`no_replay: <why>`).
+* **Contracts at a boundary** (ADR-0068): `then.schema` (a JSON Schema, inline or a file from the repo root)
+  checks the shape of a JSON response, for an API whose values can't be fixed; `given.gateways` puts a real
+  local HTTP stub in front of each named gateway (`afs_spec_stub.py`; the profile's `spec.gateways` says how the
+  target finds it), answering as the case says, and `then.sent` lists the requests the target must have sent.
+  With --require, an `integration` capability with a spec has a contract case or a `no_contract` reason.
 * `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
 
 This file is the harness's. A target's agents may not change it or its adapter, and only a Characterizer
@@ -104,6 +109,8 @@ def load_exchange(root, replay):
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise SpecError(f"recording {replay['recording']!r} can't be read as JSON: {e}")
+    if replay.get("under") and isinstance(doc, dict):
+        doc = doc.get(replay["under"])
     ex = doc.get(replay["exchange"]) if isinstance(doc, dict) else None
     if not isinstance(ex, dict) or not isinstance(ex.get("request"), dict) or not isinstance(ex.get("response"), dict):
         raise SpecError(f"recording {replay['recording']!r} has no exchange {replay['exchange']!r} with a request "
@@ -114,6 +121,24 @@ def load_exchange(root, replay):
         raise SpecError(f"exchange {replay['exchange']!r} in {replay['recording']!r} needs request.method and a "
                         "request.path starting with /")
     return ex
+
+
+def schema_problems(root, case, path, i):
+    schema = case["then"].get("schema")
+    if schema is None:
+        return []
+    try:
+        if isinstance(schema, str):
+            schema = json.loads((pathlib.Path(root) / schema).read_text(encoding="utf-8"))
+        import jsonschema
+        jsonschema.Draft202012Validator.check_schema(schema)
+    except ImportError:
+        return []
+    except (OSError, ValueError) as e:
+        return [f"{path}: case {i + 1}: schema {case['then']['schema']!r} can't be read as JSON: {e}"]
+    except Exception as e:  # noqa: BLE001 (jsonschema's SchemaError)
+        return [f"{path}: case {i + 1}: schema isn't a valid JSON Schema: {str(e).splitlines()[0]}"]
+    return []
 
 
 def replay_problems(root, case, path, i):
@@ -173,8 +198,11 @@ def check(spec_dir, ledger_dir, require=False):
             problems.append(f"{path}: capability {cap} has no ledger entry (.migration/ledger/{cap}.yaml)")
             continue
         root = pathlib.Path(spec_dir).resolve().parent.parent
-        replays = 0
+        replays = contracts = 0
         for i, case in enumerate(doc["cases"]):
+            if "schema" in case["then"] or "sent" in case["then"]:
+                contracts += 1
+            problems += schema_problems(root, case, path, i)
             replay = (case.get("when") or {}).get("replay")
             if replay:
                 replays += 1
@@ -206,6 +234,11 @@ def check(spec_dir, ledger_dir, require=False):
                 if missing:
                     problems.append(f"{path}: case {i + 1} uses {{{', '.join(sorted(missing))}}} but its examples "
                                     "have no such column")
+        if require and not contracts and ledger_field(ledger_dir, cap, "kind") == "integration" \
+                and not ledger_field(ledger_dir, cap, "no_contract"):
+            problems.append(f"{path}: {cap} is an integration, so its contract is checked at the boundary: add a case "
+                            "with `then.schema` (the shape of what it answers) or `given.gateways` and `then.sent` "
+                            "(what it sends), or say why none can be in its ledger entry (`no_contract`)")
         if require and not replays and ledger_field(ledger_dir, cap, "characterization_tier") == "A" \
                 and not ledger_field(ledger_dir, cap, "no_replay"):
             problems.append(f"{path}: {cap} was characterized at tier A, so its recorded exchanges can be replayed: add "
@@ -264,6 +297,17 @@ def resolve_replay(case, root):
     return dict(case, when={"http": http}, then=then)
 
 
+def resolve_schema(case, root):
+    schema = case["then"].get("schema")
+    if isinstance(schema, str):
+        try:
+            loaded = json.loads((pathlib.Path(root) / schema).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return case                                 # check reports it; the verdict fails with the path
+        return dict(case, then=dict(case["then"], schema=loaded))
+    return case
+
+
 def expand(doc, path, root=None):
     """The concrete cases of one spec file, with the background and example rows applied."""
     bg = (doc.get("background") or {}).get("given")
@@ -279,7 +323,7 @@ def expand(doc, path, root=None):
                         "given": substitute(merge_given(bg, case.get("given")), row),
                         "when": substitute(copy.deepcopy(case["when"]), row),
                         "then": substitute(copy.deepcopy(case["then"]), row)})
-            out[-1] = resolve_replay(out[-1], root)
+            out[-1] = resolve_schema(resolve_replay(out[-1], root), root)
     return out
 
 
@@ -322,11 +366,46 @@ def verdict(then, result):
             failed.append(f"not_text: {t!r} found")
     if "replay" in then:
         failed += replay_verdict(then["replay"], result)
+    if "sent" in then:
+        failed += sent_verdict(then["sent"], result.get("sent") or {})
+    if "schema" in then:
+        failed += schema_verdict(then["schema"], result)
     for k, v in (then.get("headers") or {}).items():
         got = (result.get("headers") or {}).get(k.lower())
         if got != v:
             failed.append(f"header {k}: expected {v!r}, got {got!r}")
     return failed
+
+
+def sent_verdict(expected, sent):
+    """Each gateway got exactly these requests, in order: method and path equal, body containing the given text."""
+    failed = []
+    for name, want in expected.items():
+        got = sent.get(name)
+        if got is None:
+            failed.append(f"sent {name}: the case didn't put a stub in front of {name} (given.gateways)")
+            continue
+        ok = len(got) == len(want) and all(
+            g["method"] == w["method"].upper() and g["path"] == w["path"] and str(w.get("body", "")) in g["body"]
+            for g, w in zip(got, want))
+        if not ok:
+            failed.append(f"sent {name}: expected\n" + printer(want) + "the target sent\n"
+                          + printer([{k: g[k] for k in ("method", "path", "body") if g.get(k) or k != "body"} for g in got]))
+    return failed
+
+
+def schema_verdict(schema, result):
+    if isinstance(schema, str):
+        return [f"schema: {schema!r} can't be read as a JSON Schema"]
+    try:
+        import jsonschema
+    except ImportError:
+        return ["schema: jsonschema isn't installed, so the contract can't be checked"]
+    body = result.get("json")
+    if body is None:
+        return ["schema: expected a JSON body, got none"]
+    errs = sorted(jsonschema.Draft202012Validator(schema).iter_errors(body), key=lambda e: list(e.absolute_path))
+    return [f"schema: {'/'.join(str(p) for p in e.absolute_path) or '(top)'}: {e.message}" for e in errs[:10]]
 
 
 TAG = re.compile(r"<[^>]+>")
@@ -370,11 +449,11 @@ def printer(value):
 
 # ---------------------------------------------------------------- running
 
-def adapter_for(name):
+def adapter_for(name, gateways=None):
     if name == "django":
         sys.path.insert(0, str(HERE))
         import afs_spec_django
-        return afs_spec_django.DjangoAdapter()
+        return afs_spec_django.DjangoAdapter(gateways=gateways)
     raise SpecError(f"no spec adapter {name!r} (the stack pack's profile names one under spec.adapter)")
 
 
@@ -398,6 +477,14 @@ def run_cases(cases, adapter, pending=()):
             results.append({"id": case["id"], "title": case["title"], "capability": case["capability"],
                             "rules": case["rules"], "passed": not failed, "failures": failed})
     return results
+
+
+def profile_gateways(profile=".migration/profile.yaml"):
+    try:
+        doc = yaml.safe_load(pathlib.Path(profile).read_text(encoding="utf-8")) or {}
+    except OSError:
+        return {}
+    return ((doc.get("spec") or {}).get("gateways")) or {}
 
 
 def profile_adapter(profile=".migration/profile.yaml"):
@@ -475,6 +562,10 @@ def describe_then(then):
     parts = []
     if "replay" in then:
         parts.append(f"the same status and body as recorded ({then['replay']['body']})")
+    if "schema" in then:
+        parts.append("a body shaped as " + (f"`{then['schema']}`" if isinstance(then["schema"], str) else "the contract"))
+    for name, reqs in (then.get("sent") or {}).items():
+        parts.append(f"{name} was sent " + (", ".join(f"`{r['method']} {r['path']}`" for r in reqs) or "nothing"))
     if "status" in then:
         parts.append(str(then["status"]))
     if "json" in then:
@@ -523,7 +614,8 @@ def main(argv=None):
         pending = set() if a.all else {c["capability"] for c in cases
                                         if ledger_status(a.ledger, c["capability"]) not in BUILT}
         runnable = [c for c in cases if c["capability"] not in pending]
-        results = run_cases(cases, adapter_for(a.adapter or profile_adapter()) if runnable else None, pending)
+        adapter = adapter_for(a.adapter or profile_adapter(), profile_gateways()) if runnable else None
+        results = run_cases(cases, adapter, pending)
         for cap in sorted(pending):
             print(f"PEND {cap}: not built yet (ledger status {ledger_status(a.ledger, cap)!r}); its cases run "
                   "once the status is in-progress or migrated")

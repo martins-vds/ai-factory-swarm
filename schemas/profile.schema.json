@@ -657,6 +657,24 @@
         "required": {
           "type": "boolean",
           "description": "Every rule of a capability that has a spec file must be proved by a case (or carry `no_spec`). Off until the target's slices have specs."
+        },
+        "gateways": {
+          "type": "object",
+          "description": "ADR-0068: how the target finds each gateway a spec case stubs: the environment variable or framework setting that holds its base URL.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {
+              "env": {
+                "type": "string"
+              },
+              "setting": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
