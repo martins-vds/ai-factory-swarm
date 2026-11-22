@@ -125,6 +125,7 @@ humans, and approved for cutover.
 | 60 | An eval pins the model its sessions run: `dispatch`/`chain` take `--model` (or an explicit `--auto-model`), `grade` records each session's model from its logs, `compare` flags mixed models | [0060](adr/0060-an-eval-pins-the-model.md) |
 | 61 | Customer tests are data the implementer can't rewrite: `.migration/spec/<slice>/*.yaml` cases name a ledger rule, act through a public entry point and must assert; the harness-owned `afs-spec` checks, runs (Django adapter) and renders them | [0061](adr/0061-customer-tests-are-data-the-implementer-cannot-rewrite.md) |
 | 62 | The Characterizer writes the spec before the code, each value from a legacy oracle or a ruling; cases of unbuilt capabilities are pending; only the Characterizer may change `.migration/spec/` (plan, finish check, CI); a wrong case is a `spec dispute` handoff | [0062](adr/0062-the-characterizer-writes-the-spec-and-the-migrator-is-held-to-it.md) |
+| 63 | The spec is its own gate (`gates.spec`): a Migrator ticket that builds a specced capability reports it, and `validate.py` checks the journal's last spec run passed without skipping that capability; `afs-mutation --spec` reports the mutants only the spec misses, at slice acceptance | [0063](adr/0063-the-spec-is-a-gate-and-its-mutants-are-reported.md) |
 
 ---
 

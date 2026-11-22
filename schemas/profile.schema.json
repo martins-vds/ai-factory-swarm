@@ -279,6 +279,10 @@
         "tests": {
           "$ref": "#/$defs/commands"
         },
+        "spec": {
+          "$ref": "#/$defs/commands",
+          "description": "The customer spec run (ADR-0061, ADR-0063): `python .migration/harness/tools/afs-spec run`. A Migrator ticket that builds a specced capability reports its exit as `gates.spec`."
+        },
         "crap": {
           "$ref": "#/$defs/commands"
         },

@@ -195,7 +195,7 @@ def shared_test_files():
 
 
 # Gates a return reports as an exit code, and the journal rows that back them (ADR-0056).
-EXIT_GATES = ("build", "behavior", "idiom", "crap", "regression")
+EXIT_GATES = ("build", "behavior", "spec", "idiom", "crap", "regression")
 JOURNAL_ROW = re.compile(r"^\| (\d{4}-\d\d-\d\dT[^|]+?) \| ([^|]+?) \| (-?\d+) \|")
 
 

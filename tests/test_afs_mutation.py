@@ -238,6 +238,52 @@ class AfsMutationTest(unittest.TestCase):
             self.assertIn("survived: ", high.stdout)
 
 
+class SpecMutationTest(unittest.TestCase):
+    """ADR-0063: --spec kills mutants with the customer spec only, and reports without failing."""
+
+    def run_main(self, argv, d):
+        import contextlib
+        import io
+        import os
+        seen = {}
+
+        def shard(i, workdir, paths, runners, env):
+            seen.update(runners)
+            return JUNIT, "", [], {}
+        version = mock.Mock(stdout="mutmut version 2.5.1")
+        cwd = os.getcwd()
+        os.chdir(d)
+        try:
+            with mock.patch.object(m.shutil, "which", return_value="/usr/bin/mutmut"), \
+                    mock.patch.object(m.subprocess, "run", return_value=version), \
+                    mock.patch.object(m, "run_shard", side_effect=shard), \
+                    mock.patch.object(sys, "argv", ["afs-mutation", *argv]), \
+                    mock.patch.dict(os.environ, {"AFS_TICKET": "FE-01"}), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                code = m.main()
+        finally:
+            os.chdir(cwd)
+        return code, out.getvalue(), seen
+
+    def test_the_spec_runs_each_mutant_and_a_low_score_is_a_report_not_a_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            pathlib.Path(d, ".migration").mkdir()
+            pathlib.Path(d, "src").mkdir()
+            pathlib.Path(d, "src/fees.py").write_text("x = 1\n")
+            code, out, runners = self.run_main(["--paths", "src/fees.py", "--spec", "--jobs", "1"], d)
+            self.assertEqual(code, 0, out)                                 # score 0.667 would fail a 0.8 gate
+            self.assertIn("AFS-RESULT gate=spec-mutation score=0.667 killed=2 survived=1", out)
+            self.assertNotIn("gate=mutation ", out)
+            self.assertTrue(runners["src/fees.py"].endswith("afs-spec run"), runners)
+            text = pathlib.Path(d, ".migration/evidence/mutants/FE-01.spec.md").read_text()
+            self.assertIn("Surviving mutants (customer spec only): FE-01", text)
+            self.assertIn("a mutant no customer spec case killed", text)
+            self.assertFalse(pathlib.Path(d, ".migration/evidence/mutants/FE-01.md").exists())
+            code, out, _ = self.run_main(["--paths", "src/fees.py", "--jobs", "1"], d)
+            self.assertEqual(code, 1, out)                                 # the ordinary gate still enforces
+            self.assertIn("AFS-RESULT gate=mutation score=0.667", out)
+
+
 class ImportTimeSelectionTest(unittest.TestCase):
     """Synthetic LL-04: 5 of 8 mutants "survived": removed `@require_GET` decorators and mutated `urlpatterns`.
     Code that runs at import is under no test's coverage context, so coverage selection never ran the tests

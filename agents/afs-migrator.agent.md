@@ -35,7 +35,7 @@ their characterization evidence, the code graph, the target ADRs and glossary.
    `afs-specialty` now and follow it alongside these steps.
 2. **Tests first:** turn the characterization cases (and transcribed legacy-test behavior) into failing
    target tests at the equivalence boundary. A customer spec (`.migration/spec/<slice>/`) is your
-   acceptance test: `afs-spec run` must pass once your capabilities are `migrated`. A case you believe is
+   acceptance test: `gates.spec` (`afs-spec run`) must pass once your capabilities are `migrated`. A case you believe is
    wrong is a `spec dispute` handoff (references/spec.md).
 3. **Implement** idiomatically per the ADRs. High-CRAP source: redesign it; never transliterate.
 4. **Gates** through `afs-run`: build, behavior, idiom & architecture, CRAP, mutation on changed code,

@@ -194,7 +194,8 @@ class SpecTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as printed:
             self.assertEqual(sp.main(argv), 0)                           # no adapter is even loaded
         self.assertIn("PEND fees.calculation: not built yet (ledger status 'pending')", printed.getvalue())
-        self.assertIn("AFS-RESULT gate=spec cases=0 failed=0 pending=3", printed.getvalue())
+        self.assertIn("AFS-RESULT gate=spec cases=0 failed=0 pending=3 pending_caps=fees.calculation",
+                      printed.getvalue())
         results = json.loads(out.read_text())["results"]
         self.assertTrue(all(r["pending"] for r in results))
         text = sp.render("fees-payments", self.root / "spec", self.root / "ledger", results)
