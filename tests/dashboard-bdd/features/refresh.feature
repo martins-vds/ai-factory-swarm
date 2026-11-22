@@ -8,15 +8,15 @@ Feature: Fresh data under the viewer's own identity
     Then "needs" and "sessions" generation fail with that repository's gh error
 
   Scenario: Every table shows when it was generated
-    Given all five datasets were generated 4 minutes ago
+    Given all datasets were generated 4 minutes ago
     When I open the dashboard
     Then every dataset shows its Generated time and no stale datasets
-    When all five datasets were generated 6 minutes ago
+    When all datasets were generated 6 minutes ago
     And I wait for the next poll
     Then only "sessions" is stale
-    When all five datasets were generated 61 minutes ago
+    When all datasets were generated 61 minutes ago
     And I wait for the next poll
-    Then only "sessions, needs, families, cases, coverage" is stale
+    Then only "sessions, needs, families, cases, coverage, health, healthTickets" is stale
 
   Scenario: The data can be checked and rerun
     When I generate "needs" and open the dashboard

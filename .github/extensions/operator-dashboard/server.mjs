@@ -10,6 +10,7 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const filenames = {
     sessions: "sessions.json", needs: "needs.json", families: "trend.json",
     cases: "trend-cases.json", coverage: "trend-coverage.json",
+    health: "health.json", healthTickets: "health-tickets.json",
 };
 const repos = ["pilot-target", "synthetic-target", "eval", "swarm"].flatMap(
     name => ["--repo", `martins-vds/ai-factory-${name}`],

@@ -12,7 +12,8 @@ export const repos = ["ai-factory-pilot-target", "ai-factory-synthetic-target", 
 export const evalRepo = "ai-factory-eval";
 export const base = "eval/2026-11-18-4ra-r1/synthetic-ll-02";
 export const bot = { login: "Copilot" };
-export const snapshotFiles = ["needs.json", "sessions.json", "trend.json", "trend-cases.json", "trend-coverage.json"];
+export const snapshotFiles = ["needs.json", "sessions.json", "trend.json", "trend-cases.json", "trend-coverage.json",
+    "health.json", "health-tickets.json"];
 export const list = text => text.split(/,\s*/);
 export const github = (repo, path) => `https://github.com/martins-vds/${repo}/${path}`;
 
@@ -74,6 +75,7 @@ export class DashboardWorld {
         const out = join(this.snapshots, `${dataset}.json`);
         const args = dataset === "trend"
             ? ["--eval-root", this.dir, ...(this.withCoverage ? ["--target", join(this.dir, "target")] : [])]
+            : dataset === "health" ? ["--target", join(this.dir, "target")]
             : repos.flatMap(repo => ["--repo", `martins-vds/${repo}`]);
         const argv = [dataset, ...args, "--out", out];
         this.commands[dataset] = ["tools/afs-dashboard", ...argv].join(" ");
@@ -101,6 +103,23 @@ export class DashboardWorld {
             await writeFile(join(this.results, `${date}-${family}-r${i + 1}.json`), JSON.stringify({ cases: rows }));
         }
         if (state) await writeFile(join(this.results, `${date}-${family}-r1.state.json`), "not a graded result");
+    }
+
+    async ticket(slice, id, { mutation, crap, seconds, flaky = 0 }) {
+        const mig = join(this.dir, "target/.migration");
+        for (const sub of ["plan", "evidence/runs", "evidence/flaky"]) await mkdir(join(mig, sub), { recursive: true });
+        const planFile = join(mig, "plan", `${slice}.tickets.yaml`);
+        let plan = "";
+        try { plan = await readFile(planFile, "utf8"); } catch { plan = `slice: ${slice}\ntickets:\n`; }
+        plan += `  - id: ${id}\n    role: afs-migrator\n    files: [src/${slice}/, tests/${slice}/]\n    blocked_by: []\n`;
+        await writeFile(planFile, plan);
+        await writeFile(join(mig, "profile.yaml"), "gates:\n  tests: [pytest -q]\n");
+        await writeFile(join(this.returns, `${id}.afs-migrator.yaml`), `ticket: ${id}\ngates: {mutation_changed: ${mutation}}\n`);
+        const head = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n|---|---|---|---|---|---|---|---|\n";
+        await writeFile(join(mig, "evidence/runs", `${id}.md`), head +
+            `| 2026-11-20T10:00:00Z | crap | 0 | 2.0 | \`python crap.py\` | abc | - | gate=crap max=${crap} |\n` +
+            `| 2026-11-20T10:01:00Z | behaviour | 0 | ${seconds} | \`pytest -q\` | abc | - |  |\n`);
+        if (flaky) await writeFile(join(mig, "evidence/flaky", `${id}.md`), "# Flaky runs\n" + "\n## `pytest -q`\n".repeat(flaky));
     }
 
     async requestLog() {

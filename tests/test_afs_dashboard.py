@@ -130,3 +130,50 @@ class GitHubDataTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HealthTest(unittest.TestCase):
+    """Step 5.1 (ADR-0071): per-slice test health from a target's own records, and the per-ticket trend."""
+
+    def test_health_reads_returns_journals_flaky_records_tests_and_specs(self):
+        import subprocess
+        import yaml
+        with tempfile.TemporaryDirectory() as d:
+            t = pathlib.Path(d) / "target"
+            mig = t / ".migration"
+            for sub in ("plan", "returns", "evidence/runs", "evidence/flaky", "spec/fees", "ledger"):
+                (mig / sub).mkdir(parents=True)
+            (mig / "profile.yaml").write_text("gates:\n  tests: [pytest -q, python .migration/harness/tools/afs-spec run]\n")
+            (mig / "plan/fees.tickets.yaml").write_text(yaml.safe_dump({"slice": "fees", "tickets": [
+                {"id": "LL-03", "role": "afs-migrator", "files": ["src/fees/", "tests/fees/"], "blocked_by": []},
+                {"id": "LL-09", "role": "afs-migrator", "files": ["src/fees/", "tests/fees/"], "blocked_by": ["LL-03"]},
+                {"id": "LL-10", "role": "afs-migrator", "files": ["src/fees/"], "blocked_by": []}]}))
+            head = "| UTC | Gate | Exit | Seconds | Command | Log SHA-256 | First highlight | Result |\n|---|---|---|---|---|---|---|---|\n"
+            for tid, score, crap, secs in (("LL-03", 0.8, 7, 11.7), ("LL-09", 0.93, 9, 12.5)):
+                (mig / f"returns/{tid}.afs-migrator.yaml").write_text(yaml.safe_dump({"gates": {"mutation_changed": score}}))
+                (mig / f"evidence/runs/{tid}.md").write_text(head +
+                    f"| 2026-11-20T10:00:00Z | verifier-crap | 0 | 2.0 | `crap.py` | a | - | gate=crap max={crap} |\n"
+                    f"| 2026-11-20T10:01:00Z | behaviour | 1 | 99.0 | `pytest -q` | a | - |  |\n"
+                    f"| 2026-11-20T10:02:00Z | my-label | 0 | {secs} | `pytest -q` | a | - |  |\n")
+            (mig / "evidence/flaky/LL-09.md").write_text("# Flaky runs\n\n## `pytest -q`\n- x\n\n## `pytest -q`\n- y\n")
+            (t / "src/fees").mkdir(parents=True)
+            (t / "src/fees/views.py").write_text("def fee():\n    return 1\n")
+            (t / "tests/fees").mkdir(parents=True)
+            (t / "tests/fees/test_fee.py").write_text(
+                "from unittest import mock\nfrom fees import views\n\ndef test_a():\n"
+                "    with mock.patch('fees.views.fee'):\n        assert views._cache\n")
+            (mig / "ledger/fees.calc.yaml").write_text(yaml.safe_dump({"id": "fees.calc", "rules": [{"id": "r"}]}))
+            (mig / "spec/fees/late.yaml").write_text(yaml.safe_dump({"capability": "fees.calc", "cases": [
+                {"title": "a fee", "rule": "r", "examples": {"columns": ["x"], "rows": [[1], [2]]},
+                 "when": {"http": {"method": "GET", "path": "/f/{x}"}}, "then": {"status": 200}}]}))
+            for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"]):
+                subprocess.run(["git", *cmd], cwd=t, check=True, capture_output=True)
+            slices, tickets = dash.health([t])
+        self.assertEqual([(r["ticket"], r["mutation"], r["crap_max"], r["tests_seconds"], r["flaky"]) for r in tickets],
+                         [("LL-03", 0.8, 7.0, 11.7, 0), ("LL-09", 0.93, 9.0, 12.5, 2)])   # LL-10 has no return yet
+        (row,) = slices
+        self.assertEqual({k: row[k] for k in ("slice", "tickets", "mutation_first", "mutation_last", "crap_max",
+                                              "tests_seconds", "flaky", "own_patches", "private", "spec_cases")},
+                         {"slice": "fees", "tickets": 2, "mutation_first": 0.8, "mutation_last": 0.93, "crap_max": 9.0,
+                          "tests_seconds": 12.5, "flaky": 2, "own_patches": 1, "private": 1, "spec_cases": 2})
+        self.assertEqual(row["coupling"], 0.0)               # one commit changed the code and only added tests
