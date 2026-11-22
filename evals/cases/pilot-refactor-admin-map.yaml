@@ -1,0 +1,65 @@
+id: pilot-refactor-admin-map
+kind: refactor
+must_pass: false
+agent: afs-migrator
+ticket: REF-20261122-ADMIN-LIVE-MAP
+role: afs-migrator
+source:
+  repo: martins-vds/ai-factory-pilot-target
+  base: a2f8bf6c6047004e11b2689c5a01025d41a9a72f
+reference: 'none: the first periodic refactor ticket afs-refactor-ticket plans for the pilot (ADR-0072)'
+issue:
+  title: REF-20261122-ADMIN-LIVE-MAP · Move src/cargotracker/cargo/application/admin_map.py's private helpers into their own
+    module, preserving behaviour
+  body: '**Role:** `afs-migrator`, ticket `REF-20261122-ADMIN-LIVE-MAP`: **restructure `src/cargotracker/cargo/application/admin_map.py`
+    without changing what it does** (ADR-0072, a periodic refactor of the `admin-live-map` slice).
+
+
+    `src/cargotracker/cargo/application/admin_map.py` keeps 2 private helpers: `_cargo_map_data`, `_location_data`. Move them
+    into a new module in `src/cargotracker/cargo/application/`, as public functions named for what they do, and have the code
+    that used them import them from there. Every page, response, command output and stored value stays exactly as it is.
+
+
+    **Tests are the safety net, not part of the job.** Change an existing test only if the restructuring itself makes it fail,
+    and for every test you change say why in your return''s `notes`. Don''t keep aliases or wrappers so the old private names
+    still work. The tests you had to change are this ticket''s measurement: each one knows how the code is built, not what
+    it does.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first. Run every gate through `afs-run`: build, behaviour, spec,
+    idiom, CRAP, mutation on the changed code, regression. Commit your return `.migration/returns/REF-20261122-ADMIN-LIVE-MAP.afs-migrator.yaml`,
+    or a handoff.
+
+    '
+normalize:
+- yaml_append:
+    file: .migration/plan/admin-live-map.tickets.yaml
+    key: tickets
+    value:
+      id: REF-20261122-ADMIN-LIVE-MAP
+      title: Move src/cargotracker/cargo/application/admin_map.py's private helpers into their own module, preserving behaviour
+      role: afs-migrator
+      specialty: null
+      files:
+      - src/cargotracker/cargo/application/
+      - tests/cargo/interfaces/test_admin_live_map_data.py
+      - tests/cargo/interfaces/test_admin_live_map_markers.py
+      - tests/cargo/interfaces/test_admin_live_map_processing.py
+      - tests/cargo/interfaces/test_admin_live_map_templates.py
+      capabilities: []
+      blocked_by: []
+      refactor: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+expect:
+  must_not_define:
+    src/cargotracker/cargo/application/admin_map.py:
+    - _cargo_map_data
+    - _location_data
+  gates: success
+notes: 'ADR-0072: the ticket text and plan entry are afs-refactor-ticket''s own output for the pilot at this base, so the
+  eval exercises the ticket as the AFS refactor workflow would plan it.'
