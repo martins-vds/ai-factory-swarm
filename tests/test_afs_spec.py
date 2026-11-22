@@ -396,3 +396,90 @@ class ContractTest(unittest.TestCase):
             self.assertIn("schema 'missing.json' can't be read as JSON", check())
             text = sp.render("fees", mig / "spec", mig / "ledger")
             self.assertIn("a body shaped as `missing.json`", text)
+
+
+class PropertyTest(unittest.TestCase):
+    """ADR-0069: a property case holds over a whole range; a failure is shrunk to the smallest failing input."""
+
+    class FeeTarget:
+        """Late fees for a loan due 2026-01-16: 25 cents a day after two free days, capped at $10 unless `broken`."""
+
+        def __init__(self, broken_from=None):
+            self.broken_from = broken_from
+            self.calls = 0
+            self.today = None
+
+        def setup(self):
+            pass
+
+        def teardown(self):
+            pass
+
+        @contextlib.contextmanager
+        def case(self, given):
+            import datetime
+            self.today = datetime.date.fromisoformat(given["clock"])
+            yield
+
+        def act(self, when):
+            import datetime
+            self.calls += 1
+            days = max(0, (self.today - datetime.date(2026, 1, 16)).days)
+            fee = 0 if days <= 2 else days * 0.25
+            if self.broken_from is None or days < self.broken_from:
+                fee = min(fee, 10)
+            return {"status": 200, "text": f"{days} day(s) late. Fee: ${fee:.2f}", "json": None, "headers": {}}
+
+    CASE = {"title": "The fee never exceeds $10, whatever the date", "rule": "fee-capped-at-10",
+            "forall": {"today": {"date": {"from": "2026-01-16", "to": "2030-12-31"}}},
+            "given": {"clock": "{today}"}, "when": {"http": {"method": "GET", "path": "/fees/L1"}},
+            "then": {"status": 200, "number": {"pattern": r"Fee: \$([0-9.]+)", "max": 10}}}
+
+    def expand(self):
+        return sp.expand({"capability": "fees.calculation", "cases": [self.CASE]}, "late.yaml", root=".")
+
+    def test_samples_cover_the_edges_and_repeat_from_run_to_run(self):
+        rows = sp.samples(self.CASE["forall"], "late.yaml#1", 25)
+        days = [r["today"] for r in rows]
+        self.assertEqual(len(days), 25)
+        for edge in ("2026-01-16", "2026-01-17", "2030-12-30", "2030-12-31"):
+            self.assertIn(edge, days)
+        self.assertEqual(rows, sp.samples(self.CASE["forall"], "late.yaml#1", 25))
+        both = sp.samples({"n": {"int": {"from": 0, "to": 3}}, "loan": {"one_of": ["L1", "L2"]}}, "x", 50)
+        self.assertEqual(len(both), 8)                         # every combination, no repeats
+
+    def test_a_property_that_holds_passes_in_one_result(self):
+        cases = self.expand()
+        self.assertEqual(len(cases), 1)
+        target = self.FeeTarget()
+        results = sp.run_cases(cases, target)
+        self.assertEqual([r["passed"] for r in results], [True])
+        self.assertEqual(target.calls, 25)
+
+    def test_a_broken_cap_is_found_and_shrunk_to_the_first_failing_day(self):
+        results = sp.run_cases(self.expand(), self.FeeTarget(broken_from=41))
+        failure = results[0]["failures"]
+        self.assertFalse(results[0]["passed"])
+        self.assertIn("fails for today=2026-02-26 (the smallest failing input found, from 25 tried)", failure[0])
+        self.assertIn("number: 10.25 is above 10", failure[1])
+
+    def test_forall_is_checked_and_rendered(self):
+        with tempfile.TemporaryDirectory() as d:
+            mig = pathlib.Path(d) / ".migration"
+            (mig / "ledger").mkdir(parents=True)
+            (mig / "spec/fees").mkdir(parents=True)
+            (mig / "ledger/fees.calculation.yaml").write_text(yaml.safe_dump(LEDGER))
+            bad = dict(self.CASE, forall={"today": {"date": {"from": "2030-01-01", "to": "2026-01-01"}}},
+                       when={"http": {"method": "GET", "path": "/fees/{loan}"}},
+                       examples={"columns": ["x"], "rows": [[1]]})
+            (mig / "spec/fees/late.yaml").write_text(yaml.safe_dump({"capability": "fees.calculation", "cases": [bad]}))
+            problems = "\n".join(sp.check(mig / "spec", mig / "ledger"))
+            self.assertIn("has both `forall` and `examples`", problems)
+            self.assertIn("runs from 2030-01-01 down to 2026-01-01", problems)
+            self.assertIn("uses {loan} but its forall has no such name", problems)
+            (mig / "spec/fees/late.yaml").write_text(yaml.safe_dump({"capability": "fees.calculation",
+                                                                     "cases": [self.CASE]}))
+            self.assertEqual(sp.check(mig / "spec", mig / "ledger"), [])
+            text = sp.render("fees", mig / "spec", mig / "ledger")
+            self.assertIn("- for every **today** from 2026-01-16 to 2030-12-31", text)
+            self.assertIn("`Fee: \\$([0-9.]+)` is at most 10", text)
