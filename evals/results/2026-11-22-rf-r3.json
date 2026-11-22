@@ -1,0 +1,78 @@
+{
+  "cases": {
+    "pilot-refactor-admin-map": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/REF-20261122-ADMIN-LIVE-MAP.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "src/cargotracker/cargo/application/admin_map.py no longer defines _cargo_map_data, _location_data",
+          "detail": "moved",
+          "ok": true
+        },
+        {
+          "check": "characterization untouched",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "no existing test deleted",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "refactor",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 61
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2418,
+      "refactor": {
+        "tests_added": [],
+        "tests_modified": []
+      },
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 16.8,
+        "output_tokens": 0,
+        "requests": 87,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-22T23:14:37+00:00",
+  "run": "2026-11-22-rf-r3"
+}

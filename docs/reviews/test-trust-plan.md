@@ -94,7 +94,7 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 |---|---|---|
 | 5.1 | The dashboard charts, per slice: mutation score, CRAP, test runtime, flaky count, coupling ratio and mock findings, from `afs-test-health` and the cost records. || ☑ PR #245 (ADR-0071): `afs-dashboard health` per slice and per ticket; a Test health section on the operator dashboard |
 | 5.2 | Flaky-test quarantine: a test that fails then passes on the same commit is recorded and gets a ticket instead of silently retrying. || ☑ PR #244 (ADR-0070): `afs-run` records a pass after a failure on the same code; the finish check wants the record committed; the AFS flaky tests workflow turns records and CI re-runs into one issue per test. No test is skipped |
-| 5.3 | A periodic refactor ticket per slice, run as the phase 0 case on the live target, keeps the coupling trend honest. || ◐ PR (ADR-0072): `afs-refactor-ticket` and a monthly AFS refactor workflow; the dashboard shows the tests each refactor had to change |
+| 5.3 | A periodic refactor ticket per slice, run as the phase 0 case on the live target, keeps the coupling trend honest. || ◐ PR #246 (ADR-0072). Eval `rf-r{1,2,3}`: the ticket the tool planned for the pilot (`admin_map.py`) passed 3/3, each run extracting `admin_map_data.py` and changing no test. Done once the AFS refactor workflow has proposed one on a live target |
 
 ## When to start
 **Phase 0 can start now.** It changes nothing agents do, so it can't disturb the fold results or the DM
@@ -171,3 +171,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: #243 merged; synthetic #157 open (phase 4 done once it merges). Phase 5 started with step 5.2 (ADR-0070): flaky runs are recorded by afs-run and in CI re-runs, and become one ticket per test.
 - 2026-11-22: synthetic #157 and #244 merged; phase 4 complete. Step 5.1 (ADR-0071): test health per slice and per ticket, from each target's own committed records, on the operator dashboard.
 - 2026-11-22: #245 merged. Step 5.3 (ADR-0072): a periodic refactor ticket per slice, chosen mechanically; its first synthetic pick is the phase 0 refactor itself.
+- 2026-11-22: #246 merged. The first periodic refactor ticket, taken verbatim from `afs-refactor-ticket` for the pilot, ran as eval case `pilot-refactor-admin-map`: 3/3 passed, gates green, no existing test changed (the admin-live-map tests are refactor-resistant, unlike the exporter's in phase 0). Target re-rolls: pilot #509, synthetic #158.

@@ -1,0 +1,9 @@
+{
+  "pilot-refactor-admin-map": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-rf-r1/pilot-refactor-admin-map",
+    "dispatched_at": "2026-11-22T22:44:39+00:00",
+    "issue": 2413,
+    "work_pr": null
+  }
+}
