@@ -71,7 +71,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
 from check_signoff import acceptance as acceptance_fields  # noqa: E402  (both return shapes, ADR-0050)
-KINDS = ("migrator", "verifier", "bootstrap", "understand", "acceptance", "refactor")
+KINDS = ("migrator", "verifier", "bootstrap", "understand", "acceptance", "refactor", "spec")
 SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
 COPILOT = "copilot-swe-agent[bot]"
 # Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
@@ -133,6 +133,8 @@ def case_problems(doc):
     if doc["kind"] == "refactor":
         if not exp.get("must_exist") and not exp.get("must_not_define"):
             out.append("a refactor case needs expect.must_exist or expect.must_not_define (what the restructuring is)")
+    if doc["kind"] == "spec" and not exp.get("capabilities"):
+        out.append("a spec case needs expect.capabilities (the capabilities the spec must cover)")
     if doc["kind"] == "acceptance":
         for key in ("slice", "epic", "reconciliation_issues", "report_keywords"):
             if not exp.get(key):
@@ -680,6 +682,83 @@ def grade_refactor(head, name_status, expect):
         p for st, p in name_status if st[0] == "A" and p.startswith(tests))}
 
 
+SPEC_OWN_RECORDS = (".migration/spec/", ".migration/ledger/", ".migration/returns/", ".migration/evidence/",
+                    ".migration/handoffs/", ".migration/costs/", ".migration/quirks/")
+
+
+def spec_module(tree):
+    """The tree's own installed afs-spec, loaded as a module (None if the harness has none)."""
+    import importlib.machinery
+    import importlib.util
+    tool = pathlib.Path(tree) / ".migration/harness/tools/afs-spec"
+    if not tool.is_file():
+        return None
+    loader = importlib.machinery.SourceFileLoader(f"afs_spec_{abs(hash(str(tool)))}", str(tool))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def spec_metrics(tree):
+    """Size and sourcing of a tree's customer spec: files, cases (rows expanded), rules proved, oracles, rulings."""
+    tree = pathlib.Path(tree)
+    sp = spec_module(tree)
+    spec_dir = tree / ".migration/spec"
+    if sp is None or not spec_dir.is_dir():
+        return {"files": 0, "cases": 0, "capabilities": [], "rules_proved": 0, "with_oracle": 0, "with_ruling": 0}
+    files = sp.spec_files(spec_dir)
+    caps, rules, cases, oracle, ruling = set(), set(), 0, 0, 0
+    for path in files:
+        doc = sp.load(path)
+        caps.add(doc.get("capability"))
+        for case in doc.get("cases") or []:
+            rules |= {(doc.get("capability"), r) for r in sp.case_rules(case)}
+            oracle += bool(case.get("oracle"))
+            ruling += bool(case.get("ruling"))
+        cases += len(sp.expand(doc, path))
+    return {"files": len(files), "cases": cases, "capabilities": sorted(c for c in caps if c),
+            "rules_proved": len(rules), "with_oracle": oracle, "with_ruling": ruling}
+
+
+def grade_spec(head, changed, expect, gates_conclusion):
+    """Step 2.4 (ADR-0062): the Characterizer writes a slice's customer spec. The case starts where the code is
+    already built and accepted, so CI's spec gate runs the new spec against it: a value that disagrees with the
+    accepted behaviour fails there. validate.py (with `spec.required`) has already checked that every rule is
+    proved and every case names its oracle or ruling."""
+    head = pathlib.Path(head)
+    metrics = spec_metrics(head)
+    checks = [("Gates check passed (the spec ran against the accepted code)", gates_conclusion == "success",
+               f"Gates: {gates_conclusion}")]
+    other = [p for p in changed if not p.startswith(SPEC_OWN_RECORDS)]
+    checks.append(("only the spec, the ledger and own records changed", not other, ", ".join(other[:5]) or "none"))
+    for cap in expect["capabilities"]:
+        checks.append((f"a spec file covers {cap}", cap in metrics["capabilities"],
+                       ", ".join(metrics["capabilities"]) or "no spec files"))
+    for cap, n in (expect.get("min_rules") or {}).items():
+        sp = spec_module(head)
+        known = (sp.ledger_rules(head / ".migration/ledger", cap) or set()) if sp else set()
+        checks.append((f"{cap} has at least {n} rules", len(known) >= n, f"{len(known)}: {', '.join(sorted(known))}"))
+    return checks, metrics
+
+
+def spec_held(base, changed, role):
+    """ADR-0062 in every case but a spec one: a session that isn't the Characterizer leaves an existing spec as it
+    was, and a disagreement with it is a `spec dispute` handoff. The check, or None when it doesn't apply."""
+    if role == "afs-characterizer" or not (pathlib.Path(base) / ".migration/spec").is_dir():
+        return None
+    touched = [p for p in changed if p.startswith(".migration/spec/")]
+    return ("customer spec unchanged", not touched, ", ".join(touched) or "untouched")
+
+
+def spec_dispute(head, changed):
+    """True when a handoff this branch changed raises a spec dispute."""
+    for p in changed:
+        if p.startswith(".migration/handoffs/") and (pathlib.Path(head) / p).is_file():
+            if "spec dispute" in (pathlib.Path(head) / p).read_text(encoding="utf-8", errors="ignore").lower():
+                return True
+    return False
+
+
 def acceptance_view(ret):
     """One view of a slice-acceptance return: the orchestrator's `acceptance` block, or a retired Slice
     Coordinator's return with its nested `acceptance:` fields lifted (ADR-0050)."""
@@ -1187,6 +1266,16 @@ def grade(a, cases):
                 changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
                               check=False).stdout.split()
                 checks += grade_acceptance(trees["head"], ret, case["expect"], changed)
+            elif case["kind"] == "spec":
+                changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
+                              check=False).stdout.split()
+                latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
+                if (latest and latest[0]["status"] != "completed") or not latest:
+                    row["ci_pending"] = True
+                found, metrics = grade_spec(trees["head"], changed, case["expect"],
+                                            latest[0]["conclusion"] if latest else None)
+                checks += found
+                row["spec"] = metrics
             elif case["kind"] == "verifier":
                 checks += grade_verifier(ret, case["expect"])
                 gate = blocked_gate(ret, case["expect"])
@@ -1198,6 +1287,19 @@ def grade(a, cases):
                     p = trees["head"] / path
                     files[path] = yaml.safe_load(p.read_text()) if p.exists() else None
                 checks += grade_fields(files, case["expect"])
+            # ADR-0062, every kind: an existing spec is left alone by anyone but the Characterizer, and a
+            # disagreement is a spec dispute handoff. A case can also ask for CI's gates (a refactor with a spec).
+            changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head", check=False).stdout.split()
+            held = spec_held(trees["base"], changed, case["role"])
+            if held:
+                checks.append(held)
+                row["spec_dispute"] = spec_dispute(trees["head"], changed)
+            if case["kind"] == "refactor" and (case["expect"].get("gates") == "success"):
+                latest = [r for r in runs if r["name"].startswith("Gates")][-1:]
+                if not latest or latest[0]["status"] != "completed":
+                    row["ci_pending"] = True
+                checks.append(("Gates check passed", bool(latest) and latest[0]["conclusion"] == "success",
+                               f"Gates: {latest[0]['conclusion'] if latest else None}"))
         finally:
             for wt in trees.values():
                 git(src, "worktree", "remove", "--force", str(wt), check=False)

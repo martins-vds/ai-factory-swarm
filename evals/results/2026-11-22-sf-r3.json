@@ -1,0 +1,312 @@
+{
+  "cases": {
+    "synthetic-fees-spec": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/FS-01.afs-characterizer.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed (the spec ran against the accepted code)",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "only the spec, the ledger and own records changed",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "a spec file covers fees.calculation",
+          "detail": "fees.calculation, fees.page",
+          "ok": true
+        },
+        {
+          "check": "a spec file covers fees.page",
+          "detail": "fees.calculation, fees.page",
+          "ok": true
+        },
+        {
+          "check": "fees.calculation has at least 4 rules",
+          "detail": "4: fee-capped-at-ten-dollars, fee-is-twenty-five-cents-per-late-day, fee-waived-through-two-days, late-days-use-return-date-or-today",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "spec",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 39
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2311,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1
+      },
+      "spec": {
+        "capabilities": [
+          "fees.calculation",
+          "fees.page"
+        ],
+        "cases": 12,
+        "files": 2,
+        "rules_proved": 6,
+        "with_oracle": 5,
+        "with_ruling": 0
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 5.1,
+        "output_tokens": 0,
+        "requests": 67,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-03": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-03.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.908",
+          "ok": true
+        },
+        {
+          "check": "changes the ticket's code or tests",
+          "detail": "13 file(s) outside .migration/",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 218
+      },
+      "must_pass": true,
+      "passed": true,
+      "pr": 2314,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "diagnosing-bugs": 1,
+        "django-patterns": 1,
+        "django-security": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 29.2,
+        "output_tokens": 0,
+        "requests": 341,
+        "sessions": 1
+      }
+    },
+    "synthetic-ll-03-spec": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/LL-03.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 1.0",
+          "ok": true
+        },
+        {
+          "check": "changes the ticket's code or tests",
+          "detail": "13 file(s) outside .migration/",
+          "ok": true
+        },
+        {
+          "check": "customer spec unchanged",
+          "detail": "untouched",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 190
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2313,
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-ledger": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "django-security": 1,
+        "tdd": 1
+      },
+      "spec_dispute": false,
+      "status": "graded",
+      "usage": {
+        "minutes": 26.9,
+        "output_tokens": 0,
+        "requests": 262,
+        "sessions": 1
+      }
+    },
+    "synthetic-refactor-fee-views-spec": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/REF-02.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "src/fees/presentation.py exists",
+          "detail": "src/fees/presentation.py",
+          "ok": true
+        },
+        {
+          "check": "src/fees/views.py no longer defines _fee_amount, _gateway_result, _fee_or_404",
+          "detail": "moved",
+          "ok": true
+        },
+        {
+          "check": "characterization untouched",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "no existing test deleted",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "customer spec unchanged",
+          "detail": "untouched",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "refactor",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-5.6-luna": 19,
+        "gpt-6-luna": 76
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2315,
+      "refactor": {
+        "tests_added": [],
+        "tests_modified": []
+      },
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "tdd": 1
+      },
+      "spec_dispute": false,
+      "status": "graded",
+      "usage": {
+        "minutes": 18.9,
+        "output_tokens": 0,
+        "requests": 137,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-22T15:24:44+00:00",
+  "run": "2026-11-22-sf-r3"
+}

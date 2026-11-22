@@ -1,0 +1,30 @@
+{
+  "synthetic-fees-spec": {
+    "agent": "afs-characterizer",
+    "base_branch": "eval/2026-11-22-sf-r1/synthetic-fees-spec",
+    "dispatched_at": "2026-11-22T14:29:05+00:00",
+    "issue": 2292,
+    "work_pr": null
+  },
+  "synthetic-ll-03": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-sf-r1/synthetic-ll-03",
+    "dispatched_at": "2026-11-22T14:29:09+00:00",
+    "issue": 2294,
+    "work_pr": null
+  },
+  "synthetic-ll-03-spec": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-sf-r1/synthetic-ll-03-spec",
+    "dispatched_at": "2026-11-22T14:29:07+00:00",
+    "issue": 2293,
+    "work_pr": null
+  },
+  "synthetic-refactor-fee-views-spec": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-sf-r1/synthetic-refactor-fee-views-spec",
+    "dispatched_at": "2026-11-22T14:29:11+00:00",
+    "issue": 2295,
+    "work_pr": null
+  }
+}
