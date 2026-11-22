@@ -24,6 +24,8 @@ how much of the code the customer's own cases pin down.
    - A Migrator ticket that builds a capability with a spec file reports it as `gates.spec: <exit>`.
    - The finish check treats it like the other exit gates: a failing gate needs a handoff, and a stale one
      is re-run.
+   - CI's gates job runs it after `tests`, and the slice's acceptance run (`afs-acceptance`) runs it when the
+     profile declares it.
 2. **`validate.py` checks the spec gate against the journal** (`check_spec_gate`). For a finished Migrator
    return whose ticket builds a specced capability, when the profile has `gates.spec`, it requires that:
    - `gates.spec` is `0`;

@@ -111,6 +111,15 @@ class AcceptanceTest(unittest.TestCase):
         self.assertIn("status=verified", verified.stdout)
         self.assertNotEqual(self.run_gates().returncode, 0, "existing artifacts must not be overwritten")
 
+    def test_a_declared_spec_gate_runs_after_tests_and_verifies(self):
+        self.configure("spec", "echo 'AFS-RESULT gate=spec cases=3 failed=0 pending=0'")
+        run = self.run_gates()
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        names = [s["name"] for s in self.result()["steps"]]
+        self.assertEqual(names[names.index("tests-0") + 1], "spec-0")
+        self.assertEqual(len(names), 12)
+        self.assertEqual(self.verify().returncode, 0)
+
     def publish(self, origin):
         """What the workflow's publish job does: the artifact's files as the tree of afs/acceptance/<run>-<attempt>."""
         work = pathlib.Path(self.tmp.name + "-publish")
