@@ -55,7 +55,7 @@ HARNESS_TOOLS = ["afs-run", "stack_refresh.py", "close_gap_issues.py", "check_ve
                  "afs-services", "check_runtime.py", "check_graph_fresh.py",
                  "enrich_graph.py", "graph_gate.py", "afs-cost-hook", "afs-costs",
                  "fog_rewalk.py", "check_slice_returns.py", "locks/graphify.lock",
-                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "reconcile_epic.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py", "afs-test-health", "afs-spec", "afs_spec_django.py", "afs_spec_stub.py"]
+                 "afs_trace.py", "harness_coverage.py", "ticket_guard.py", "reconcile_epic.py", "check_stack_base.py", "afs-acceptance", "check_signoff.py", "afs-drill", "drills.json", "data_reconcile.py", "data_snapshot.py", "java/JdbcSnapshot.java", "preserve_graph.py", "afs-test-health", "afs-spec", "afs_spec_django.py", "afs_spec_stub.py", "afs-flaky"]
 COPILOT_CLI_VERSION = "1.0.105"   # spike M1-1
 COPILOT_SDK_VERSION = "1.0.28"
 PIP_PACKAGES = "jsonschema pyyaml lizard"
@@ -531,7 +531,8 @@ def write_copilot_files(target, lock, version, commit, profile=None, packs=None)
                copilot_sdk_version=COPILOT_SDK_VERSION)
     tpl = ROOT / "templates/target"
     for name in ("copilot-setup-steps.yml", "afs-harness-check.yml", "afs-understand.yml", "afs-acceptance.yml", "afs-costs.yml",
-                 "afs-map-fog.yml", "afs-ticket-guard.yml", "afs-signoff.yml", "afs-snapshot.yml", "afs-stack-refresh.yml"):
+                 "afs-map-fog.yml", "afs-ticket-guard.yml", "afs-signoff.yml", "afs-snapshot.yml", "afs-stack-refresh.yml",
+                 "afs-flaky.yml"):
         write(target / ".github/workflows" / name, (tpl / name).read_text(encoding="utf-8").format(**fmt))
     (target / ".github/hooks").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "templates/rtk/rtk-rewrite.json", target / ".github/hooks/rtk-rewrite.json")

@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""afs-flaky — turn flaky runs into tickets instead of retries (ADR-0070, test-trust plan step 5.2).
+
+Usage (the afs-flaky workflow runs it on the default branch):
+  afs-flaky tickets --repo OWNER/NAME [--days 7] [--dry-run]
+
+A flaky test fails and then passes on the same code. Two places see one:
+* **Agent sessions:** `afs-run` records a command that passed on code where it had failed, with the failing
+  test ids, in `.migration/evidence/flaky/<ticket>.md`, which is committed with the work.
+* **CI:** a workflow run re-run on the same commit, where a job failed on an earlier attempt and passed on a
+  later one. The failing test ids come from that job's log (pytest `FAILED x::y` / `ERROR x::y` lines).
+
+For each flaky test (or, when no test id can be read, each flaky job), the tool finds the open issue labelled
+`afs-flaky` that names it (a `<!-- afs-flaky: <id> -->` marker) and adds the new evidence as a comment, or opens
+one. The issue asks for a fix of the test itself (wait for the page, isolate shared state), never a retry.
+Evidence already on the issue isn't repeated. `--dry-run` prints what it would do.
+"""
+import argparse
+import datetime as dt
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+LABEL = "afs-flaky"
+FAILED_TEST = re.compile(r"(?:^|\s)(?:FAILED|ERROR) (\S+::\S+)")
+SECTION = re.compile(r"^## `(?P<cmd>.+)`\n- failed: (?P<failed>[^\n]+)\n- passed: (?P<passed>[^\n]+)\n"
+                     r"- tests that failed: (?P<tests>[^\n]+)", re.M)
+
+
+def api(path, method="GET", body=None):
+    args = ["gh", "api", "--method", method, path]
+    if body is not None:
+        args += ["--input", "-"]
+    r = subprocess.run(args, input=json.dumps(body) if body is not None else None, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"gh api {method} {path}: {r.stderr.strip()[:300]}")
+    out = r.stdout.strip()
+    if not out:
+        return None
+    try:
+        return json.loads(out)
+    except ValueError:
+        return out                                    # job logs are plain text
+
+
+def records(folder=".migration/evidence/flaky"):
+    """[{id, source, evidence}] from the committed afs-run records."""
+    out = []
+    for path in sorted(pathlib.Path(folder).glob("*.md")):
+        ticket = path.stem
+        for m in SECTION.finditer(path.read_text(encoding="utf-8")):
+            tests = re.findall(r"`([^`]+)`", m.group("tests")) or [f"command: {m.group('cmd')}"]
+            for test in tests:
+                out.append({"id": test, "source": f"agent session, ticket {ticket}",
+                            "evidence": f"ticket {ticket}: `{m.group('cmd')}` failed {m.group('failed')}; "
+                                        f"passed {m.group('passed')} (`{path.as_posix()}`)"})
+    return out
+
+
+def ci_flakes(repo, days, call=api):
+    """[{id, source, evidence}] for jobs that failed on one attempt and passed on a later one, same commit."""
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    runs = (call(f"repos/{repo}/actions/runs?per_page=100&created=%3E%3D{since}") or {}).get("workflow_runs", [])
+    out = []
+    for run in runs:
+        if (run.get("run_attempt") or 1) < 2 or run.get("conclusion") != "success":
+            continue
+        passed = {j["name"] for j in (call(f"repos/{repo}/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs")
+                                      or {}).get("jobs", []) if j.get("conclusion") == "success"}
+        for attempt in range(1, run["run_attempt"]):
+            jobs = (call(f"repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}/jobs") or {}).get("jobs", [])
+            for job in jobs:
+                if job.get("conclusion") != "failure" or job["name"] not in passed:
+                    continue
+                try:
+                    log = call(f"repos/{repo}/actions/jobs/{job['id']}/logs") or ""
+                except RuntimeError:
+                    log = ""
+                tests = sorted({m.group(1) for m in FAILED_TEST.finditer(log if isinstance(log, str) else "")})
+                where = f"{run.get('name')} › {job['name']} on `{run['head_sha'][:7]}`"
+                for test in tests or [f"job: {run.get('name')} › {job['name']}"]:
+                    out.append({"id": test, "source": "CI re-run",
+                                "evidence": f"{where}: failed on attempt {attempt} ({job.get('html_url', '')}), "
+                                            f"passed on attempt {run['run_attempt']} ({run.get('html_url', '')})"})
+    return out
+
+
+def marker(test_id):
+    return f"<!-- afs-flaky: {test_id} -->"
+
+
+def issue_body(flake):
+    return (f"{marker(flake['id'])}\n**Flaky test:** `{flake['id']}`\n\nIt failed and then passed on the same code "
+            f"(ADR-0070), so a green run doesn't show it works. Evidence:\n\n- {flake['evidence']}\n\n"
+            "**Fix the test, not the retry:** in a browser, assert with Playwright's `expect(...)`, which waits for "
+            "the page (ADR-0065); leave shared state as you found it (`references/gates.md`, Test isolation); don't "
+            "depend on time or ordering. Don't add reruns. New evidence is added below as comments.")
+
+
+def tickets(repo, flakes, dry_run=False, call=api):
+    """Open or update one issue per flaky test; return the actions taken."""
+    issues = [] if dry_run else call(f"repos/{repo}/issues?state=open&labels={LABEL}&per_page=100") or []
+    if not dry_run:
+        try:
+            call(f"repos/{repo}/labels", "POST", {"name": LABEL, "color": "d93f0b",
+                                                   "description": "A test that failed and then passed on the same code"})
+        except RuntimeError:
+            pass                                       # it exists
+    by_id = {}
+    for issue in issues:
+        m = re.search(r"<!-- afs-flaky: (.+?) -->", issue.get("body") or "")
+        if m:
+            by_id[m.group(1)] = issue
+    done = []
+    for flake in flakes:
+        issue = by_id.get(flake["id"])
+        if issue is None:
+            done.append(f"open: {flake['id']}")
+            by_id[flake["id"]] = {"number": None, "body": issue_body(flake)} if dry_run else call(
+                f"repos/{repo}/issues", "POST",
+                {"title": f"Flaky test: {flake['id']}"[:250], "body": issue_body(flake), "labels": [LABEL]})
+            continue
+        comments = [] if issue.get("number") is None else (
+            call(f"repos/{repo}/issues/{issue['number']}/comments?per_page=100") or [])
+        seen = (issue.get("body") or "") + "".join(c.get("body") or "" for c in comments)
+        if flake["evidence"] in seen:
+            continue
+        issue["body"] = (issue.get("body") or "") + "\n" + flake["evidence"]
+        done.append(f"comment #{issue['number']}: {flake['id']}")
+        if not dry_run:
+            call(f"repos/{repo}/issues/{issue['number']}/comments", "POST",
+                 {"body": f"Flaky again ({flake['source']}):\n\n- {flake['evidence']}"})
+    return done
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    t = sub.add_parser("tickets")
+    t.add_argument("--repo", required=True)
+    t.add_argument("--days", type=int, default=7)
+    t.add_argument("--records", default=".migration/evidence/flaky")
+    t.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args(argv)
+    flakes = records(a.records) + ci_flakes(a.repo, a.days)
+    done = tickets(a.repo, flakes, a.dry_run)
+    for line in done:
+        print(line)
+    print(f"AFS-RESULT gate=flaky found={len(flakes)} tests={len({f['id'] for f in flakes})} actions={len(done)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import afs_trace
+    afs_trace.run(main)

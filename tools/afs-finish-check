@@ -14,6 +14,7 @@ by hand. It checks the session's own work, with the same rules CI applies:
   spec        (ADR-0062) only a Characterizer session changes `.migration/spec/`. Any other role's change to
               it is refused even with a handoff: a spec the work disagrees with is a handoff with the
               evidence, and the spec file stays as it was.
+  flaky       (ADR-0070) a flaky-run record afs-run wrote for this ticket is committed.
   coupling    (ADR-0064) `afs-test-health --check` on the lines this branch added to its tests: patches of
               the project's own code, private access, interaction assertions. Recorded in the trace; it
               blocks only when the profile sets `test_health.block`.
@@ -516,6 +517,12 @@ def decide(args, payload, session, prompt, trace):
         trace.update(decision="allow", why="no ticket/role for this session")
         return None
     found = findings(ticket, role, changed, prompt)
+    flaky = MIG / "evidence" / "flaky" / f"{ticket}.md"
+    if flaky.exists() and git("status", "--porcelain", "--", flaky.as_posix()).strip():
+        found.append(("mechanical", "flaky-uncommitted",
+                      f"afs-run recorded a flaky run in `{flaky.as_posix()}`: a gate failed and then passed on the same "
+                      "code (ADR-0070). Commit that file and name the flaky tests in your return's notes; a workflow "
+                      "turns each into a ticket. Don't rerun gates to hide it."))
     coupled, block = test_health()
     trace["test_health"] = {"block": block, "findings": coupled[:20]}
     if block and coupled:

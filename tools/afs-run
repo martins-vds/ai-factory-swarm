@@ -15,6 +15,11 @@ Behavior (ADR-0015):
     the log's SHA-256 and its first highlight. Raw logs stay out of git; the journal is the durable
     record that the run happened and what it showed. Commit it with your work.
   * Exits with the command's exit code, so gates fail when the command fails.
+  * Flaky runs are recorded, never hidden (ADR-0070). Each record carries a fingerprint of the code it ran
+    on (a git tree of the working tree, `.migration/` left out). When a command passes on code where the same
+    command failed before, the earlier failure was flaky: afs-run prints `AFS-FLAKY` and appends what failed
+    (the failing test ids from the failed log) to `.migration/evidence/flaky/<ticket>.md`, which is committed
+    with the work. The afs-flaky workflow turns each record into a ticket.
 
 Defaults: ticket = $AFS_TICKET or "adhoc"; runs-dir = $AFS_RUNS_DIR or ".migration/runs".
 Everyday shell commands go through RTK instead (rtk hook); afs-run is for gate runs, where the raw log
@@ -29,6 +34,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 
 FAILURE = re.compile(
@@ -124,6 +130,70 @@ def journal(folder, ticket, record, sha, parts, result=""):
                  f"`{cell(record['command'], 400)}` | `{sha[:16]}` | {cell(first)} | {cell(result, 200)} |\n")
 
 
+FAILED_TEST = re.compile(r"^(?:FAILED|ERROR) (\S+::\S+)")
+
+
+def tree_fingerprint():
+    """The git tree of the working tree as it is now (tracked and untracked files, `.migration/` left out), or
+    None outside a git checkout. Two runs with the same fingerprint ran on the same code."""
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=20)
+        if top.returncode:
+            return None
+        with tempfile.TemporaryDirectory() as d:
+            env = {**os.environ, "GIT_INDEX_FILE": os.path.join(d, "index")}
+            cwd = top.stdout.strip()
+            for args in (["git", "read-tree", "HEAD"], ["git", "add", "-A", "--", ".", ":(exclude).migration"]):
+                if subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=120).returncode:
+                    return None
+            out = subprocess.run(["git", "write-tree"], cwd=cwd, env=env, capture_output=True, text=True, timeout=60)
+            return out.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def earlier_failure(runs_file, command, tree):
+    """The latest earlier run of this command on the same code, if it failed; else None."""
+    if not tree or not os.path.exists(runs_file):
+        return None
+    last = None
+    with open(runs_file, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("command") == command and r.get("tree") == tree:
+                last = r
+    return last if last and last.get("exit") not in (0, None) else None
+
+
+def record_flaky(ticket, failed, passed):
+    """Append the flaky run to the ticket's committed evidence; return the file (None without .migration/)."""
+    if not os.path.isdir(".migration"):
+        return None
+    tests = []
+    try:
+        with open(failed["log"], encoding="utf-8", errors="replace") as fh:
+            tests = sorted({m.group(1) for line in fh if (m := FAILED_TEST.match(line))})
+    except OSError:
+        pass
+    folder = os.path.join(".migration", "evidence", "flaky")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{ticket}.md")
+    new = not os.path.exists(path)
+    with open(path, "a", encoding="utf-8") as fh:
+        if new:
+            fh.write(f"# Flaky runs: {ticket}\n\nWritten by afs-run (ADR-0070): each section is a gate command that "
+                     "failed and then passed on the same code. Commit this file; the afs-flaky workflow opens a "
+                     "ticket for each test.\n")
+        fh.write(f"\n## `{passed['command']}`\n"
+                 f"- failed: {failed['ts']} (exit {failed['exit']}, log `{failed['log']}`)\n"
+                 f"- passed: {passed['ts']}, same code (tree `{passed['tree'][:12]}`)\n"
+                 f"- tests that failed: " + (", ".join(f"`{t}`" for t in tests) or "none named in the log") + "\n")
+    return path, tests
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if "--" not in argv:
@@ -152,6 +222,7 @@ def main(argv=None):
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     log_path = os.path.join(folder, f"{stamp}-{name}.log")
 
+    tree = tree_fingerprint()
     start = time.monotonic()
     with open(log_path, "wb") as log:
         try:
@@ -171,8 +242,13 @@ def main(argv=None):
         "ticket": ticket, "name": name, "command": shlex.join(cmd), "exit": code,
         "seconds": seconds, "log": log_path, "lines": len(lines), "bytes": len(raw),
     }
-    with open(os.path.join(folder, "runs.jsonl"), "a", encoding="utf-8") as fh:
+    if tree:
+        record["tree"] = tree
+    runs_file = os.path.join(folder, "runs.jsonl")
+    failed_before = earlier_failure(runs_file, record["command"], tree) if code == 0 else None
+    with open(runs_file, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
+    flaky = record_flaky(ticket, failed_before, record) if failed_before else None
 
     parts = summarize(lines, a.highlights, a.tail, code != 0)
     if a.journal_dir and a.journal_dir != "off":
@@ -183,6 +259,11 @@ def main(argv=None):
     print(f"log: {log_path}")
     for part in parts:
         print(part)
+    if failed_before:
+        where = f"; recorded in {flaky[0]}" if flaky else ""
+        print(f"AFS-FLAKY command={name} failed_at={failed_before['ts']} tests={','.join(flaky[1]) if flaky else ''}"
+              f" — this passed on the same code that failed before{where}. Don't rerun to make it pass: commit "
+              "the record and say so in your return.")
     return code
 
 
