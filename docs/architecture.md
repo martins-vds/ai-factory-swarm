@@ -132,6 +132,7 @@ humans, and approved for cutover.
 | 67 | Recorded legacy exchanges are replayed: a spec case `when.replay: {recording, exchange}` sends the recorded request and compares status and body (`exact`, `text`, `json`, `ignore`, with masks); with `spec.required`, a tier-A capability replays one or says `no_replay` | [0067](adr/0067-recorded-legacy-exchanges-are-replayed.md) |
 | 68 | Contracts are checked at the boundary: `then.schema` (the shape of a JSON answer), `given.gateways` (a real local HTTP stub per gateway, found through the profile's `spec.gateways`) and `then.sent` (exactly what the target sent); a required spec of an `integration` capability has one or says `no_contract` | [0068](adr/0068-contracts-are-checked-at-the-boundary.md) |
 | 69 | Properties hold over a range: a spec case with `forall` (int, number, date ranges; `one_of`) runs on the range's edges, middle and seeded random inputs, and a failure is shrunk to the smallest failing input; `then.number` bounds a number in the answer. No Hypothesis: the runner stays harness-owned and stack-agnostic | [0069](adr/0069-properties-hold-over-a-range.md) |
+| 70 | A flaky test is a ticket, not a retry: `afs-run` fingerprints the code each run saw and records a pass after a failure on the same code (`AFS-FLAKY`, `.migration/evidence/flaky/`); the finish check wants it committed; `afs-flaky` (AFS flaky tests workflow) also reads CI re-runs and keeps one `afs-flaky` issue per test | [0070](adr/0070-a-flaky-test-is-a-ticket-not-a-retry.md) |
 
 ---
 

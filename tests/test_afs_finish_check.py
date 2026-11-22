@@ -120,6 +120,16 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("`# afs: allow-browser <why>`", out["reason"])
         self.assertIn("# afs: allow-mock <why>", out["reason"])
 
+    def test_an_uncommitted_flaky_record_is_sent_back_to_be_committed(self):
+        self.write("src/wizard.py")
+        self.write(".migration/evidence/flaky/BK-05D.md", "# Flaky runs: BK-05D\n")
+        out, _ = self.run_hook()
+        self.assertIn("afs-run recorded a flaky run in `.migration/evidence/flaky/BK-05D.md`", out["reason"])
+        git(self.repo, "add", ".migration/evidence/flaky/BK-05D.md")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "flaky record")
+        out, _ = self.run_hook(session="s2")
+        self.assertNotIn("recorded a flaky run", (out or {}).get("reason", ""))
+
     def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):
         self.write("src/wizard.py")
         ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"

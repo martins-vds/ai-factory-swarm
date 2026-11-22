@@ -108,3 +108,49 @@ class AfsRunTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FlakyTest(unittest.TestCase):
+    """ADR-0070: a command that fails and then passes on the same code is recorded, not silently retried."""
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self._d.name)
+        (self.root / ".migration").mkdir()
+        (self.root / "src.py").write_text("x = 1\n")
+        self.counter = self.root.parent / f"{self.root.name}-attempts"        # outside the tree
+        for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"]):
+            subprocess.run(["git", *cmd], cwd=self.root, check=True, capture_output=True)
+        # fails on its first attempt, passes after: a flaky test
+        self.cmd = [sys.executable, "-c",
+                    "import pathlib,sys; p=pathlib.Path(sys.argv[1]); n=int(p.read_text()) if p.exists() else 0; "
+                    "p.write_text(str(n+1)); print('FAILED tests/test_pay.py::test_browser_pay - Timeout') if n==0 "
+                    "else print('1 passed'); sys.exit(1 if n==0 else 0)", str(self.counter)]
+
+    def tearDown(self):
+        self._d.cleanup()
+        self.counter.unlink(missing_ok=True)
+
+    def run_gate(self):
+        return subprocess.run([sys.executable, str(AFS_RUN), "--ticket", "LL-03", "--name", "tests", "--", *self.cmd],
+                              cwd=self.root, capture_output=True, text=True)
+
+    def test_a_pass_on_the_code_that_failed_is_recorded_with_the_failing_test(self):
+        self.assertEqual(self.run_gate().returncode, 1)
+        second = self.run_gate()
+        self.assertEqual(second.returncode, 0)
+        self.assertIn("AFS-FLAKY command=tests", second.stdout)
+        self.assertIn("tests=tests/test_pay.py::test_browser_pay", second.stdout)
+        record = (self.root / ".migration/evidence/flaky/LL-03.md").read_text()
+        self.assertIn("- tests that failed: `tests/test_pay.py::test_browser_pay`", record)
+        self.assertIn("same code (tree `", record)
+        runs = [json.loads(l) for l in (self.root / ".migration/runs/LL-03/runs.jsonl").read_text().splitlines()]
+        self.assertEqual(runs[0]["tree"], runs[1]["tree"])
+
+    def test_a_pass_after_a_code_change_is_a_fix_not_a_flake(self):
+        self.assertEqual(self.run_gate().returncode, 1)
+        (self.root / "src.py").write_text("x = 2\n")                       # the agent fixed something
+        second = self.run_gate()
+        self.assertEqual(second.returncode, 0)
+        self.assertNotIn("AFS-FLAKY", second.stdout)
+        self.assertFalse((self.root / ".migration/evidence/flaky").exists())

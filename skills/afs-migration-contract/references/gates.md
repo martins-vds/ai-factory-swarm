@@ -43,6 +43,11 @@ for the tests after it. Prefer one project-wide setting to per-test marks (Djang
 `target.shared_test_files` lists where that setting lives; any ticket may change those files. Run the full
 suite in its default order before finishing: a test that passes alone can still break another one.
 
+A gate that fails and then passes on the same code is flaky, not fixed. `afs-run` notices (`AFS-FLAKY`) and
+records the failing tests in `.migration/evidence/flaky/<ticket>.md`. Commit that file and name the tests in
+your return's notes, and don't rerun gates until one passes. The AFS flaky tests workflow opens a ticket per
+test (ADR-0070).
+
 ## Differential fidelity
 
 Source observations are evidence, not permission to override an approved human decision. Before
