@@ -76,8 +76,8 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 ### Phase 3: coupling guard (gap 3)
 | # | Step | Status |
 |---|---|---|
-| 3.1 | `afs-test-health --check` on changed test files. It finds: patching project code; private access to project code (allowlist: `_meta`); interaction assertions on project code. An inline `# afs: allow-mock <why>` exempts a line. | ☐ |
-| 3.2 | The finish check and CI run it, report-only first. | ☐ |
+| 3.1 | `afs-test-health --check` on changed test files. It finds: patching project code; private access to project code (allowlist: `_meta`); interaction assertions on project code. An inline `# afs: allow-mock <why>` exempts a line. | ◐ PR (ADR-0064): only the lines a branch added; interaction assertions on boundary doubles pass; the exemption needs a reason |
+| 3.2 | The finish check and CI run it, report-only first. | ◐ PR (ADR-0064): CI annotates findings, the finish check records them; `test_health.block` makes both refuse |
 | 3.3 | Turn it on as a blocking rule after one eval shows no pass-rate loss. | ☐ |
 
 ### Phase 4: test types a migration needs (gap 5)
@@ -161,3 +161,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: PR #233 (ADR-0062) and eval #2290 (agent sync) merged. Step 2.3 in its own PR (ADR-0063): the spec gate and the spec mutation report.
 - 2026-11-22: PR #235 (CI and acceptance run the spec gate) and synthetic #151 (the spec as its own gate) merged. Step 2.4 dispatched: 12 sessions. A new `spec` case kind grades the Characterizer's spec by running it in CI against the accepted fees code; every other case now also checks that an existing spec is left unchanged and records spec disputes.
 - 2026-11-22: step 2.4 done ([summary](../../evals/results/2026-11-22-sf-summary.md)). Phase 2 is complete. Turning on `spec.required` per target is the operator's call; the synthetic target is ready for it.
+- 2026-11-22: `spec.required` turned on: pilot #507 (with the harness re-roll from `a74a90c`) and synthetic #152 (the fees spec gains its oracles; the waiver-boundary rows are honestly marked source-predicted). Neither target has open build tickets, so it applies from the next plan. Phase 3 started: steps 3.1 and 3.2 in one PR (ADR-0064).

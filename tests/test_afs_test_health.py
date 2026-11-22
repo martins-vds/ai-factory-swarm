@@ -107,3 +107,76 @@ class CouplingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckTest(unittest.TestCase):
+    """Phase 3 (ADR-0064): the coupling guard looks only at the lines a branch added to its tests."""
+
+    OLD = """\
+        from shop.billing import service
+        def test_old(monkeypatch):
+            monkeypatch.setattr(service, "charge_customer", lambda: 1)   # written before the guard: never blamed
+        """
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self._d.name)
+        (self.root / "src/shop/billing").mkdir(parents=True)
+        (self.root / "src/shop/billing/service.py").write_text("def charge_customer():\n    return 1\n")
+        (self.root / "tests").mkdir()
+        (self.root / "tests/test_old.py").write_text(textwrap.dedent(self.OLD))
+        for cmd in (["init", "-q", "-b", "main"], ["add", "-A"],
+                    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"],
+                    ["checkout", "-q", "-b", "work"]):
+            subprocess.run(["git", *cmd], cwd=self.root, check=True, capture_output=True)
+
+    def tearDown(self):
+        self._d.cleanup()
+
+    def test_only_added_lines_count_and_boundaries_and_allowed_lines_pass(self):
+        old = self.root / "tests/test_old.py"
+        old.write_text(old.read_text() + textwrap.dedent("""\
+            def test_new(monkeypatch):
+                monkeypatch.setattr(service, "_round", lambda x: x)
+            """))
+        (self.root / "tests/test_new.py").write_text(textwrap.dedent("""\
+            from unittest import mock
+            from shop.billing import service
+            def test_a():
+                with mock.patch("shop.billing.service.charge_customer") as charge:
+                    service.pay()
+                charge.assert_called_once_with(10)
+                assert service._cache == {}
+                gateway = mock.Mock()
+                gateway.charge.assert_called_once_with(10)                 # what leaves the system: behaviour
+                with mock.patch("shop.billing.service.audit"):  # afs: allow-mock audit log writes to disk
+                    pass
+                with mock.patch("shop.billing.service.notify"):  # afs: allow-mock
+                    pass
+            """))                                              # untracked: every line is new
+        ref, found = th.check(self.root, "tests", "src", base="main")
+        self.assertEqual(ref, "main")
+        got = [(f["file"], f["line"], f["kind"]) for f in found]
+        self.assertEqual(got, [
+            ("tests/test_new.py", 4, "own-code patch"),
+            ("tests/test_new.py", 6, "interaction assertion"),
+            ("tests/test_new.py", 7, "private access"),
+            ("tests/test_new.py", 12, "own-code patch"),         # allow-mock needs a reason
+            ("tests/test_old.py", 5, "own-code patch")])     # line 3's older patch isn't this branch's
+        self.assertIn("public entry point", found[0]["hint"])
+
+    def test_report_mode_exits_0_and_block_mode_exits_1(self):
+        import contextlib
+        import io
+        (self.root / "tests/test_new.py").write_text("from shop.billing import service\n"
+                                                     "def test_a():\n    assert service._cache == {}\n")
+        argv = ["--check", "--root", str(self.root), "--base", "main"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(th.main(argv), 0)
+        self.assertIn("tests/test_new.py:3: private access: service._cache", out.getvalue())
+        self.assertIn("AFS-RESULT gate=test-health-check files=1 findings=1 mode=report base=main", out.getvalue())
+        (self.root / ".migration").mkdir()
+        (self.root / ".migration/profile.yaml").write_text("test_health:\n  block: true\n")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(th.main(argv), 1)
+        self.assertIn("mode=block", out.getvalue())
