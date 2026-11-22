@@ -87,7 +87,7 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 | 4.2 | **Differential tests**: replay recorded legacy inputs against the target on every PR, from the tier-A characterization recordings, and compare normalized outputs. **Partly in place:** the pilot has `tests/differential/` for two slices. The step makes it the rule for every slice with tier-A characterization. | ☐ |
 | 4.3 | **Contract tests** at boundaries: a schema snapshot of each REST or report contract in the ledger, and a stub contract for each gateway. | ☐ |
 | 4.4 | **Architecture tests**: the domain layer imports no Django or HTTP. **Already in place** as `check_layers.py` and the profile's `layering.contracts`; the pilot has them. The step checks that every target declares contracts, and adds them to the synthetic target. | ☐ |
-| 4.5 | **Browser tests**: a skill rule and a lint finding for a click followed by an immediate visibility check. LL-01 and LL-03 failed that way on 2026-11-21. | ☐ |
+| 4.5 | **Browser tests**: a skill rule and a lint finding for a click followed by an immediate visibility check. LL-01 and LL-03 failed that way on 2026-11-21. | ◐ PR (ADR-0065): the guard flags `assert` on reads that don't wait and capitalised header lookups (the two LL-03 failures of eval 2.4); rule in `afs-specialty` and gates.md |
 
 ### Phase 5: maintenance over time (gap 6)
 | # | Step | Status |
@@ -163,3 +163,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: step 2.4 done ([summary](../../evals/results/2026-11-22-sf-summary.md)). Phase 2 is complete. Turning on `spec.required` per target is the operator's call; the synthetic target is ready for it.
 - 2026-11-22: `spec.required` turned on: pilot #507 (with the harness re-roll from `a74a90c`) and synthetic #152 (the fees spec gains its oracles; the waiver-boundary rows are honestly marked source-predicted). Neither target has open build tickets, so it applies from the next plan. Phase 3 started: steps 3.1 and 3.2 in one PR (ADR-0064).
 - 2026-11-22: PR #237 merged; pilot #507 and synthetic #152 merged (specs required). Step 3.3 eval ([summary](../../evals/results/2026-11-22-guard-summary.md)): blocking costs no pass rate (18/21 vs 16/21); the guard found nothing in 41 sessions, so it is a backstop for the occasional coupled test (step 2.4's sf-r1 had 6).
+- 2026-11-22: `test_health.block` turned on: pilot #508 and synthetic #153 (both re-rolled to `9d138d2`). Phase 4 started with step 4.5 (ADR-0065), because browser tests caused two of eval 2.4's three LL-03 failures: one asserted a page read without waiting, the other looked up `HX-Request` with capitals, which Playwright never matches.

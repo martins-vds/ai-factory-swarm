@@ -117,6 +117,7 @@ class FinishCheckTest(unittest.TestCase):
         prof.write_text(prof.read_text() + "test_health: {block: true}\n")
         out, _ = self.run_hook(session="s2")
         self.assertIn("Your new tests lean on the code's internals", out["reason"])
+        self.assertIn("`# afs: allow-browser <why>`", out["reason"])
         self.assertIn("# afs: allow-mock <why>", out["reason"])
 
     def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):

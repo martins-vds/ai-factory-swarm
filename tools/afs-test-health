@@ -9,7 +9,15 @@ Usage:
 lines this branch added to test files (committed, uncommitted or untracked, against the merge base with --base,
 default $AFS_BASE, then origin/main, then main), so a test written before the guard is never blamed. It
 reports own-code patches, private access and interaction assertions on anything but a boundary. A line that
-really needs one carries `# afs: allow-mock <why>` (a reason is required). With the profile's
+really needs one carries `# afs: allow-mock <why>` (a reason is required).
+
+In a test file that drives a browser (Playwright), it also flags (ADR-0065):
+* a **non-waiting browser assertion**: `assert` on `is_visible()`, `inner_text()`, `text_content()` and the
+  like. These read the page once: right after a click the page may not have updated yet, so the test is flaky
+  or waits for the wrong thing. `expect(locator).to_be_visible()` / `.to_have_text()` retries until it holds.
+* a **header lookup with capitals**: Playwright lowercases header names, so `headers.get("HX-Request")` is
+  always None. Use the lowercase name or `header_value("HX-Request")`.
+`# afs: allow-browser <why>` exempts such a line. With the profile's
 `test_health.block: true` a finding fails the check (exit 1); otherwise it is reported and the exit is 0.
 
 The full report (no --check) stays report-only (test-trust plan, step 0.1). For every test file under --tests (characterization excluded,
@@ -172,17 +180,30 @@ def scan_file(path, own, keep_boundary_interactions=True):
                 if a.name.startswith("_") and not a.name.startswith("__"):
                     out["private_access"] += 1
                     findings.append((node.lineno, "private access", f"{node.module}.{a.name}"))
+    if "playwright" in text:
+        browser = browser_findings(tree)
+        out["browser_findings"] += len(browser)
+        findings += browser
     if any(k in text for k in ("client.get(", "client.post(", "self.client", "Client(", "page.goto(", "page.click(")):
         out["public_entry_files"] += 1
     return out, findings
 
 
-ALLOW = re.compile(r"#\s*afs:\s*allow-mock\b(.*)$")
+ALLOW = re.compile(r"#\s*afs:\s*allow-(?:mock|browser)\b(.*)$")
 HINTS = {
     "own-code patch": "test through a public entry point instead, or patch only a boundary (clock, network, gateway)",
     "private access": "assert on what the code returns or shows, not on a private helper or attribute",
     "interaction assertion": "assert on the outcome (the response, the stored state), not on which call was made",
+    "non-waiting browser assertion": "use Playwright's expect(locator).to_be_visible() / .to_have_text(...), "
+                                     "which retries until the page has updated",
+    "header lookup with capitals": "Playwright lowercases header names: use the lowercase name, or "
+                                   "header_value(\"Name\")",
 }
+BROWSER_KINDS = ("non-waiting browser assertion", "header lookup with capitals")
+# Locator and page reads that return at once: asserting on them doesn't wait for the page to update.
+NON_WAITING = {"is_visible", "is_hidden", "is_enabled", "is_disabled", "is_checked", "is_editable",
+               "inner_text", "inner_html", "text_content", "input_value", "get_attribute", "count",
+               "all_inner_texts", "all_text_contents"}
 
 
 def interaction_on_boundary(node):
@@ -259,6 +280,28 @@ def check(root=".", tests="tests", src="src", base=None):
     return ref, found
 
 
+def browser_findings(tree):
+    """ADR-0065: Playwright reads asserted without waiting, and header lookups Playwright can never match."""
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            for sub in ast.walk(node.test):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr in NON_WAITING):
+                    found.append((node.lineno, "non-waiting browser assertion", f"{sub.func.attr}()"))
+                    break
+        key = None
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "headers" and node.args):
+            key = node.args[0]
+        elif (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute)
+              and node.value.attr == "headers"):
+            key = node.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value != key.value.lower():
+            found.append((node.lineno, "header lookup with capitals", repr(key.value)))
+    return found
+
+
 def test_files(root, tests):
     base = pathlib.Path(root) / tests
     for p in sorted(base.rglob("*.py")):
@@ -325,6 +368,7 @@ def markdown(rep):
              f"| Private access | {t.get('private_access', 0)} |",
              f"| Interaction assertions | {t.get('interaction_asserts', 0)} |",
              f"| Files driving the HTTP client or a browser | {t.get('public_entry_files', 0)} |",
+             f"| Browser assertions that don't wait, or header names Playwright can't match | {t.get('browser_findings', 0)} |",
              f"| Coupling ratio (production commits that modify existing tests) | "
              f"{c.get('modified_existing_tests', '?')} of {c.get('production_commits', '?')}"
              f" = {c.get('ratio')} |"]
@@ -381,8 +425,9 @@ def run_check(a):
         return 0
     annotate = "error" if block else "warning"
     for f in found:
+        marker = "allow-browser" if f["kind"] in BROWSER_KINDS else "allow-mock"
         print(f"{f['file']}:{f['line']}: {f['kind']}: {f['what']} — {f['hint']}, or mark the line "
-              "`# afs: allow-mock <why>`")
+              f"`# afs: {marker} <why>`")
         if os.environ.get("GITHUB_ACTIONS") == "true":
             print(f"::{annotate} file={f['file']},line={f['line']},title=Coupled test ({f['kind']})::"
                   f"{f['what']}: {f['hint']} (ADR-0064)")
