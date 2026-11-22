@@ -19,6 +19,10 @@ of the code, so a refactor that keeps the behaviour can't break one.
   `.migration/runs/spec-results.json`) for `render`. A capability whose ledger status isn't `in-progress` or
   `migrated` isn't built yet: its cases are reported as pending, not run, so the Characterizer can write
   the spec before the Migrator builds the code (ADR-0062). `--all` runs them anyway.
+* A **replay** case (ADR-0067) names a recorded legacy exchange (`when.replay: {recording, exchange}`): the
+  runner sends its request and compares the response with the recorded one (`then.replay: {body, mask}`), so
+  the recording itself is the oracle and no value is copied by hand. With --require, every tier-A capability
+  with a spec replays at least one exchange, or its ledger entry says why not (`no_replay: <why>`).
 * `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
 
 This file is the harness's. A target's agents may not change it or its adapter, and only a Characterizer
@@ -28,6 +32,7 @@ import argparse
 import contextlib
 import copy
 import datetime as dt
+import html
 import json
 import pathlib
 import re
@@ -85,6 +90,50 @@ def ledger_rules(ledger_dir, capability):
 BUILT = {"in-progress", "migrated"}
 
 
+def ledger_field(ledger_dir, capability, key):
+    path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
+    if not path.exists():
+        return None
+    return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get(key)
+
+
+def load_exchange(root, replay):
+    """The recorded exchange a replay case names, or a SpecError saying what is wrong."""
+    path = pathlib.Path(root) / replay["recording"]
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise SpecError(f"recording {replay['recording']!r} can't be read as JSON: {e}")
+    ex = doc.get(replay["exchange"]) if isinstance(doc, dict) else None
+    if not isinstance(ex, dict) or not isinstance(ex.get("request"), dict) or not isinstance(ex.get("response"), dict):
+        raise SpecError(f"recording {replay['recording']!r} has no exchange {replay['exchange']!r} with a request "
+                        f"and a response (it has: {', '.join(list(doc)[:8]) if isinstance(doc, dict) else 'no names'})")
+    req = ex["request"]
+    if not str(req.get("path", "")).startswith("/") or str(req.get("method", "")).upper() not in (
+            "GET", "POST", "PUT", "PATCH", "DELETE"):
+        raise SpecError(f"exchange {replay['exchange']!r} in {replay['recording']!r} needs request.method and a "
+                        "request.path starting with /")
+    return ex
+
+
+def replay_problems(root, case, path, i):
+    out = []
+    if "replay" not in case["then"]:
+        out.append(f"{path}: case {i + 1} replays an exchange but `then` has no `replay` (body: exact, text, json or "
+                   "ignore) to compare it with")
+    for row in example_rows(case):
+        try:
+            load_exchange(root, substitute(case["when"]["replay"], row))
+        except (SpecError, KeyError) as e:
+            out.append(f"{path}: case {i + 1}: {e}")
+    return out
+
+
+def example_rows(case):
+    ex = case.get("examples")
+    return [dict(zip(ex["columns"], r)) for r in ex["rows"]] if ex else [{}]
+
+
 def ledger_status(ledger_dir, capability):
     path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
     if not path.exists():
@@ -124,12 +173,19 @@ def check(spec_dir, ledger_dir, require=False):
             problems.append(f"{path}: capability {cap} has no ledger entry (.migration/ledger/{cap}.yaml)")
             continue
         root = pathlib.Path(spec_dir).resolve().parent.parent
+        replays = 0
         for i, case in enumerate(doc["cases"]):
+            replay = (case.get("when") or {}).get("replay")
+            if replay:
+                replays += 1
+                problems += replay_problems(root, case, path, i)
+            elif "replay" in case.get("then", {}):
+                problems.append(f"{path}: case {i + 1} has `then.replay` but no `when.replay` to compare with")
             oracle = case.get("oracle")
             if oracle and not (root / oracle).exists():
                 problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names oracle {oracle!r}, which "
                                 "doesn't exist: point it at the recorded legacy output the values come from")
-            if require and not oracle and not case.get("ruling"):
+            if require and not oracle and not replay and not case.get("ruling"):     # a replay is its own oracle
                 problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) says neither where its expected "
                                 "values come from (`oracle:` a recorded legacy output) nor which quirk ruling "
                                 "sets them (`ruling:`)")
@@ -150,6 +206,10 @@ def check(spec_dir, ledger_dir, require=False):
                 if missing:
                     problems.append(f"{path}: case {i + 1} uses {{{', '.join(sorted(missing))}}} but its examples "
                                     "have no such column")
+        if require and not replays and ledger_field(ledger_dir, cap, "characterization_tier") == "A" \
+                and not ledger_field(ledger_dir, cap, "no_replay"):
+            problems.append(f"{path}: {cap} was characterized at tier A, so its recorded exchanges can be replayed: add "
+                            "a replay case (`when.replay`), or say why none can be in its ledger entry (`no_replay`)")
         if require:
             for rule in sorted((known or set()) - proved.get(cap, set()) - unspecced_rules(ledger_dir, cap)):
                 problems.append(f"{path}: rule {rule!r} of {cap} has no case; add one that proves it, or a "
@@ -180,9 +240,34 @@ def merge_given(*parts):
     return out
 
 
-def expand(doc, path):
+def spec_root(path):
+    """The repository root of a spec file at <root>/.migration/spec/<slice>/<file>.yaml."""
+    parents = pathlib.Path(path).resolve().parents
+    return parents[3] if len(parents) > 3 else pathlib.Path(".")
+
+
+def resolve_replay(case, root):
+    """A replay case as the HTTP request it replays, with the recorded response to compare against (ADR-0067)."""
+    replay = case["when"].get("replay")
+    if not replay:
+        return case
+    ex = load_exchange(root, replay)
+    req, resp = ex["request"], ex["response"]
+    http = {"method": str(req["method"]).upper(), "path": req["path"]}
+    for key in ("form", "json", "headers"):
+        if req.get(key) is not None:
+            http[key] = req[key]
+    then = dict(case["then"])
+    then.setdefault("status", resp.get("status"))
+    then["replay"] = dict(then["replay"], expected=resp.get("body", ""),
+                          source=f"{replay['recording']}#{replay['exchange']}")
+    return dict(case, when={"http": http}, then=then)
+
+
+def expand(doc, path, root=None):
     """The concrete cases of one spec file, with the background and example rows applied."""
     bg = (doc.get("background") or {}).get("given")
+    root = root or spec_root(path)
     out = []
     for i, case in enumerate(doc["cases"]):
         ex = case.get("examples")
@@ -194,6 +279,7 @@ def expand(doc, path):
                         "given": substitute(merge_given(bg, case.get("given")), row),
                         "when": substitute(copy.deepcopy(case["when"]), row),
                         "then": substitute(copy.deepcopy(case["then"]), row)})
+            out[-1] = resolve_replay(out[-1], root)
     return out
 
 
@@ -234,11 +320,47 @@ def verdict(then, result):
     for t in then.get("not_text") or []:
         if str(t) in body:
             failed.append(f"not_text: {t!r} found")
+    if "replay" in then:
+        failed += replay_verdict(then["replay"], result)
     for k, v in (then.get("headers") or {}).items():
         got = (result.get("headers") or {}).get(k.lower())
         if got != v:
             failed.append(f"header {k}: expected {v!r}, got {got!r}")
     return failed
+
+
+TAG = re.compile(r"<[^>]+>")
+
+
+def normalize(body, mode, masks):
+    text = str(body or "")
+    if mode == "text":
+        text = " ".join(html.unescape(TAG.sub(" ", text)).split())
+    elif mode == "exact":
+        text = "\n".join(line.rstrip() for line in text.replace("\r\n", "\n").split("\n")).strip("\n")
+    for m in masks or []:
+        text = re.sub(m, "<masked>", text)
+    return text
+
+
+def replay_verdict(replay, result):
+    """The recorded body against the target's, after the case's normalization and masks."""
+    mode, masks = replay["body"], replay.get("mask")
+    if mode == "ignore":
+        return []
+    if mode == "json":
+        try:
+            want = json.loads(normalize(replay["expected"], "json", masks))
+            got = json.loads(normalize(result.get("text"), "json", masks))
+        except ValueError as e:
+            return [f"replay {replay.get('source')}: body isn't JSON on both sides ({e})"]
+        if want == got:
+            return []
+        return [f"replay {replay.get('source')}: JSON differs; recorded\n" + printer(want) + "target\n" + printer(got)]
+    want, got = normalize(replay["expected"], mode, masks), normalize(result.get("text"), mode, masks)
+    if want == got:
+        return []
+    return [f"replay {replay.get('source')}: body ({mode}) differs\n  recorded: {want[:400]!r}\n  target:   {got[:400]!r}"]
 
 
 def printer(value):
@@ -339,6 +461,9 @@ def mark(result):
 
 
 def describe(when):
+    if "replay" in when:
+        r = when["replay"]
+        return f"the recorded exchange `{r['exchange']}` (`{r['recording']}`) is replayed"
     if "http" in when:
         h = when["http"]
         return f"`{h['method']} {h['path']}`"
@@ -348,6 +473,8 @@ def describe(when):
 
 def describe_then(then):
     parts = []
+    if "replay" in then:
+        parts.append(f"the same status and body as recorded ({then['replay']['body']})")
     if "status" in then:
         parts.append(str(then["status"]))
     if "json" in then:

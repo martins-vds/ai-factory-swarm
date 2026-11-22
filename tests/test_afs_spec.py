@@ -219,3 +219,101 @@ class SchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReplayTest(unittest.TestCase):
+    """ADR-0067: a recorded legacy exchange is the oracle; the runner replays it and compares the response."""
+
+    RECORDING = {"GET /fees/{id}": {"request": {"method": "GET", "path": "/fees/L3", "form": None},
+                                    "response": {"status": 200, "content_type": "text/html", "body":
+                                                 "<h1>Late fee for L3</h1><p>Due 2025-12-15, 19 day(s) late.</p>"
+                                                 "<p class=\"fee\">Fee: $4.75</p>"}},
+                 "GET /fees/unknown": {"request": {"method": "GET", "path": "/fees/unknown"},
+                                       "response": {"status": 404, "body": "<p>No such loan.</p>"}}}
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self._d.name)
+        self.mig = self.repo / ".migration"
+        (self.mig / "ledger").mkdir(parents=True)
+        (self.mig / "ledger/fees.page.yaml").write_text(yaml.safe_dump({
+            "id": "fees.page", "status": "migrated", "characterization_tier": "A",
+            "rules": [{"id": "fee-page", "rule": "shows the fee"}, {"id": "unknown-404", "rule": "404 for no loan"}]}))
+        rec = self.mig / "characterization/goldens/http.json"
+        rec.parent.mkdir(parents=True)
+        rec.write_text(json.dumps(self.RECORDING))
+        (self.mig / "spec/fees").mkdir(parents=True)
+        self.path = self.mig / "spec/fees/page.yaml"
+        self.write([{"title": "Each recorded fee page comes back the same", "rule": ["fee-page", "unknown-404"],
+                     "examples": {"columns": ["file", "name"], "rows": [
+                         ["http.json", "GET /fees/{id}"], ["http.json", "GET /fees/unknown"]]},
+                     "when": {"replay": {"recording": ".migration/characterization/goldens/{file}",
+                                         "exchange": "{name}"}},
+                     "then": {"replay": {"body": "text"}}}])
+
+    def tearDown(self):
+        self._d.cleanup()
+
+    def write(self, cases):
+        self.path.write_text(yaml.safe_dump({"capability": "fees.page", "cases": cases}))
+
+    def check(self, require=True):
+        return sp.check(self.mig / "spec", self.mig / "ledger", require)
+
+    def cases(self):
+        return sp.expand(yaml.safe_load(self.path.read_text()), self.path)
+
+    def test_a_replay_is_its_own_oracle_and_expands_to_the_recorded_request(self):
+        self.assertEqual(self.check(), [])
+        first, second = self.cases()
+        self.assertEqual(first["when"], {"http": {"method": "GET", "path": "/fees/L3"}})
+        self.assertEqual(first["then"]["status"], 200)
+        self.assertEqual(second["then"]["status"], 404)
+        self.assertEqual(second["then"]["replay"]["source"], ".migration/characterization/goldens/http.json#GET /fees/unknown")
+
+    def test_text_mode_ignores_markup_and_whitespace_but_not_a_wrong_value(self):
+        case = self.cases()[0]
+        same = {"status": 200, "text": "<main>\n <h1>Late fee for L3</h1>\n<p>Due 2025-12-15, 19 day(s) late.</p>"
+                                       "<p>Fee: &#36;4.75</p></main>"}
+        self.assertEqual(sp.verdict(case["then"], same), [])
+        wrong = dict(same, text=same["text"].replace("4.75", "4.50"))
+        failure = sp.verdict(case["then"], wrong)
+        self.assertEqual(len(failure), 1)
+        self.assertIn("body (text) differs", failure[0])
+        self.assertIn("Fee: $4.50", failure[0])
+
+    def test_exact_json_masks_and_ignore(self):
+        v = sp.replay_verdict
+        self.assertEqual(v({"body": "exact", "expected": "a \r\nb\n"}, {"text": "a\nb"}), [])
+        self.assertTrue(v({"body": "exact", "expected": "<p>a</p>"}, {"text": "<p> a</p>"}))
+        self.assertEqual(v({"body": "json", "expected": '{"a": 1, "b": [1, 2]}'}, {"text": '{"b":[1,2],"a":1}'}), [])
+        self.assertTrue(v({"body": "json", "expected": '{"a": 1}'}, {"text": '{"a": 2}'}))
+        masked = {"body": "text", "expected": "Due 2026-01-16", "mask": [r"\d{4}-\d{2}-\d{2}"]}
+        self.assertEqual(v(masked, {"text": "Due 2026-11-22"}), [])
+        self.assertEqual(v({"body": "ignore", "expected": "x"}, {"text": "y"}), [])
+
+    def test_a_missing_exchange_or_a_replay_without_a_comparison_is_refused(self):
+        self.write([{"title": "A page nobody recorded", "rule": "fee-page",
+                     "when": {"replay": {"recording": ".migration/characterization/goldens/http.json",
+                                         "exchange": "GET /fees/L9"}},
+                     "then": {"status": 200}}])
+        problems = "\n".join(self.check())
+        self.assertIn("has no exchange 'GET /fees/L9'", problems)
+        self.assertIn("`then` has no `replay`", problems)
+
+    def test_a_tier_a_capability_replays_something_or_says_why_not(self):
+        self.write([{"title": "The fee page shows the fee", "rule": ["fee-page", "unknown-404"], "oracle":
+                     ".migration/characterization/goldens/http.json",
+                     "when": {"http": {"method": "GET", "path": "/fees/L3"}}, "then": {"text": ["$4.75"]}}])
+        self.assertIn("characterized at tier A, so its recorded exchanges can be replayed", "\n".join(self.check()))
+        self.assertNotIn("tier A", "\n".join(self.check(require=False)))
+        led = yaml.safe_load((self.mig / "ledger/fees.page.yaml").read_text())
+        led["no_replay"] = "the page is a JSF conversation; each step depends on the session"
+        (self.mig / "ledger/fees.page.yaml").write_text(yaml.safe_dump(led))
+        self.assertEqual(self.check(), [])
+
+    def test_the_rendered_spec_says_what_is_replayed(self):
+        text = sp.render("fees", self.mig / "spec", self.mig / "ledger")
+        self.assertIn("the recorded exchange `{name}` (`.migration/characterization/goldens/{file}`) is replayed", text)
+        self.assertIn("the same status and body as recorded (text)", text)
+        self.assertIn("| http.json | GET /fees/unknown | not run yet |", text)

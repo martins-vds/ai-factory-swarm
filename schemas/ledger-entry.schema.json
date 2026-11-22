@@ -194,6 +194,11 @@
     },
     "notes": {
       "type": "string"
+    },
+    "no_replay": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Why no spec case can replay a recorded legacy exchange of this tier-A capability (ADR-0067), e.g. a stateful JSF conversation. Without it, a required spec replays at least one."
     }
   },
   "allOf": [

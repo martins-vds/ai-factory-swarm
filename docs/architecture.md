@@ -129,6 +129,7 @@ humans, and approved for cutover.
 | 64 | A coupling guard on the test lines a branch adds: `afs-test-health --check` flags own-code patches, private access and interaction assertions off the boundaries; `# afs: allow-mock <why>` exempts a line; CI and the finish check report until the profile sets `test_health.block` | [0064](adr/0064-a-coupling-guard-on-new-test-lines.md) |
 | 65 | Browser tests wait for the page: the coupling guard flags `assert` on Playwright reads that return at once (use `expect(...)`) and header lookups with capitals; `# afs: allow-browser <why>` exempts a line | [0065](adr/0065-browser-tests-wait-for-the-page.md) |
 | 66 | A target with code declares its layers: `validate.py` refuses a profile without `layering.contracts` once Python modules exist under `graph.target_paths`; contracts cite their ADR, and older breaks are `known` with what removes them | [0066](adr/0066-a-target-with-code-declares-its-layers.md) |
+| 67 | Recorded legacy exchanges are replayed: a spec case `when.replay: {recording, exchange}` sends the recorded request and compares status and body (`exact`, `text`, `json`, `ignore`, with masks); with `spec.required`, a tier-A capability replays one or says `no_replay` | [0067](adr/0067-recorded-legacy-exchanges-are-replayed.md) |
 
 ---
 

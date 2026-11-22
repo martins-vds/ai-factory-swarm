@@ -27,12 +27,20 @@ Migrator builds the code, and the Migrator can't change it.
    - sets up through side channels only: `fixtures`, setup `commands`, the `clock`;
    - acts **once** through a public entry point: an HTTP request or a management command;
    - says what must come back: `status`, a `json` subset, `text` that must appear, `not_text`, `headers`.
-4. **Tables for ranges.** Boundaries go in `examples` rows: zero, the last free value, the first charged one,
+4. **Replay what was recorded** (ADR-0067). For a tier-A capability, turn its recorded exchanges into replay
+   cases instead of copying values: `when: {replay: {recording: <file>, exchange: <name>}}` and
+   `then: {replay: {body: text}}`. A recording is a JSON file of `{name: {request: {method, path, form?, json?,
+   headers?}, response: {status, body}}}`. `body` compares `exact`, `text` (markup and whitespace dropped),
+   `json`, or `ignore` (status only). `mask` lists regular expressions for values that differ by design, such
+   as a date or an id. Set the clock to the recording's date when the response depends on it. With
+   `spec.required`, a tier-A capability with a spec replays at least one exchange, or its ledger entry says why
+   none can be replayed (`no_replay: <why>`, for example a stateful JSF conversation).
+5. **Tables for ranges.** Boundaries go in `examples` rows: zero, the last free value, the first charged one,
    the cap and past it, empty and missing input. `{column}` fills a row's value into `given`, `when` and
    `then`, the clock included.
-5. **The domain's words only.** No module, class or function names, no database tables: a case must survive
+6. **The domain's words only.** No module, class or function names, no database tables: a case must survive
    any restructuring that keeps the behaviour.
-6. **Check it:** `afs-spec check --require` (through `afs-run`) passes, and `afs-spec render <slice>` reads as
+7. **Check it:** `afs-spec check --require` (through `afs-run`) passes, and `afs-spec render <slice>` reads as
    a page the customer can follow. Until the Migrator marks a capability `in-progress` or `migrated` in the
    ledger, `afs-spec run` reports its cases as pending, so your PR's checks pass before the code exists.
 
