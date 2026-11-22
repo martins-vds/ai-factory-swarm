@@ -683,6 +683,30 @@ def check_layering_gate(path, profile, errors):
                           f"`python .migration/harness/tools/{tool}`")
 
 
+def target_code(root, profile):
+    """Python files of the target's own code: under graph.target_paths (default `src`), migrations excluded."""
+    paths = ((profile.get("graph") or {}).get("target_paths")) or ["src"]
+    out = []
+    for rel in paths:
+        base = pathlib.Path(root) / rel
+        if base.is_dir():
+            out += [p for p in base.rglob("*.py") if "migrations" not in p.parts and p.name != "__init__.py"]
+    return out
+
+
+def check_layering_declared(path, profile, root, errors):
+    """Step 4.4 (ADR-0066): once the target has code, its architecture's layers are import contracts. Without them
+    nothing stops a use case importing the web framework, which every Verifier in eval baseline b3c missed."""
+    if (profile.get("layering") or {}).get("contracts"):
+        return
+    code = target_code(root, profile)
+    if code:
+        errors.append(f"{path}: the target has code ({len(code)} module(s), e.g. "
+                      f"{code[0].relative_to(root).as_posix()}) but no `layering.contracts`. Write the layers the target "
+                      "ADRs state as import contracts (references/gates.md, gate 3; tools/check_layers.py) and run "
+                      "check_layers.py in gates.idiom")
+
+
 def check_spec(folder, errors):
     """ADR-0061: the customer spec is valid, every case asserts something and names a rule its capability
     lists; with the profile's `spec.required`, every rule of a specced capability is proved by a case."""
@@ -714,6 +738,8 @@ def main():
             if name == "profile.yaml":
                 check_thresholds(folder / name, load_yaml(folder / name) or {}, errors)
                 check_layering_gate(folder / name, load_yaml(folder / name) or {}, errors)
+                if not a.sample:
+                    check_layering_declared(folder / name, load_yaml(folder / name) or {}, folder.resolve().parent, errors)
                 check_mutation_base(folder / name, load_yaml(folder / name) or {}, errors)
             else:
                 check_tier_attempt(folder / name, load_yaml(folder / name) or {}, errors)
