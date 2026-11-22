@@ -16,11 +16,13 @@ of the code, so a refactor that keeps the behaviour can't break one.
   spec file must be proved by at least one case.
 * `run`: the cases run through the stack's adapter (`afs_spec_django.py` for Django). A failure prints the
   expected and actual response as text, so it reads as a diff. Results go to --results (default
-  `.migration/runs/spec-results.json`) for `render`.
+  `.migration/runs/spec-results.json`) for `render`. A capability whose ledger status isn't `in-progress` or
+  `migrated` isn't built yet: its cases are reported as pending, not run, so the Characterizer can write
+  the spec before the Migrator builds the code (ADR-0062). `--all` runs them anyway.
 * `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
 
-This file is the harness's. A target's agents may not change it, its adapter or `.migration/spec/` outside
-a spec ticket (ADR-0061).
+This file is the harness's. A target's agents may not change it or its adapter, and only a Characterizer
+ticket may change `.migration/spec/` (ADR-0061, ADR-0062).
 """
 import argparse
 import contextlib
@@ -80,6 +82,16 @@ def ledger_rules(ledger_dir, capability):
     return {r.get("id") for r in doc.get("rules") or [] if isinstance(r, dict)}
 
 
+BUILT = {"in-progress", "migrated"}
+
+
+def ledger_status(ledger_dir, capability):
+    path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
+    if not path.exists():
+        return None
+    return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("status")
+
+
 def unspecced_rules(ledger_dir, capability):
     """Rules the ledger says no case can prove (`no_spec: <why>`)."""
     path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
@@ -111,7 +123,16 @@ def check(spec_dir, ledger_dir, require=False):
         if known is None:
             problems.append(f"{path}: capability {cap} has no ledger entry (.migration/ledger/{cap}.yaml)")
             continue
+        root = pathlib.Path(spec_dir).resolve().parent.parent
         for i, case in enumerate(doc["cases"]):
+            oracle = case.get("oracle")
+            if oracle and not (root / oracle).exists():
+                problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names oracle {oracle!r}, which "
+                                "doesn't exist: point it at the recorded legacy output the values come from")
+            if require and not oracle and not case.get("ruling"):
+                problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) says neither where its expected "
+                                "values come from (`oracle:` a recorded legacy output) nor which quirk ruling "
+                                "sets them (`ruling:`)")
             for rule in case_rules(case):
                 if rule not in known:
                     problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names rule {rule!r}, which "
@@ -235,8 +256,13 @@ def adapter_for(name):
     raise SpecError(f"no spec adapter {name!r} (the stack pack's profile names one under spec.adapter)")
 
 
-def run_cases(cases, adapter):
-    results = []
+def run_cases(cases, adapter, pending=()):
+    """Run each case; a case whose capability is in `pending` is recorded as pending, not run."""
+    results = [{"id": c["id"], "title": c["title"], "capability": c["capability"], "rules": c["rules"],
+                "passed": None, "pending": True, "failures": []} for c in cases if c["capability"] in pending]
+    cases = [c for c in cases if c["capability"] not in pending]
+    if not cases:
+        return results
     with contextlib.ExitStack() as stack:
         adapter.setup()
         stack.callback(adapter.teardown)
@@ -282,6 +308,10 @@ def render(slice_, spec_dir, ledger_dir, results=None):
                 c["id"] = c["id"].replace(f"{path}#1", f"{path}#{i + 1}", 1)
             lines.append(f"### {case['title']}")
             lines += [f"- proves **{r}**: {rules.get(r, '(not in the ledger)')}" for r in case_rules(case)]
+            if case.get("oracle"):
+                lines.append(f"- expected values from the legacy app: `{case['oracle']}`")
+            if case.get("ruling"):
+                lines.append(f"- expected values set by quirk ruling {case['ruling']}")
             lines.append("")
             lines.append(f"When {describe(case['when'])}, then {describe_then(case['then'])}.")
             ex = case.get("examples")
@@ -301,7 +331,11 @@ def render(slice_, spec_dir, ledger_dir, results=None):
 
 
 def mark(result):
-    return "✅ passed" if result and result["passed"] else "❌ failed" if result else "not run yet"
+    if not result:
+        return "not run yet"
+    if result.get("pending"):
+        return "⏳ not built yet"
+    return "✅ passed" if result["passed"] else "❌ failed"
 
 
 def describe(when):
@@ -337,6 +371,7 @@ def main(argv=None):
         if name == "run":
             p.add_argument("--slice")
             p.add_argument("--adapter")
+            p.add_argument("--all", action="store_true", help="also run capabilities that aren't built yet")
             p.add_argument("--results", default=".migration/runs/spec-results.json")
         if name == "render":
             p.add_argument("slice")
@@ -358,8 +393,16 @@ def main(argv=None):
             print(f"AFS-RESULT gate=spec cases=0 failed=0 problems={len(problems)}")
             return 1
         cases = [c for path in spec_files(a.spec, a.slice) for c in expand(load(path), path)]
-        results = run_cases(cases, adapter_for(a.adapter or profile_adapter()))
+        pending = set() if a.all else {c["capability"] for c in cases
+                                        if ledger_status(a.ledger, c["capability"]) not in BUILT}
+        runnable = [c for c in cases if c["capability"] not in pending]
+        results = run_cases(cases, adapter_for(a.adapter or profile_adapter()) if runnable else None, pending)
+        for cap in sorted(pending):
+            print(f"PEND {cap}: not built yet (ledger status {ledger_status(a.ledger, cap)!r}); its cases run "
+                  "once the status is in-progress or migrated")
         for r in results:
+            if r.get("pending"):
+                continue
             print(f"{'PASS' if r['passed'] else 'FAIL'} {r['id']}: {r['title']}")
             for f in r["failures"]:
                 print("    " + f.replace("\n", "\n    "))
@@ -367,8 +410,9 @@ def main(argv=None):
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps({"at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                                    "results": results}, indent=1) + "\n", encoding="utf-8")
-        failed = sum(not r["passed"] for r in results)
-        print(f"AFS-RESULT gate=spec cases={len(results)} failed={failed}")
+        failed = sum(r["passed"] is False for r in results)
+        waiting = sum(bool(r.get("pending")) for r in results)
+        print(f"AFS-RESULT gate=spec cases={len(results) - waiting} failed={failed} pending={waiting}")
         return 1 if failed else 0
     if a.cmd == "render":
         results = None

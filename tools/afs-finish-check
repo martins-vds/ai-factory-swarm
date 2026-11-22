@@ -11,6 +11,9 @@ by hand. It checks the session's own work, with the same rules CI applies:
   scope       every file this branch changed is in the ticket's planned files (`check_plan.py`), plus the
               session's own records, plus `AFS-SCOPE: <path>` lines in the issue (an operator extension).
               A file outside them needs a handoff that names it: an agent never widens its own scope.
+  spec        (ADR-0062) only a Characterizer session changes `.migration/spec/`. Any other role's change to
+              it is refused even with a handoff: a spec the work disagrees with is a handoff with the
+              evidence, and the spec file stays as it was.
   stuck gate  a return that reports a handoff (`handoff:` set) must have committed that handoff.
   own return  no other return file differs from the base branch: a session writes only its own (pilot:
               a Verifier rewrote the Migrator's return to point at its own PR).
@@ -55,6 +58,8 @@ except Exception as exc:   # noqa: BLE001
 MIG = pathlib.Path(".migration")
 ROLES = ("afs-analyst", "afs-auditor", "afs-bootstrapper", "afs-characterizer", "afs-migrator", "afs-planner",
          "afs-program-orchestrator", "afs-slice-coordinator", "afs-specialist-migrator", "afs-verifier")
+SPEC_DIR = ".migration/spec/"
+SPEC_AUTHOR = "afs-characterizer"
 SCOPED_ROLES = {"afs-migrator", "afs-specialist-migrator", "afs-characterizer"}
 SCOPE_LINE = re.compile(r"^\s*AFS-SCOPE:\s*`?([^`\s]+)`?\s*$", re.M)
 
@@ -336,10 +341,21 @@ def findings(ticket, role, changed, prompt):
                               + ", so those results don't describe the code CI will check. Re-run each through "
                               "afs-run and copy the new results into your return."))
 
+    spec_changed = [p for p in changed if p.startswith(SPEC_DIR)]
+    if spec_changed and role != SPEC_AUTHOR:
+        found.append(("scope", "spec:" + ",".join(spec_changed),
+                      "You changed the customer spec: " + ", ".join(f"`{p}`" for p in spec_changed) + ". Only the "
+                      "Characterizer writes it (ADR-0062); it is the contract your code is held to. Restore each "
+                      "file exactly as it was on your base branch (`git checkout <base> -- <file>`) and commit. If a "
+                      "case is wrong, write a handoff (afs-handoff) titled `spec dispute` that names the case, what "
+                      "the legacy app or a quirk ruling says instead, and the evidence; set `handoff:` in your "
+                      "return, and stop."))
+
     planned = check_plan.ticket_files(MIG, ticket) if role in SCOPED_ROLES else None
     if planned is not None:
         allowed = set(planned) | own_records(ticket, role) | set(SCOPE_LINE.findall(prompt or ""))
-        outside = [p for p in changed if not always_allowed(p) and not in_scope(p, allowed)]
+        outside = [p for p in changed if not always_allowed(p) and not in_scope(p, allowed)
+                   and not (p.startswith(SPEC_DIR) and role != SPEC_AUTHOR)]
         handoff_file = MIG / "handoffs" / f"{ticket}.md"
         named = handoff_file.read_text(encoding="utf-8") if handoff_file.as_posix() in changed and handoff_file.exists() else ""
         unexplained = [p for p in outside if p not in named]

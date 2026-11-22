@@ -1,0 +1,52 @@
+# The customer spec (ADR-0061, ADR-0062)
+
+A slice's behaviour, written as data the person who owns the migration can read: what the software does,
+not how. `afs-spec` runs it through the target's public entry points. The Characterizer writes it before the
+Migrator builds the code, and the Migrator can't change it.
+
+## Who does what
+| Role | With the spec |
+|---|---|
+| Planner | Plans one Characterizer ticket per slice whose files include `.migration/spec/<slice>/`, and blocks the slice's Migrator tickets on it. `check_plan.py` refuses a spec file in any other role's ticket, and, with the profile's `spec.required`, a Migrator ticket whose capability has no spec and no spec ticket before it. |
+| Characterizer | Writes the ledger rules and the spec cases from the legacy app's recorded behaviour. |
+| Migrator | Builds until every case passes. Never edits `.migration/spec/`: the finish check and CI refuse it, even with a handoff. |
+| Human | Reviews the rendered spec (`afs-spec render <slice>`), rules on disputes, and may correct a spec in their own PR. |
+
+## Writing it (Characterizer)
+1. **Rules first.** For each capability in the ticket, write its business rules in the ledger entry
+   (`rules: [{id, rule, source}]`): every check that refuses input or must hold, from the legacy code and
+   its characterization. Ids are short and in the domain's words (`fee-capped-at-10`).
+2. **One file per capability:** `.migration/spec/<slice>/<name>.yaml` (`schemas/spec.schema.json`), with
+   `capability:` set to the ledger id.
+3. **One case per behaviour.** Each case:
+   - names the rule or rules it proves (`rule:`);
+   - names its **oracle**: the recorded legacy output its expected values come from (`oracle:`, a path from
+     the repo root, such as a golden file or a characterization test). The legacy app is the independent
+     check on the values. A value the legacy app doesn't produce, because a quirk ruling changed it, names
+     the ruling instead (`ruling: Q-7`). A spec never silently keeps a legacy bug, and never invents a value;
+   - sets up through side channels only: `fixtures`, setup `commands`, the `clock`;
+   - acts **once** through a public entry point: an HTTP request or a management command;
+   - says what must come back: `status`, a `json` subset, `text` that must appear, `not_text`, `headers`.
+4. **Tables for ranges.** Boundaries go in `examples` rows: zero, the last free value, the first charged one,
+   the cap and past it, empty and missing input. `{column}` fills a row's value into `given`, `when` and
+   `then`, the clock included.
+5. **The domain's words only.** No module, class or function names, no database tables: a case must survive
+   any restructuring that keeps the behaviour.
+6. **Check it:** `afs-spec check --require` (through `afs-run`) passes, and `afs-spec render <slice>` reads as
+   a page the customer can follow. Until the Migrator marks a capability `in-progress` or `migrated` in the
+   ledger, `afs-spec run` reports its cases as pending, so your PR's checks pass before the code exists.
+
+## A case you believe is wrong (Migrator)
+Don't edit it, and don't make the code match a value you think is wrong. Write a handoff (`afs-handoff`)
+whose **Blockers / questions** start with `spec dispute:` and give:
+- the case (file and title, or the id `afs-spec run` printed);
+- what the legacy app does instead, with the evidence (a golden, a characterization run, `file:line` in the
+  source), or the quirk ruling that disagrees;
+- what you built so far.
+
+Set `handoff:` in your return and stop. The human or a Characterizer ticket corrects the spec, and your
+ticket resumes against it.
+
+A rule you find that the spec has no case for: add it to the ledger with `no_spec: found by <ticket>; needs a
+Characterizer case`, and say so in your return. The rendered spec lists it under the rules no case proves
+yet, where the human sees it.

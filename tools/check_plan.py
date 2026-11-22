@@ -20,7 +20,11 @@ backfilled ticket that finished before return files existed is marked `done_befo
   * (ADR-0048) a template or static file a ticket plans is under the profile's `graph.target_paths`, so the
     target graph sees the page (synthetic #76);
   * (ADR-0048) a module a ticket `removes` has its importing tests in the ticket's files, or owned by a
-    ticket it is blocked by.
+    ticket it is blocked by;
+  * (ADR-0062) only a Characterizer ticket plans files under `.migration/spec/`: the customer spec is
+    written by a role other than the one that builds the code;
+  * (ADR-0062) with the profile's `spec.required`, a Migrator ticket that proves a capability is blocked
+    by a Characterizer ticket that plans the slice's spec, unless a spec file for the capability exists.
 
 Over each slice whose tickets are all still open (a new plan), ADR-0048:
   * every target anchor in `.migration/slices/<slice>.yaml` (`data_paths.target`, `entry_points.target`) is
@@ -59,6 +63,9 @@ FOLDED_INTO = {"afs-specialist-migrator": "afs-migrator", "afs-bootstrapper": "a
 # legacy one: its committed returns on other roles' tickets stay valid (ADR-0050).
 SHARED_ID_ROLES = {"afs-verifier", "afs-auditor"}
 LEGACY_SHARED_ID_ROLES = {"afs-slice-coordinator"}
+SPEC_DIR = ".migration/spec/"
+SPEC_AUTHOR = "afs-characterizer"
+BUILDERS = {"afs-migrator", "afs-specialist-migrator"}
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", ".source", ".migration", "__pycache__"}
 
 
@@ -234,11 +241,53 @@ def check(folder, schemas, errors, sample=False):
             if entry not in t["files"]:
                 errors.append(f"{where[t['id']]}: {t['id']} proves {cap}: add {entry} to its files")
 
+    check_spec_owner(folder, tickets, open_tickets, slice_of, where, deps, errors)
     check_anchors(folder, plans, returned, errors)
     if not sample:
         check_target_paths(folder, open_tickets, where, errors)
         check_removals(root, tickets, open_tickets, where, deps, errors)
     return len(plans)
+
+
+def spec_required(folder):
+    prof = load_yaml(pathlib.Path(folder) / "profile.yaml") or {}
+    return bool((prof.get("spec") or {}).get("required"))
+
+
+def specced_capabilities(folder):
+    """Capabilities with a spec file already committed under `.migration/spec/`."""
+    out = set()
+    for path in sorted((pathlib.Path(folder) / "spec").glob("*/*.yaml")):
+        doc = load_yaml(path)
+        if isinstance(doc, dict) and doc.get("capability"):
+            out.add(doc["capability"])
+    return out
+
+
+def check_spec_owner(folder, tickets, open_tickets, slice_of, where, deps, errors):
+    """ADR-0062: the Characterizer writes the spec, before the Migrator builds what it describes."""
+    for t in open_tickets:
+        spec_files = [f for f in t["files"] if f.startswith(SPEC_DIR) or SPEC_DIR.startswith(f)]
+        if spec_files and t["role"] != SPEC_AUTHOR:
+            errors.append(f"{where[t['id']]}: {t['id']} ({t['role']}) plans {', '.join(spec_files)}: only an "
+                          f"{SPEC_AUTHOR} ticket writes the customer spec (ADR-0062). Plan a Characterizer "
+                          "ticket for it and block this one on it")
+    if not spec_required(folder):
+        return
+    have = specced_capabilities(folder)
+    by_id = {t["id"]: t for t in tickets}
+    for t in open_tickets:
+        if t["role"] not in BUILDERS:
+            continue
+        missing = [c for c in t.get("capabilities", []) if c not in have]
+        if not missing:
+            continue
+        spec_dir = f"{SPEC_DIR}{slice_of[t['id']]}/"
+        writers = [d for d in deps[t["id"]] if by_id.get(d, {}).get("role") == SPEC_AUTHOR
+                   and any(overlaps(f, spec_dir) for f in by_id[d]["files"])]
+        if not writers:
+            errors.append(f"{where[t['id']]}: {t['id']} builds {', '.join(missing)}, which has no spec yet: block "
+                          f"it on an {SPEC_AUTHOR} ticket that plans {spec_dir} (profile spec.required, ADR-0062)")
 
 
 def load_yaml(path):

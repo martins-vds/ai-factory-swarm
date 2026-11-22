@@ -96,6 +96,15 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("`src/settings.py`", out["reason"])
         self.assertIn("Don't widen your own scope", out["reason"])
 
+    def test_a_spec_change_by_the_migrator_is_refused_even_with_a_handoff_naming_it(self):
+        self.write("src/wizard.py")
+        self.write(".migration/spec/booking/wizard.yaml")
+        self.write(".migration/handoffs/BK-05D.md", "## Handoff\nspec dispute: .migration/spec/booking/wizard.yaml\n")
+        out, _ = self.run_hook()
+        self.assertIn("You changed the customer spec: `.migration/spec/booking/wizard.yaml`", out["reason"])
+        self.assertIn("spec dispute", out["reason"])
+        self.assertNotIn("outside ticket", out["reason"])          # one finding, not two
+
     def test_a_return_without_a_mutation_score_is_refused_and_n_a_with_a_reason_is_accepted(self):
         self.write("src/wizard.py")
         ret = self.repo / ".migration/returns/BK-05D.afs-specialist-migrator.yaml"

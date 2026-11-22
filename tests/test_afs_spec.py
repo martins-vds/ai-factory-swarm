@@ -2,6 +2,7 @@
 import contextlib
 import importlib.machinery
 import importlib.util
+import io
 import json
 import pathlib
 import tempfile
@@ -16,7 +17,7 @@ spec = importlib.util.spec_from_loader("afs_spec", loader)
 sp = importlib.util.module_from_spec(spec)
 loader.exec_module(sp)
 
-LEDGER = {"id": "fees.calculation", "kind": "behavioral", "rules": [
+LEDGER = {"id": "fees.calculation", "kind": "behavioral", "status": "migrated", "rules": [
     {"id": "fee-waived-two-days", "rule": "Up to two days late costs nothing."},
     {"id": "fee-25-cents-a-day", "rule": "Each day late costs 25 cents."},
     {"id": "fee-capped-at-10", "rule": "The fee never exceeds $10."}]}
@@ -29,10 +30,12 @@ background:
 cases:
   - title: A loan returned two days late costs nothing
     rule: fee-waived-two-days
+    oracle: tests/characterization/goldens/fees.json
     when: {http: {method: GET, path: /fees/L2}}
     then: {status: 200, json: {fee: "0.00"}}
   - title: Late fees by loan
     rule: [fee-25-cents-a-day, fee-capped-at-10]
+    oracle: tests/characterization/goldens/fees.json
     examples:
       columns: [loan, fee]
       rows: [[L3, "4.75"], [L1, "10.00"]]
@@ -71,8 +74,12 @@ class FakeAdapter:
 class SpecTest(unittest.TestCase):
     def setUp(self):
         self._d = tempfile.TemporaryDirectory()
-        self.root = pathlib.Path(self._d.name)
-        (self.root / "ledger").mkdir()
+        self.repo = pathlib.Path(self._d.name)
+        self.root = self.repo / ".migration"
+        (self.root / "ledger").mkdir(parents=True)
+        golden = self.repo / "tests/characterization/goldens/fees.json"
+        golden.parent.mkdir(parents=True)
+        golden.write_text("{}")
         (self.root / "ledger/fees.calculation.yaml").write_text(yaml.safe_dump(LEDGER))
         (self.root / "spec/fees-payments").mkdir(parents=True)
         self.path = self.root / "spec/fees-payments/late-fees.yaml"
@@ -160,6 +167,42 @@ class SpecTest(unittest.TestCase):
     def test_the_cli_runs_check(self):
         code = sp.main(["check", "--spec", str(self.root / "spec"), "--ledger", str(self.root / "ledger"), "--require"])
         self.assertEqual(code, 0)
+
+
+    def test_with_require_every_case_says_where_its_values_come_from(self):
+        doc = yaml.safe_load(self.path.read_text())
+        del doc["cases"][0]["oracle"]
+        doc["cases"][1]["oracle"] = "tests/characterization/goldens/nowhere.json"
+        self.path.write_text(yaml.safe_dump(doc))
+        problems = "\n".join(self.check(require=True))
+        self.assertIn("case 1 ('A loan returned two days late costs nothing') says neither where", problems)
+        self.assertIn("names oracle 'tests/characterization/goldens/nowhere.json', which doesn't exist", problems)
+        self.assertNotIn("says neither", "\n".join(self.check()))       # without require, only a bad path counts
+        doc["cases"][0]["ruling"] = "Q-7"
+        doc["cases"][1]["oracle"] = "tests/characterization/goldens/fees.json"
+        self.path.write_text(yaml.safe_dump(doc))
+        self.assertEqual(self.check(require=True), [])                   # a ruling sets the values instead
+        self.assertIn("- expected values set by quirk ruling Q-7",
+                      sp.render("fees-payments", self.root / "spec", self.root / "ledger"))
+
+    def test_a_capability_not_built_yet_is_pending_not_failed(self):
+        led = dict(LEDGER, status="pending")
+        (self.root / "ledger/fees.calculation.yaml").write_text(yaml.safe_dump(led))
+        out = self.root / "runs/spec-results.json"
+        argv = ["run", "--spec", str(self.root / "spec"), "--ledger", str(self.root / "ledger"),
+                "--results", str(out)]
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            self.assertEqual(sp.main(argv), 0)                           # no adapter is even loaded
+        self.assertIn("PEND fees.calculation: not built yet (ledger status 'pending')", printed.getvalue())
+        self.assertIn("AFS-RESULT gate=spec cases=0 failed=0 pending=3", printed.getvalue())
+        results = json.loads(out.read_text())["results"]
+        self.assertTrue(all(r["pending"] for r in results))
+        text = sp.render("fees-payments", self.root / "spec", self.root / "ledger", results)
+        self.assertIn("Result: ⏳ not built yet", text)
+        # once the Migrator marks it in progress, the same cases run and must pass
+        cases = sp.expand(yaml.safe_load(self.path.read_text()), "late-fees.yaml")
+        self.assertEqual(sp.run_cases(cases, FakeAdapter(), pending={"fees.calculation"})[0]["passed"], None)
+        self.assertTrue(all(r["passed"] for r in sp.run_cases(cases, FakeAdapter(), pending=set())))
 
 
 class SchemaTest(unittest.TestCase):

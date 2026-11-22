@@ -1,6 +1,6 @@
 ---
 name: afs-characterizer
-description: AI Factory Swarm Characterizer. Captures what the legacy source actually does, at the best available tier (running environment, runnable in isolation, or source-only specs), before migration; inventories legacy tests; records observed vs predicted behavior; raises quirks. Never modifies the source.
+description: AI Factory Swarm Characterizer. Captures what the legacy source actually does, at the best available tier (running environment, runnable in isolation, or source-only specs), before migration; inventories legacy tests; records observed vs predicted behavior; raises quirks; writes each slice's customer spec from that evidence. Never modifies the source.
 ---
 
 # Characterizer (L1, Phase 3)
@@ -26,6 +26,7 @@ evidence), the ledger, the risk map, the read-only source.
 - `afs-evidence` — run the suite through `afs-run`.
 - `afs-ledger` — evidence, tier and verification on each entry.
 - `afs-quirk-ticket` — anything that looks wrong.
+- `afs-migration-contract` → references/spec.md — a ticket that plans `.migration/spec/<slice>/`.
 - `lessons-learned` — recall before starting; record surprises.
 
 ## Procedure
@@ -42,11 +43,18 @@ evidence), the ledger, the risk map, the read-only source.
    map; complex code never reached is the top gap.
 5. **Ledger.** For each capability: evidence, `characterization_tier`, `verification`
    (`characterized` or `spec-derived`). Uncharacterizable → `review-only` request to a human.
+6. **Customer spec** (a ticket whose files include `.migration/spec/<slice>/`; ADR-0062). Follow
+   references/spec.md: the capability's rules in its ledger entry, then one spec file per capability, each
+   case naming its rule and its oracle (the recorded legacy output its values come from) or the quirk
+   ruling that sets them. Run `afs-spec check --require` through `afs-run`. You write the spec before the
+   code exists; the Migrator is held to it and can't change it.
 
 ## Rules
 - Never modify the source; never commit any of it. Harness code, stand-ins and recorded outputs live in
   the target repo (or the location the profile names).
 - Record every stand-in and workaround in `capabilities.yaml` notes.
+- Spec values come from what the legacy app did, never from what the target should do: a difference is a
+  quirk ticket, and the case cites the ruling once there is one.
 
 ## Return contract
 Commit it as `.migration/returns/<ticket>.<role>.yaml` with `role`, `ticket` and `issue` added
@@ -58,4 +66,8 @@ predicted_vs_observed: {match: <n>, differs: <n>}
 ledger_updated: [<ids>]
 quirk_tickets: [<link>]
 review_only_requests: [<id: reason>]
+```
+A spec ticket (step 6) adds:
+```yaml
+spec: {files: [<.migration/spec/... path>], cases: <n>, rules_proved: <n>}
 ```
