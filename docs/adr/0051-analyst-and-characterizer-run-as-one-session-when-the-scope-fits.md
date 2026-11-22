@@ -46,3 +46,7 @@ context.
 - **Correction (ADR-0060):** all 18 of those sessions ran `mai-code-2-flash`. Pinned to `gpt-6-luna`, one session
   passed 2 of 3 (14 rules, 6 values, about half the minutes) and two sessions 3 of 3. The failure above is the
   model's. Decision 1 stands until a pinned run at this size, with the case text fixed, settles it.
+- **Settled (2026-11-22):** with the case text fixed and the finish check on, one session did the work in 2 of 3
+  runs (one wrote 7 of 14 rules); two sessions did it in 3 of 3. One session was also refused its second return
+  by the finish check, since decision 2 isn't built. Across both pinned evals: one session 4 of 6, two sessions
+  6 of 6. **Decision 1 stands:** two sessions for any scope larger than phase 4b's.

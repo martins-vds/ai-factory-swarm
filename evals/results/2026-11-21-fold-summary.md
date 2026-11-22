@@ -143,8 +143,34 @@ force):
   - Decision 1 (small scopes only) stays until a pinned run with the case text fixed shows it holds at
     this size. Decision 2's finish check would make a combined session's missing half impossible.
 
+## Understand again: finish check on, case text fixed (2026-11-22)
+Pinned to `gpt-6-luna`, three runs each. This time the finish check was on, as on the live targets (#225), and
+the case named `.source/` as the source:
+
+| Run | Two sessions (rules, values, minutes) | One session (rules, values, minutes) |
+|---|---|---|
+| r1 | pass (14, 6, 33) | did the work (14, 6, 24), but only the Analyst return |
+| r2 | pass (13, 6, 32) | did the work (14, 6, 13), but only the Analyst return |
+| r3 | pass (14, 6, 29) | thin ledger (7, 5, 22), only the Analyst return |
+
+- **The finish check refused the combined session's second return** in every run: "A session writes only
+  its own return". The understander is an eval variant, not a role the harness supports. On a live target
+  it couldn't finish SY-05 in the same session. That's ADR-0051's decision 2, which isn't built.
+- **On the work itself,** the one session matched the two in two runs of three and fell short in one (7 of
+  14 rules), at 13–24 minutes against about 31.
+- **Across both pinned evals,** one session did the work in 4 of 6 runs, and two sessions in 6 of 6.
+
+**Verdict for ADR-0051:** keep two sessions at this scope. One session saves about a third of the time but
+misses about one run in three, and adopting it would also take decision 2's combined return. Decision 1 (fold
+only a scope like phase 4b's) stands.
+
+DM-05D and DM-05F weren't measured. The Copilot installation's API quota stayed exhausted ("rate limit
+exceeded for installation") even in a quiet window, so the snapshot fetch failed in setup. DM-05F's one
+session that got a snapshot then failed CI, which couldn't fetch it either.
+
 ## Run files
 `2026-11-21-fold-{accF,accU}-r{1,2,3}.json` (acceptance, mixed models), `2026-11-21-foldL-*-r{1,2,3}.json` (pinned to `gpt-6-luna`),
 `2026-11-21-fold-undB-r{1,2,3}.json` (one session),
 `2026-11-21-fold-undA-r{1,2,3}.json` and `-undAc-r{1,2,3}.json` (the Analyst, then the Characterizer on its
 PR; the chained file grades both sessions' work together).
+`2026-11-22-und2{A,Ac,Ac-r1b,B}-r*.json` (understand with the finish check on; r1's first chain didn't start), `2026-11-22-dm-q{1,2}.json`.

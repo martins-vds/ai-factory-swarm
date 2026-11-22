@@ -1,0 +1,14 @@
+{
+  "cases": {
+    "synthetic-legacy-understand": {
+      "checks": [],
+      "kind": "understand",
+      "must_pass": false,
+      "passed": false,
+      "status": "no-pr"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-22T01:20:56+00:00",
+  "run": "2026-11-22-und2Ac-r1"
+}

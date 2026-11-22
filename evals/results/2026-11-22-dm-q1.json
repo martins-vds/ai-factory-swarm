@@ -1,0 +1,33 @@
+{
+  "cases": {
+    "pilot-dm-05d": {
+      "checks": [],
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 153
+      },
+      "must_pass": true,
+      "passed": false,
+      "pr": 2250,
+      "setup_step": "Fetch the newest data snapshot (API rate limit)",
+      "status": "setup-failure"
+    },
+    "pilot-dm-05f": {
+      "checks": [],
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 62
+      },
+      "must_pass": true,
+      "passed": false,
+      "pr": 2251,
+      "setup_step": "Fetch the newest data snapshot (API rate limit)",
+      "status": "setup-failure"
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-22T00:28:32+00:00",
+  "run": "2026-11-22-dm-q1"
+}
