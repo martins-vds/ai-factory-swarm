@@ -1,0 +1,152 @@
+{
+  "cases": {
+    "pilot-refactor-exporter": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/REF-01.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "src/cargotracker/data_migration/schema.py exists",
+          "detail": "src/cargotracker/data_migration/schema.py",
+          "ok": true
+        },
+        {
+          "check": "src/cargotracker/data_migration/exporter.py no longer defines _model_index, _field_for_column, _format_value, _timestamp_timezone",
+          "detail": "moved",
+          "ok": true
+        },
+        {
+          "check": "characterization untouched",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "no existing test deleted",
+          "detail": "none",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "refactor",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 57
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2280,
+      "refactor": {
+        "tests_added": [],
+        "tests_modified": [
+          "tests/data_migration/test_export.py"
+        ]
+      },
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 11.7,
+        "output_tokens": 0,
+        "requests": 95,
+        "sessions": 1
+      }
+    },
+    "synthetic-refactor-fee-views": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/REF-02.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "src/fees/presentation.py exists",
+          "detail": "src/fees/presentation.py",
+          "ok": true
+        },
+        {
+          "check": "src/fees/views.py no longer defines _fee_amount, _gateway_result, _fee_or_404",
+          "detail": "moved",
+          "ok": true
+        },
+        {
+          "check": "characterization untouched",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "no existing test deleted",
+          "detail": "none",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "kind": "refactor",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 64
+      },
+      "must_pass": false,
+      "passed": true,
+      "pr": 2281,
+      "refactor": {
+        "tests_added": [],
+        "tests_modified": []
+      },
+      "skills": {
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "code-review": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 12.9,
+        "output_tokens": 0,
+        "requests": 83,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-22T05:10:06+00:00",
+  "run": "2026-11-22-ref-r1"
+}
