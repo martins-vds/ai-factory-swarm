@@ -123,6 +123,7 @@ humans, and approved for cutover.
 | 58 | An eval runs the agents under test: `afs-eval prepare` refuses while the eval repo's `main` serves agents that differ from the harness's or its variants' | [0058](adr/0058-an-eval-runs-the-agents-under-test.md) |
 | 59 | An orchestrator's return keeps slice acceptance in its `acceptance` block: `validate.py` refuses the fields at the top level, and a block missing slice, tickets, report, gates or human_check | [0059](adr/0059-an-orchestrator-return-keeps-acceptance-in-its-block.md) |
 | 60 | An eval pins the model its sessions run: `dispatch`/`chain` take `--model` (or an explicit `--auto-model`), `grade` records each session's model from its logs, `compare` flags mixed models | [0060](adr/0060-an-eval-pins-the-model.md) |
+| 61 | Customer tests are data the implementer can't rewrite: `.migration/spec/<slice>/*.yaml` cases name a ledger rule, act through a public entry point and must assert; the harness-owned `afs-spec` checks, runs (Django adapter) and renders them | [0061](adr/0061-customer-tests-are-data-the-implementer-cannot-rewrite.md) |
 
 ---
 

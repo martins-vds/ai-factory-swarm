@@ -101,6 +101,7 @@ Every file in [`tools/`](tools/) is listed here (`tests/test_docs.py` checks it)
 - `afs-run`: run a gate once, keep the full log, show a summary
 - `afs-mutation`: mutation testing on changed code
 - `afs-test-health`: how much the tests lean on mocks and internals, and how often production changes edit existing tests (report-only; test-trust plan)
+- `afs-spec`: the customer spec as data (`.migration/spec/`): check it, run it through the stack adapter (`afs_spec_django.py`), render a slice's living spec (ADR-0061)
 - `crap.py`: CRAP from complexity and coverage
 - `check_layers.py`: imports follow the profile's layer contracts (`layering`); runs in the idiom gate
 - `check_ui.py`: changed templates render htmx error responses and use only utilities the built CSS holds (`ui_checks`); runs in the idiom gate

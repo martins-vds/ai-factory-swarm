@@ -634,6 +634,21 @@ def check_layering_gate(path, profile, errors):
                           f"`python .migration/harness/tools/{tool}`")
 
 
+def check_spec(folder, errors):
+    """ADR-0061: the customer spec is valid, every case asserts something and names a rule its capability
+    lists; with the profile's `spec.required`, every rule of a specced capability is proved by a case."""
+    import importlib.machinery
+    import importlib.util
+    tool = HERE / "afs-spec"
+    loader = importlib.machinery.SourceFileLoader("afs_spec", str(tool))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("afs_spec", loader))
+    loader.exec_module(module)
+    profile = load_yaml(folder / "profile.yaml") if (folder / "profile.yaml").exists() else {}
+    require = bool(((profile or {}).get("spec") or {}).get("required"))
+    errors += module.check(folder / "spec", folder / "ledger", require)
+    return len(module.spec_files(folder / "spec"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder")
@@ -678,6 +693,10 @@ def main():
             if isinstance(doc, dict) and not a.sample:
                 check_evidence(folder.resolve().parent, path, doc, errors)
                 check_components(folder.resolve().parent, path, doc, errors)
+
+    spec = folder / "spec"
+    if spec.is_dir():
+        checked += check_spec(folder, errors)
 
     returns = folder / "returns"
     if returns.is_dir():

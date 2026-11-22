@@ -8,3 +8,4 @@ tier-a-without-environment	'available' was expected
 profile-short-sha	does not match
 profile-score-as-percent	is greater than the maximum of 1
 data-without-services	'services' is a required property
+spec-unknown-rule	names rule 'fee-waived-forever', which fees.calculation doesn't list

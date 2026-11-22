@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/martins-vds/ai-factory-swarm/schemas/profile.schema.json",
   "title": "AI Factory Swarm migration profile",
-  "description": "`.migration/profile.yaml` in the target repo: everything stack-specific for one migration (architecture \u00a77).",
+  "description": "`.migration/profile.yaml` in the target repo: everything stack-specific for one migration (architecture §7).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -268,7 +268,7 @@
         "mutation_changed",
         "mutation_full"
       ],
-      "description": "Commands per gate (architecture \u00a710.3). `{changed}` is replaced by the changed files.",
+      "description": "Commands per gate (architecture §10.3). `{changed}` is replaced by the changed files.",
       "properties": {
         "build": {
           "$ref": "#/$defs/commands"
@@ -392,7 +392,7 @@
         "mapping": {
           "type": "string",
           "default": ".migration/data/mapping.yaml",
-          "description": "ADR-0032: source \u2192 target tables, columns, transforms and references; the loader and data_reconcile.py both read it."
+          "description": "ADR-0032: source → target tables, columns, transforms and references; the loader and data_reconcile.py both read it."
         },
         "load": {
           "type": "array",
@@ -636,6 +636,23 @@
           "type": "string",
           "minLength": 1,
           "description": "A committed, pre-built Tailwind stylesheet: every utility a changed template uses must be in it."
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0061: the customer spec (tests as data) under .migration/spec/, run by afs-spec.",
+      "properties": {
+        "adapter": {
+          "enum": [
+            "django"
+          ],
+          "description": "The stack adapter afs-spec runs cases through."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Every rule of a capability that has a spec file must be proved by a case (or carry `no_spec`). Off until the target's slices have specs."
         }
       }
     }
