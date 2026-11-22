@@ -1,0 +1,68 @@
+id: synthetic-fees-spec
+kind: spec
+must_pass: false
+agent: afs-characterizer
+ticket: FS-01
+role: afs-characterizer
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: e515dec859c7a62c483d7cbcf8032d11938a7e19
+reference: martins-vds/ai-factory-synthetic-target#150 (a spec written by the operator's assistant, reviewed and merged)
+issue:
+  title: FS-01 · Write the fees customer spec
+  body: "**Ticket:** `FS-01`. **Role:** `afs-characterizer`. Slice: `fees-payments` (plan `.migration/plan/fees-payments.md`).\n\
+    \nWrite the slice's **customer spec** (ADR-0062) for `fees.calculation` and `fees.page`.\n\n- **Files** (touch only these,\
+    \ plus your return, journal and handoff):\n  - `.migration/spec/fees-payments/`\n  - `.migration/ledger/fees.calculation.yaml`\n\
+    \  - `.migration/ledger/fees.page.yaml`\n- **Method:** `afs-migration-contract` → references/spec.md. The capabilities'\
+    \ business rules in their ledger entries first, then the cases: tables for the boundaries, one action each through the\
+    \ public HTTP entry points, the domain's words only.\n- **Expected values come from the legacy app**, as recorded under\
+    \ `.migration/characterization/` and in `.migration/references/characterization-SY-05.md`, never from the target's code.\
+    \ Each case names its `oracle:`, or the quirk ruling that changes a value (rulings #39–#43 are all **fix**).\n- **The\
+    \ capabilities are already built and accepted** (ledger status `migrated`), so the profile's `spec` gate runs your cases\
+    \ against the target. A case that fails there is a wrong case, or a target defect: never change the target; report a defect\
+    \ in your return's notes.\n\nLoad `afs-migration-contract` and run `afs-setup-check` first. Run `afs-spec check --require`\
+    \ and the `spec` gate through `afs-run`.\n\n**Return:** `.migration/returns/FS-01.afs-characterizer.yaml` (`issue:` this\
+    \ issue), or a handoff."
+expect:
+  capabilities:
+  - fees.calculation
+  - fees.page
+  min_rules:
+    fees.calculation: 4
+normalize:
+- yaml_append:
+    file: .migration/plan/fees-payments.tickets.yaml
+    key: tickets
+    value:
+      id: FS-01
+      title: Write the fees customer spec
+      role: afs-characterizer
+      specialty: null
+      files:
+      - .migration/spec/fees-payments/
+      - .migration/ledger/fees.calculation.yaml
+      - .migration/ledger/fees.page.yaml
+      - .migration/evidence/runs/FS-01.md
+      - .migration/returns/FS-01.afs-characterizer.yaml
+      capabilities: []
+      blocked_by: []
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.spec
+    value:
+    - python .migration/harness/tools/afs-spec run
+- yaml_set:
+    file: .migration/profile.yaml
+    key: spec
+    value:
+      adapter: django
+      required: true
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+notes: 'Step 2.4 (test-trust plan): the Characterizer writes a slice''s customer spec. The base is synthetic main just before
+  #150, where fees is built and accepted but has no spec, so CI''s spec gate checks every value against the accepted behaviour,
+  and validate.py (spec.required) checks every rule is proved and every case names its source.'

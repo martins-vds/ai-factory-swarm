@@ -1,0 +1,96 @@
+id: synthetic-refactor-fee-views-spec
+kind: refactor
+must_pass: false
+agent: afs-migrator
+ticket: REF-02
+role: afs-migrator
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: 4bec655dc1a99eb6adc21fcda0ca635c78f64f3a
+reference: 'none: a refactor written for the eval (test-trust plan, step 0.3); the target''s main is the base'
+issue:
+  title: REF-02 · Move the fee views' helpers into their own module, preserving behaviour
+  body: '**Role:** `afs-migrator`, ticket `REF-02`: **restructure the fee views without changing what they do**. **Base branch:**
+    `main`.
+
+
+    `src/fees/views.py` holds the request handlers and three helpers: `_fee_amount`, `_gateway_result` and `_fee_or_404`.
+    Move the helpers into a new module, `src/fees/presentation.py`, as public functions named for what they do, and have the
+    views import them. Every page, JSON response and status code stays exactly as it is.
+
+
+    **Tests are the safety net, not part of the job.** Change an existing test only if the restructuring itself makes it fail,
+    and for every test you change say why in your return''s `notes`. Don''t keep aliases or wrappers so the old private names
+    still work.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first. Run every gate through `afs-run`, as for any ticket: build,
+    behaviour, idiom, CRAP, mutation on the changed code, regression. Commit your return `.migration/returns/REF-02.afs-migrator.yaml`,
+    or a handoff. Never end with neither.
+
+    '
+normalize:
+- yaml_append:
+    file: .migration/plan/fees-payments.tickets.yaml
+    key: tickets
+    value:
+      id: REF-02
+      title: Move the fee views' helpers into their own module, preserving behaviour
+      role: afs-migrator
+      specialty: null
+      files:
+      - src/fees/
+      - tests/fees/
+      blocked_by: []
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+- copy_from:
+    ref: bdff9cebab630c9588a4f6425d6dcc65dbe2a0ab
+    paths:
+    - .migration/spec/fees-payments/late-fees.yaml
+- yaml_set:
+    file: .migration/ledger/fees.calculation.yaml
+    key: rules
+    value:
+    - id: late-days-end-at-return
+      rule: Days late run from the due date (14 days after lending) to the return date, or to today while the loan is out;
+        never below zero.
+      source: legacy/src/main/java/lib/LateFeeView.java:31-37
+    - id: fee-waived-two-days
+      rule: Up to two days late costs nothing.
+      source: legacy/src/main/java/lib/LateFeeView.java:31-37
+    - id: fee-25-cents-a-day
+      rule: Beyond two days, every day late costs 25 cents, the first two included.
+      source: legacy/src/main/java/lib/LateFeeView.java:31-37
+    - id: fee-capped-at-10
+      rule: The fee never exceeds $10.00.
+      source: legacy/src/main/java/lib/LateFeeView.java:31-37
+    - id: unknown-loan-404
+      rule: A fee for a loan that doesn't exist is answered with 404.
+      source: .migration/characterization/source/goldens/http.json
+- yaml_set:
+    file: .migration/profile.yaml
+    key: gates.spec
+    value:
+    - python .migration/harness/tools/afs-spec run
+- yaml_set:
+    file: .migration/profile.yaml
+    key: spec
+    value:
+      adapter: django
+      required: false
+expect:
+  must_exist:
+  - src/fees/presentation.py
+  must_not_define:
+    src/fees/views.py:
+    - _fee_amount
+    - _gateway_result
+    - _fee_or_404
+  gates: success
+notes: 'Step 2.4: the phase 0 refactor with the reviewed fees spec in place. The spec acts only through HTTP, so the restructuring
+  must leave it untouched and passing (CI''s spec gate), whatever happens to the unit tests.'

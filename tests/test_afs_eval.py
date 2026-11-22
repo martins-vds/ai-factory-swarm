@@ -604,3 +604,64 @@ class RefactorGradeTest(unittest.TestCase):
             op = {"yaml_append": {"file": "plan.tickets.yaml", "key": "tickets", "value": {"id": "REF-01"}}}
             self.assertEqual(len(ev.apply_normalize(t, [op, op], None)), 1)
             self.assertEqual([x["id"] for x in yaml.safe_load(p.read_text())["tickets"]], ["A", "REF-01"])
+
+
+class SpecCaseTest(unittest.TestCase):
+    """Step 2.4: the Characterizer's spec case, and the spec rules every other case is held to (ADR-0062)."""
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.TemporaryDirectory()
+        self.head = pathlib.Path(self.tmp.name) / "head"
+        tools = self.head / ".migration/harness/tools"
+        tools.mkdir(parents=True)
+        shutil.copyfile(ROOT / "tools/afs-spec", tools / "afs-spec")
+        (self.head / ".migration/ledger").mkdir()
+        (self.head / ".migration/ledger/fees.calc.yaml").write_text(yaml.safe_dump({"id": "fees.calc", "rules": [
+            {"id": "waived", "rule": "two days free"}, {"id": "rate", "rule": "25 cents"}, {"id": "cap", "rule": "$10"}]}))
+        spec_dir = self.head / ".migration/spec/fees"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "late.yaml").write_text(yaml.safe_dump({"capability": "fees.calc", "cases": [
+            {"title": "fees by day", "rule": ["waived", "rate"], "oracle": "goldens/http.json",
+             "examples": {"columns": ["d", "fee"], "rows": [[2, "0"], [3, "0.75"]]},
+             "when": {"http": {"method": "GET", "path": "/fees/{d}"}}, "then": {"text": ["{fee}"]}},
+            {"title": "capped", "rule": "cap", "ruling": "Q-1",
+             "when": {"http": {"method": "GET", "path": "/fees/L1"}}, "then": {"status": 200}}]}))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_spec_case_passes_on_a_spec_alone_that_runs_green(self):
+        changed = [".migration/spec/fees/late.yaml", ".migration/ledger/fees.calc.yaml",
+                   ".migration/returns/FS-01.afs-characterizer.yaml"]
+        expect = {"capabilities": ["fees.calc"], "min_rules": {"fees.calc": 3}}
+        checks, metrics = ev.grade_spec(self.head, changed, expect, "success")
+        self.assertTrue(all(ok for _, ok, _ in checks), checks)
+        self.assertEqual(metrics, {"files": 1, "cases": 3, "capabilities": ["fees.calc"], "rules_proved": 3,
+                                   "with_oracle": 1, "with_ruling": 1})
+
+    def test_code_changes_a_red_gate_or_a_missing_capability_fail(self):
+        expect = {"capabilities": ["fees.calc", "fees.page"], "min_rules": {"fees.calc": 4}}
+        checks, _ = ev.grade_spec(self.head, ["src/fees/views.py"], expect, "failure")
+        failed = [c for c, ok, _ in checks if not ok]
+        self.assertEqual(failed, ["Gates check passed (the spec ran against the accepted code)",
+                                  "only the spec, the ledger and own records changed",
+                                  "a spec file covers fees.page", "fees.calc has at least 4 rules"])
+
+    def test_other_roles_leave_the_spec_alone_and_a_dispute_is_seen(self):
+        base = self.head
+        self.assertIsNone(ev.spec_held(base, [".migration/spec/fees/late.yaml"], "afs-characterizer"))
+        held = ev.spec_held(base, [".migration/spec/fees/late.yaml"], "afs-migrator")
+        self.assertEqual(held[:2], ("customer spec unchanged", False))
+        self.assertTrue(ev.spec_held(base, ["src/x.py"], "afs-migrator")[1])
+        self.assertIsNone(ev.spec_held(pathlib.Path(self.tmp.name) / "nowhere", [], "afs-migrator"))
+        handoff = self.head / ".migration/handoffs/LL-03.md"
+        handoff.parent.mkdir(parents=True)
+        handoff.write_text("## Handoff\n### Blockers / questions\n- Spec dispute: case 2 expects $10.00\n")
+        self.assertTrue(ev.spec_dispute(self.head, [".migration/handoffs/LL-03.md"]))
+        self.assertFalse(ev.spec_dispute(self.head, ["src/x.py"]))
+
+    def test_a_spec_case_must_name_its_capabilities(self):
+        doc = {"id": "s", "kind": "spec", "agent": "afs-characterizer", "ticket": "FS-01", "role": "afs-characterizer",
+               "source": {"repo": "o/r", "base": "a" * 40}, "issue": {"title": "t", "body": "b"}, "expect": {"x": 1}}
+        self.assertIn("a spec case needs expect.capabilities", "; ".join(ev.case_problems(doc)))
