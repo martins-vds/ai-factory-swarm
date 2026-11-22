@@ -128,6 +128,7 @@ humans, and approved for cutover.
 | 63 | The spec is its own gate (`gates.spec`): a Migrator ticket that builds a specced capability reports it, and `validate.py` checks the journal's last spec run passed without skipping that capability; `afs-mutation --spec` reports the mutants only the spec misses, at slice acceptance | [0063](adr/0063-the-spec-is-a-gate-and-its-mutants-are-reported.md) |
 | 64 | A coupling guard on the test lines a branch adds: `afs-test-health --check` flags own-code patches, private access and interaction assertions off the boundaries; `# afs: allow-mock <why>` exempts a line; CI and the finish check report until the profile sets `test_health.block` | [0064](adr/0064-a-coupling-guard-on-new-test-lines.md) |
 | 65 | Browser tests wait for the page: the coupling guard flags `assert` on Playwright reads that return at once (use `expect(...)`) and header lookups with capitals; `# afs: allow-browser <why>` exempts a line | [0065](adr/0065-browser-tests-wait-for-the-page.md) |
+| 66 | A target with code declares its layers: `validate.py` refuses a profile without `layering.contracts` once Python modules exist under `graph.target_paths`; contracts cite their ADR, and older breaks are `known` with what removes them | [0066](adr/0066-a-target-with-code-declares-its-layers.md) |
 
 ---
 

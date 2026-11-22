@@ -509,3 +509,38 @@ class SpecGateTest(unittest.TestCase):
         self.profile = {"gates": {"spec": [self.CMD]}}
         (self.mig / "spec/fees/late.yaml").unlink()
         self.assertEqual(self.errs(), [])
+
+
+class LayeringDeclaredTest(unittest.TestCase):
+    """Step 4.4 (ADR-0066): a target with code declares its layers as import contracts."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, str(ROOT / "tools"))
+        import validate
+        self.v = validate
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def errs(self, profile):
+        errors = []
+        self.v.check_layering_declared(pathlib.Path("profile.yaml"), profile, self.root, errors)
+        return errors
+
+    def test_no_code_no_contracts_needed_then_code_needs_them(self):
+        (self.root / "src/loans/migrations").mkdir(parents=True)
+        (self.root / "src/loans/__init__.py").write_text("")
+        (self.root / "src/loans/migrations/0001_initial.py").write_text("x = 1\n")
+        self.assertEqual(self.errs({}), [])                     # a package and its migrations aren't code yet
+        (self.root / "src/loans/services.py").write_text("def lend():\n    pass\n")
+        self.assertIn("e.g. src/loans/services.py) but no `layering.contracts`", self.errs({})[0])
+        self.assertEqual(self.errs({"layering": {"contracts": [{"name": "x", "files": ["src/*"], "forbid": ["y"]}]}}), [])
+
+    def test_the_profile_s_target_paths_say_where_code_is(self):
+        (self.root / "app").mkdir()
+        (self.root / "app/views.py").write_text("x = 1\n")
+        self.assertEqual(self.errs({}), [])
+        self.assertEqual(len(self.errs({"graph": {"target_paths": ["app", "templates"]}})), 1)

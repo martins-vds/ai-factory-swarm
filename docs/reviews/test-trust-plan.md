@@ -78,7 +78,7 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 |---|---|---|
 | 3.1 | `afs-test-health --check` on changed test files. It finds: patching project code; private access to project code (allowlist: `_meta`); interaction assertions on project code. An inline `# afs: allow-mock <why>` exempts a line. | ☑ PR #237 (ADR-0064): only the lines a branch added; interaction assertions on boundary doubles pass; the exemption needs a reason |
 | 3.2 | The finish check and CI run it, report-only first. | ☑ PR #237 (ADR-0064): CI annotates findings, the finish check records them; `test_health.block` makes both refuse |
-| 3.3 | Turn it on as a blocking rule after one eval shows no pass-rate loss. | ◐ [eval](../../evals/results/2026-11-22-guard-summary.md): block 18/21 vs report 16/21, the guard fired 0 times in 41 sessions (no loss). Turning `test_health.block` on per target is the operator's call |
+| 3.3 | Turn it on as a blocking rule after one eval shows no pass-rate loss. | ☑ [eval](../../evals/results/2026-11-22-guard-summary.md): block 18/21 vs report 16/21, the guard fired 0 times in 41 sessions (no loss). On: pilot #508, synthetic #153 |
 
 ### Phase 4: test types a migration needs (gap 5)
 | # | Step | Status |
@@ -86,8 +86,8 @@ reads and trusts. Unit tests are the Migrator's own scaffolding.
 | 4.1 | **Property-based tests** (Hypothesis) for rules with arithmetic or ranges. The spec format gets a `property` form (for all inputs in a range, an invariant holds), run by the same runner. The stack pack pins Hypothesis. | ☐ |
 | 4.2 | **Differential tests**: replay recorded legacy inputs against the target on every PR, from the tier-A characterization recordings, and compare normalized outputs. **Partly in place:** the pilot has `tests/differential/` for two slices. The step makes it the rule for every slice with tier-A characterization. | ☐ |
 | 4.3 | **Contract tests** at boundaries: a schema snapshot of each REST or report contract in the ledger, and a stub contract for each gateway. | ☐ |
-| 4.4 | **Architecture tests**: the domain layer imports no Django or HTTP. **Already in place** as `check_layers.py` and the profile's `layering.contracts`; the pilot has them. The step checks that every target declares contracts, and adds them to the synthetic target. | ☐ |
-| 4.5 | **Browser tests**: a skill rule and a lint finding for a click followed by an immediate visibility check. LL-01 and LL-03 failed that way on 2026-11-21. | ◐ PR (ADR-0065): the guard flags `assert` on reads that don't wait and capitalised header lookups (the two LL-03 failures of eval 2.4); rule in `afs-specialty` and gates.md |
+| 4.4 | **Architecture tests**: the domain layer imports no Django or HTTP. **Already in place** as `check_layers.py` and the profile's `layering.contracts`; the pilot has them. The step checks that every target declares contracts, and adds them to the synthetic target. | ◐ PR (ADR-0066): `validate.py` requires contracts once a target has code; the synthetic target gains two adapter-side contracts and one named `known` break (the loan pages query the ORM) |
+| 4.5 | **Browser tests**: a skill rule and a lint finding for a click followed by an immediate visibility check. LL-01 and LL-03 failed that way on 2026-11-21. | ☑ PR #239 (ADR-0065): the guard flags `assert` on reads that don't wait and capitalised header lookups (the two LL-03 failures of eval 2.4); rule in `afs-specialty` and gates.md |
 
 ### Phase 5: maintenance over time (gap 6)
 | # | Step | Status |
@@ -164,3 +164,4 @@ double (`self._repository`) isn't private access, and patching an adapter to the
 - 2026-11-22: `spec.required` turned on: pilot #507 (with the harness re-roll from `a74a90c`) and synthetic #152 (the fees spec gains its oracles; the waiver-boundary rows are honestly marked source-predicted). Neither target has open build tickets, so it applies from the next plan. Phase 3 started: steps 3.1 and 3.2 in one PR (ADR-0064).
 - 2026-11-22: PR #237 merged; pilot #507 and synthetic #152 merged (specs required). Step 3.3 eval ([summary](../../evals/results/2026-11-22-guard-summary.md)): blocking costs no pass rate (18/21 vs 16/21); the guard found nothing in 41 sessions, so it is a backstop for the occasional coupled test (step 2.4's sf-r1 had 6).
 - 2026-11-22: `test_health.block` turned on: pilot #508 and synthetic #153 (both re-rolled to `9d138d2`). Phase 4 started with step 4.5 (ADR-0065), because browser tests caused two of eval 2.4's three LL-03 failures: one asserted a page read without waiting, the other looked up `HX-Request` with capitals, which Playwright never matches.
+- 2026-11-22: #238 (guard eval), #239 (ADR-0065), pilot #508 and synthetic #153 merged; phase 3 complete. Step 4.4 (ADR-0066): layering contracts required once a target has code; the synthetic target's views were found querying the ORM directly, recorded as a `known` break.
