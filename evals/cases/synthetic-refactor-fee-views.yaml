@@ -1,0 +1,60 @@
+id: synthetic-refactor-fee-views
+kind: refactor
+must_pass: false
+agent: afs-migrator
+ticket: REF-02
+role: afs-migrator
+source:
+  repo: martins-vds/ai-factory-synthetic-target
+  base: 4bec655dc1a99eb6adc21fcda0ca635c78f64f3a
+reference: 'none: a refactor written for the eval (test-trust plan, step 0.3); the target''s main is the base'
+issue:
+  title: REF-02 · Move the fee views' helpers into their own module, preserving behaviour
+  body: '**Role:** `afs-migrator`, ticket `REF-02`: **restructure the fee views without changing what they do**.
+    **Base branch:** `main`.
+
+
+    `src/fees/views.py` holds the request handlers and three helpers: `_fee_amount`, `_gateway_result` and `_fee_or_404`.
+    Move the helpers into a new module, `src/fees/presentation.py`, as public functions named for what they do,
+    and have the views import them. Every page, JSON response and status code stays exactly as it is.
+
+
+    **Tests are the safety net, not part of the job.** Change an existing test only if the restructuring itself
+    makes it fail, and for every test you change say why in your return''s `notes`. Don''t keep aliases or wrappers
+    so the old private names still work.
+
+
+    Load `afs-migration-contract` and run `afs-setup-check` first. Run every gate through `afs-run`, as for any
+    ticket: build, behaviour, idiom, CRAP, mutation on the changed code, regression. Commit your return `.migration/returns/REF-02.afs-migrator.yaml`,
+    or a handoff. Never end with neither.
+
+    '
+normalize:
+- yaml_append:
+    file: .migration/plan/fees-payments.tickets.yaml
+    key: tickets
+    value:
+      id: REF-02
+      title: Move the fee views' helpers into their own module, preserving behaviour
+      role: afs-migrator
+      specialty: null
+      files:
+      - src/fees/
+      - tests/fees/
+      blocked_by: []
+- yaml_set:
+    file: .migration/profile.yaml
+    key: self_heal
+    value:
+      enabled: true
+      max_blocks: 2
+expect:
+  must_exist:
+  - src/fees/presentation.py
+  must_not_define:
+    src/fees/views.py:
+    - _fee_amount
+    - _gateway_result
+    - _fee_or_404
+notes: Refactor resistance. The synthetic fee tests go through HTTP and patch only the gateway's network call (afs-test-health
+  baseline), so this case is expected to need no test change.

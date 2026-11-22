@@ -71,7 +71,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 from check_plan import FOLDED_INTO  # noqa: E402  (retired role -> its successor, ADR-0042)
 from check_signoff import acceptance as acceptance_fields  # noqa: E402  (both return shapes, ADR-0050)
-KINDS = ("migrator", "verifier", "bootstrap", "understand", "acceptance")
+KINDS = ("migrator", "verifier", "bootstrap", "understand", "acceptance", "refactor")
 SEVERITY = {"minor": 1, "major": 2, "blocker": 3}
 COPILOT = "copilot-swe-agent[bot]"
 # Checks that depend on the live tracker (issue trees, sign-off, the default branch's own history), not on the
@@ -130,13 +130,16 @@ def case_problems(doc):
         if not all(chain_spec.get(k) for k in ("agent", "ticket", "role", "title", "body")):
             out.append("an understand case needs chain: agent, ticket, role, title and body (configuration A's "
                        "second session)")
+    if doc["kind"] == "refactor":
+        if not exp.get("must_exist") and not exp.get("must_not_define"):
+            out.append("a refactor case needs expect.must_exist or expect.must_not_define (what the restructuring is)")
     if doc["kind"] == "acceptance":
         for key in ("slice", "epic", "reconciliation_issues", "report_keywords"):
             if not exp.get(key):
                 out.append(f"an acceptance case needs expect.{key}")
     for op in doc.get("normalize") or []:
-        if not (set(op) & {"replace", "copy_from", "yaml_set"}):
-            out.append("normalize ops are replace, copy_from or yaml_set")
+        if not (set(op) & {"replace", "copy_from", "yaml_set", "yaml_append"}):
+            out.append("normalize ops are replace, copy_from, yaml_set or yaml_append")
     return out
 
 
@@ -231,6 +234,19 @@ def apply_normalize(tree, ops, source_dir, part="base"):
                 cur[leaf] = y["value"]
                 path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
                 done.append(f"set {y['file']}: {y['key']} = {y['value']!r}")
+        if "yaml_append" in op:                # e.g. a refactor ticket added to a slice's plan
+            y = op["yaml_append"]
+            path = pathlib.Path(tree) / y["file"]
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            cur = doc
+            *parents, leaf = str(y["key"]).split(".")
+            for part_ in parents:
+                cur = cur.setdefault(part_, {})
+            items = cur.setdefault(leaf, [])
+            if y["value"] not in items:
+                items.append(y["value"])
+                path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
+                done.append(f"append to {y['file']}: {y['key']} += {y['value'].get('id', y['value']) if isinstance(y['value'], dict) else y['value']!r}")
         if "copy_from" in op:
             c = op["copy_from"]
             for rel in c["paths"]:
@@ -624,6 +640,28 @@ def grade_understand(base, head, expect, changed):
 
 
 DISPOSITIONS = ("completed", "superseded", "retained-open")
+
+
+def grade_refactor(head, name_status, expect):
+    """Refactor resistance (test-trust plan, step 0.3): a behaviour-preserving restructuring, done, with the
+    characterization goldens untouched. Every existing test the agent had to modify is one coupled test: it
+    is measured (`tests_modified`), not failed, so the run shows how coupled the target's tests are."""
+    head = pathlib.Path(head)
+    checks = []
+    for rel in expect.get("must_exist") or []:
+        checks.append((f"{rel} exists", (head / rel).is_file(), rel))
+    for rel, names in (expect.get("must_not_define") or {}).items():
+        text = (head / rel).read_text(encoding="utf-8", errors="ignore") if (head / rel).is_file() else ""
+        still = [n for n in names if re.search(rf"^\s*(def|class)\s+{re.escape(n)}\b|^{re.escape(n)}\s*=", text, re.M)]
+        checks.append((f"{rel} no longer defines {', '.join(names)}", not still, ", ".join(still) or "moved"))
+    golden = [p for st, p in name_status if p.startswith(".migration/characterization/") or "/characterization/" in p]
+    checks.append(("characterization untouched", not golden, ", ".join(golden[:3]) or "none"))
+    tests = expect.get("tests", "tests/")
+    modified = sorted(p for st, p in name_status if st[0] in "MDR" and p.startswith(tests))
+    deleted = sorted(p for st, p in name_status if st[0] == "D" and p.startswith(tests))
+    checks.append(("no existing test deleted", not deleted, ", ".join(deleted) or "none"))
+    return checks, {"tests_modified": modified, "tests_added": sorted(
+        p for st, p in name_status if st[0] == "A" and p.startswith(tests))}
 
 
 def acceptance_view(ret):
@@ -1099,6 +1137,13 @@ def grade(a, cases):
                                and (trees["head"] / f".migration/returns/{case['ticket']}.{case['role']}.yaml").is_file(),
                                second))
                 row["understand"] = metrics
+            elif case["kind"] == "refactor":
+                ns = [ln.split("\t") for ln in git(src, "diff", "--name-status", "-M", "refs/afs-eval/base",
+                                                     "refs/afs-eval/head", check=False).stdout.splitlines() if "\t" in ln]
+                found, metrics = grade_refactor(trees["head"], [(x[0], x[-1] if x[0][0] != "D" else x[1]) for x in ns],
+                                                case["expect"])
+                checks += found
+                row["refactor"] = metrics
             elif case["kind"] == "acceptance":
                 changed = git(src, "diff", "--name-only", "refs/afs-eval/base", "refs/afs-eval/head",
                               check=False).stdout.split()
