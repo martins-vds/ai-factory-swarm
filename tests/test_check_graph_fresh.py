@@ -99,6 +99,33 @@ class FreshnessTest(unittest.TestCase):
         (self.repo / ".migration/profile.yaml").write_text("graph:\n  target_exclude: [templates/]\n")
         self.assertNotIn("track.html", self.run_tool("--require", "target").stderr, "excluded by the profile")
 
+    def test_a_re_pin_carries_the_previous_pins_graph_until_main_rebuilds_it(self):
+        """ADR-0075: the PR that moves source.lock can't carry a graph for the new pin (the rebuild runs on main)."""
+        self.graph("source", {"source_sha": PIN}, PIN)
+        self.commit("source graph")
+        git(self.repo, "branch", "base")
+        new = "b" * 40
+        (self.repo / ".migration/source.lock").write_text(f"repo: o/src\nsha: {new}\n")
+        self.commit("re-pin")
+        r = self.run_tool("--acceptance-since", "base")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("re-pin from f3beacf78de4 to bbbbbbbbbbbb", r.stderr)
+        # without the base, or once the re-pin is on main (base pins the new sha too), the old graph is stale
+        self.assertEqual(self.run_tool().returncode, 1)
+        git(self.repo, "branch", "-f", "base", "HEAD")
+        self.assertEqual(self.run_tool("--acceptance-since", "base").returncode, 1)
+        # a graph for some third pin is stale even in a re-pin
+        git(self.repo, "branch", "-f", "base", "HEAD~1")
+        third = "c" * 40
+        self.graph("source", {"source_sha": third}, third)
+        self.assertEqual(self.run_tool("--acceptance-since", "base").returncode, 1)
+        # and an acceptance in the same change still needs a fresh source graph
+        self.graph("source", {"source_sha": PIN}, PIN)
+        (self.repo / ".migration/returns").mkdir()
+        (self.repo / ".migration/returns/TC-15.afs-auditor.yaml").write_text("verdict: complete\n")
+        self.commit("accept during a re-pin")
+        self.assertIn("source.lock pins bbbbbbbbbbbb", self.run_tool("--acceptance-since", "base").stderr)
+
     def test_missing_graph_fails_only_when_required(self):
         self.assertEqual(self.run_tool().returncode, 0)
         r = self.run_tool("--require", "source,target")
