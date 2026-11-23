@@ -99,6 +99,30 @@ class BlindTest(unittest.TestCase):
                     self.assertIsNone(words.search(p.read_text(errors="ignore")), p)
 
 
+class SeedTest(unittest.TestCase):
+    """A legacy change reaches a target only whole, through seed.py --update (never a hand copy)."""
+    def seed(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "synthetic/seed.py"), *args], capture_output=True, text=True)
+
+    def test_seed_once_then_only_update_rewrites_it_whole(self):
+        with tempfile.TemporaryDirectory() as d:
+            t = pathlib.Path(d)
+            (t / ".github/workflows").mkdir(parents=True)
+            self.assertNotEqual(self.seed("--target", d, "--update").returncode, 0)   # never seeded
+            self.assertEqual(self.seed("--target", d).returncode, 0)
+            self.assertNotEqual(self.seed("--target", d).returncode, 0)               # no silent rewrite
+            stale = t / "legacy/src/main/java/lib/Stale.java"
+            stale.write_text("class Stale {}")
+            (t / "legacy/pom.xml").write_text("edited")
+            r = self.seed("--target", d, "--update")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("source.lock", r.stdout)
+            self.assertFalse(stale.exists())
+            self.assertEqual((t / "legacy/pom.xml").read_text(), (ROOT / "synthetic/legacy/pom.xml").read_text())
+            self.assertEqual((t / ".github/workflows/legacy-smoke.yml").read_text(),
+                             (ROOT / "synthetic/legacy-smoke.yml").read_text())
+
+
 class UnionTest(unittest.TestCase):
     def test_a_path_counts_once_any_target_exercised_it(self):
         with tempfile.TemporaryDirectory() as d:
