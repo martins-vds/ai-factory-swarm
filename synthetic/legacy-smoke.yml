@@ -22,4 +22,5 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/payments/L3)" = 502
           curl -sf localhost:8080/about | grep -q 'Lending Library'
           curl -sf -X POST -d member=dee -d isbn=123 localhost:8080/loans
+          curl -sf localhost:8080/holds
           echo "legacy smoke test passed"

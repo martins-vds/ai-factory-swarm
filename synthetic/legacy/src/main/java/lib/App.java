@@ -8,16 +8,18 @@ import org.glassfish.jersey.server.ResourceConfig;
 
 import java.net.URI;
 
-/** The Lending Library: loans, late fees, fine payments, an about page. JAX-RS on Grizzly, JPA on H2. */
+/** The Lending Library: loans, holds, late fees, fine payments, an about page. JAX-RS on Grizzly, JPA on H2. */
 public final class App {
     public static void main(String[] args) throws Exception {
         String port = System.getenv().getOrDefault("PORT", "8080");
         EntityManagerFactory emf = Persistence.createEntityManagerFactory("library");
         LoanRepository loans = new LoanRepository(emf);
+        HoldRepository holds = new HoldRepository(emf);
         ResourceConfig config = new ResourceConfig()
                 .register(new LoanResource(loans))
                 .register(new LateFeeView(loans))
                 .register(new FinePayments(loans))
+                .register(new HoldResource(holds, loans))
                 .register(new AboutPage());
         HttpServer server = GrizzlyHttpServerFactory.createHttpServer(URI.create("http://0.0.0.0:" + port + "/"), config);
         System.out.println("Lending Library listening on " + port);
