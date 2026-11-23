@@ -1,0 +1,148 @@
+{
+  "cases": {
+    "pilot-dm-05d": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/DM-05D.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: success",
+          "ok": true
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 0.965",
+          "ok": true
+        },
+        {
+          "check": "changes the ticket's code or tests",
+          "detail": "3 file(s) outside .migration/",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "success",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "coupling": {
+        "allowed": 0,
+        "findings": 0,
+        "kinds": {}
+      },
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 179
+      },
+      "must_pass": true,
+      "passed": true,
+      "pr": 2429,
+      "skills": {
+        "afs-data-pipeline": 1,
+        "afs-evidence": 1,
+        "afs-implement": 1,
+        "afs-migration-contract": 1,
+        "afs-quirk-ticket": 1,
+        "afs-setup-check": 1,
+        "afs-specialty": 1,
+        "code-review": 1,
+        "django-patterns": 1,
+        "postgresql-code-review": 1,
+        "postgresql-optimization": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 34.8,
+        "output_tokens": 0,
+        "requests": 307,
+        "sessions": 1
+      }
+    },
+    "pilot-dm-05f": {
+      "checks": [
+        {
+          "check": "return file committed",
+          "detail": ".migration/returns/DM-05F.afs-migrator.yaml",
+          "ok": true
+        },
+        {
+          "check": "no new validation errors",
+          "detail": "none",
+          "ok": true
+        },
+        {
+          "check": "Gates check passed",
+          "detail": "Gates: failure",
+          "ok": false
+        },
+        {
+          "check": "mutation_changed \u2265 0.8",
+          "detail": "reported 'n/a: no mutable code changed'",
+          "ok": false
+        },
+        {
+          "check": "changes the ticket's code or tests",
+          "detail": "1 file(s) outside .migration/",
+          "ok": true
+        }
+      ],
+      "ci": {
+        "Agent PR commits its return file": "success",
+        "Capability gap issues follow the checklist": "skipped",
+        "Concurrent work owns distinct files": "failure",
+        "Gates (build, idiom, tests, CRAP, mutation on changed code)": "failure",
+        "Human sign-off is an approver's review": "success",
+        "Migration state and pinned harness files": "success",
+        "Migrator work is verified before it merges": "success",
+        "Stacked PR base is current": "success",
+        "Ticket reconciliation holds once merged": "success"
+      },
+      "coupling": {
+        "allowed": 0,
+        "findings": 0,
+        "kinds": {}
+      },
+      "kind": "migrator",
+      "model": "gpt-6-luna",
+      "models": {
+        "gpt-6-luna": 54
+      },
+      "must_pass": true,
+      "passed": false,
+      "pr": 2430,
+      "skills": {
+        "afs-data-pipeline": 1,
+        "afs-evidence": 1,
+        "afs-migration-contract": 1,
+        "afs-setup-check": 1,
+        "tdd": 1
+      },
+      "status": "graded",
+      "usage": {
+        "minutes": 8.8,
+        "output_tokens": 0,
+        "requests": 71,
+        "sessions": 1
+      }
+    }
+  },
+  "eval_repo": "martins-vds/ai-factory-eval",
+  "graded_at": "2026-11-23T01:25:26+00:00",
+  "run": "2026-11-22-dm-r3"
+}
