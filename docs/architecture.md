@@ -139,6 +139,7 @@ humans, and approved for cutover.
 | 74 | The spec proves every observed outcome and cites only decided rulings: no status-only case, every recorded status of a tier-A endpoint has a case, and a `ruling` is a quirk on the capability, closed with the operator's ruling (`afs-spec rulings` in CI) | [0074](adr/0074-the-spec-proves-every-observed-outcome-and-cites-only-decided-rulings.md) |
 | 75 | A re-pin PR carries the previous pin's graph: when the change moves `source.lock`, a source graph for exactly the base's pin is a warning; main rebuilds it, and every other PR fails until that graph PR merges | [0075](adr/0075-a-re-pin-pr-carries-the-previous-pins-graph.md) |
 | 76 | The source pin lives in the profile: `validate.py` refuses a `source.lock` that differs from the profile's `source`; re-pin by changing the profile and re-running bootstrap | [0076](adr/0076-the-source-pin-lives-in-the-profile.md) |
+| 77 | Recorded exchanges are append-only: `check_recordings.py` refuses a PR that changes, removes or renames an existing recorded exchange (new behaviour goes under a new key), unless the change moves the source pin | [0077](adr/0077-recorded-exchanges-are-append-only.md) |
 
 ---
 
