@@ -1091,8 +1091,9 @@ def grade_migrator(ret, gates_conclusion, threshold):
     score = ((ret or {}).get("gates") or {}).get("mutation_changed")
     # "n/a: no mutable code changed" is a valid answer under the return contract (nine live returns use it);
     # CI's Gates re-checks the claim, so it counts only alongside a green Gates.
-    not_applicable = (isinstance(score, str) and score.startswith("n/a: no ") and "changed" in score
-                      and gates_conclusion == "success")
+    # afs-mutation itself prints the reason hyphenated (`reason=no-mutable-code-changed`), and sessions copy it.
+    reason = score.replace("-", " ") if isinstance(score, str) else ""
+    not_applicable = (reason.startswith("n/a: no ") and "changed" in reason and gates_conclusion == "success")
     ok = not_applicable or (isinstance(score, (int, float)) and threshold is not None and score >= threshold)
     checks.append((f"mutation_changed ≥ {threshold}", ok, f"reported {score!r}"))
     return checks
