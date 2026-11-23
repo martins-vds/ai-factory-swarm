@@ -219,3 +219,23 @@ class BrowserTest(unittest.TestCase):
     def test_the_allow_browser_marker_needs_a_reason_like_allow_mock(self):
         self.assertTrue(th.ALLOW.search("x  # afs: allow-browser the count is static markup").group(1).strip())
         self.assertFalse(th.ALLOW.search("x  # afs: allow-browser").group(1).strip())
+
+
+class AllowedInReportTest(unittest.TestCase):
+    def test_an_exempted_line_with_a_reason_is_not_debt_and_one_without_is(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / "src/shop").mkdir(parents=True)
+            (root / "src/shop/service.py").write_text("def pay():\n    return 1\n")
+            path = root / "test_x.py"
+            path.write_text(textwrap.dedent("""
+                from unittest import mock
+                def test_a():
+                    with mock.patch("shop.service.pay"):  # afs: allow-mock simulates a crash mid-payment
+                        pass
+                    with mock.patch("shop.service.pay"):  # afs: allow-mock
+                        pass
+                """))
+            counts, findings = th.scan_file(path, th.own_packages(root, "src"))
+        self.assertEqual([ln for ln, _, _ in findings], [6])
+        self.assertEqual((counts["patch_own"], counts["allowed"]), (1, 1))

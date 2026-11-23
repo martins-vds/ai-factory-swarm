@@ -180,13 +180,24 @@ def scan_file(path, own, keep_boundary_interactions=True):
                 if a.name.startswith("_") and not a.name.startswith("__"):
                     out["private_access"] += 1
                     findings.append((node.lineno, "private access", f"{node.module}.{a.name}"))
+    lines = text.splitlines()
     if "playwright" in text:
         browser = browser_findings(tree)
         out["browser_findings"] += len(browser)
         findings += browser
     if any(k in text for k in ("client.get(", "client.post(", "self.client", "Client(", "page.goto(", "page.click(")):
         out["public_entry_files"] += 1
-    return out, findings
+    kept = []
+    for ln, kind, what in findings:          # a line exempted with a reason is an accepted seam, not debt
+        m = ALLOW.search(lines[ln - 1]) if 0 < ln <= len(lines) else None
+        if m and m.group(1).strip(" :-—"):
+            out["allowed"] += 1
+            key = {"own-code patch": "patch_own", "private access": "private_access",
+                   "interaction assertion": "interaction_asserts"}.get(kind, "browser_findings")
+            out[key] -= 1
+            continue
+        kept.append((ln, kind, what))
+    return out, kept
 
 
 ALLOW = re.compile(r"#\s*afs:\s*allow-(?:mock|browser)\b(.*)$")
@@ -369,6 +380,7 @@ def markdown(rep):
              f"| Interaction assertions | {t.get('interaction_asserts', 0)} |",
              f"| Files driving the HTTP client or a browser | {t.get('public_entry_files', 0)} |",
              f"| Browser assertions that don't wait, or header names Playwright can't match | {t.get('browser_findings', 0)} |",
+             f"| Lines exempted with a reason (`# afs: allow-…`) | {t.get('allowed', 0)} |",
              f"| Coupling ratio (production commits that modify existing tests) | "
              f"{c.get('modified_existing_tests', '?')} of {c.get('production_commits', '?')}"
              f" = {c.get('ratio')} |"]
