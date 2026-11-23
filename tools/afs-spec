@@ -33,6 +33,12 @@ of the code, so a refactor that keeps the behaviour can't break one.
   case's id, so every run tries the same inputs; `--samples` sets how many), and on a failure searches toward
   the start of each range for the smallest input that still fails, which is the one it reports. `then.number`
   checks a number taken from the response against bounds, which is how a property states an invariant.
+* `rulings` (CI, needs `gh`): every `ruling:` a case cites is a decided quirk: its issue is closed as completed
+  and carries the operator's `**Ruling ...` comment (ADR-0074). `check` already refuses a ruling that isn't
+  `owner/repo#N` listed in the capability's ledger `quirks`.
+* No case checks only a status (a 204 or 304 aside), and with --require every status the legacy app was
+  recorded answering on a tier-A capability's endpoint (from the ledger's recordings and the spec's replays)
+  is proved by a case (ADR-0074): the error paths observed can't drop out of the spec.
 * `render`: the slice's living spec, as one readable page: capability, rule, cases and their last results.
 
 This file is the harness's. A target's agents may not change it or its adapter, and only a Characterizer
@@ -203,6 +209,124 @@ def case_rules(case):
     return [r] if isinstance(r, str) else list(r or [])
 
 
+RULING = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+$")
+STATUS_ONLY_OK = {204, 304}          # no body to check
+
+
+def ledger_doc(ledger_dir, capability):
+    path = pathlib.Path(ledger_dir) / f"{capability}.yaml"
+    return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
+
+
+def endpoint_of(entry):
+    """`METHOD /path` from a ledger entry's `source.graph_node` (`endpoint:<file>:METHOD /path`), else None."""
+    node = str(((entry.get("source") or {}).get("graph_node")) or "")
+    m = re.match(r"^endpoint:.*?:((?:GET|POST|PUT|PATCH|DELETE) /\S*)$", node)
+    return m.group(1) if m else None
+
+
+def recorded_outcomes(root, recordings, endpoint):
+    """{status: "recording#exchange"} for every recorded legacy exchange of `endpoint` (a key equal to it, or it
+    followed by a space and a variant name) in the given recording files, top level or one level down."""
+    out = {}
+    for rec in sorted(set(recordings)):
+        try:
+            doc = json.loads((pathlib.Path(root) / rec).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        groups = [doc] + [v for v in doc.values() if isinstance(v, dict)] if isinstance(doc, dict) else []
+        for group in groups:
+            for key, ex in group.items():
+                if not isinstance(ex, dict) or not isinstance(ex.get("response"), dict):
+                    continue
+                if key == endpoint or str(key).startswith(endpoint + " "):
+                    status = ex["response"].get("status")
+                    if isinstance(status, int):
+                        out.setdefault(status, f"{rec}#{key}")
+    return out
+
+
+def outcome_problems(path, cap, entry, doc, root):
+    """ADR-0074: every status the legacy app was recorded answering on the capability's endpoint is proved by a
+    case, so the error paths the Characterizer observed can't be left out of the spec."""
+    endpoint = endpoint_of(entry)
+    if not endpoint:
+        return []
+    recordings = [e for e in entry.get("evidence") or [] if isinstance(e, str) and e.endswith(".json")]
+    recordings += [c["when"]["replay"]["recording"] for c in doc["cases"]
+                   if isinstance((c.get("when") or {}).get("replay"), dict)
+                   and "{" not in str(c["when"]["replay"].get("recording"))]
+    recorded = recorded_outcomes(root, recordings, endpoint)
+    if not recorded:
+        return []
+    try:
+        cases = expand(doc, path, root)
+    except (SpecError, KeyError, TypeError):
+        return []                                  # the other checks report why the file doesn't expand
+    proved = set()
+    for c in cases:
+        then = c.get("then") or (c.get("template") or {}).get("then") or {}
+        if isinstance(then.get("status"), int):
+            proved.add(then["status"])
+    return [f"{path}: the legacy app answered {endpoint} with {status} ({where}), but no case of {cap} proves a "
+            f"{status}: add a case for that outcome (replay the exchange, or a case with `then.status: {status}` and "
+            "what comes back)"
+            for status, where in sorted(recorded.items()) if status not in proved]
+
+
+RULED = re.compile(r"\*\*Ruling\b")
+
+
+def spec_rulings(spec_dir):
+    """{ruling: [where it's cited]} for every case that names one."""
+    out = {}
+    for path in spec_files(spec_dir):
+        try:
+            doc = load(path)
+        except SpecError:
+            continue
+        for i, case in enumerate((doc or {}).get("cases") or []):
+            if isinstance(case, dict) and case.get("ruling"):
+                out.setdefault(str(case["ruling"]), []).append(f"{path}: case {i + 1}")
+    return out
+
+
+def ruling_problems(rulings, fetch):
+    """ADR-0074: a ruling a case cites is a decided quirk: its issue is closed as completed and carries the
+    ruling comment (`**Ruling ...`). `fetch(ref)` returns (issue, comments) from GitHub, or raises."""
+    problems = []
+    for ref, where in sorted(rulings.items()):
+        if not RULING.match(ref):
+            continue                                       # `check` reports the malformed reference
+        try:
+            issue, comments = fetch(ref)
+        except Exception as e:  # noqa: BLE001 (an unreadable ruling is not a decided one)
+            problems.append(f"{where[0]}: ruling {ref} can't be read from GitHub ({e}); a ruling must be a real issue")
+            continue
+        if issue.get("pull_request") is not None:
+            problems.append(f"{where[0]}: ruling {ref} is a pull request, not a quirk issue")
+        elif issue.get("state") != "closed" or issue.get("state_reason") not in (None, "completed"):
+            problems.append(f"{', '.join(where)}: ruling {ref} isn't decided yet (the quirk issue is "
+                            f"{issue.get('state')}{'/' + issue['state_reason'] if issue.get('state_reason') else ''}): "
+                            "keep the legacy behaviour with its `oracle` until the operator rules")
+        elif not any(RULED.search(c.get("body") or "") for c in comments):
+            problems.append(f"{where[0]}: ruling {ref} is closed but carries no ruling comment (`**Ruling ...`): "
+                            "the operator's decision must be on the issue")
+    return problems
+
+
+def github_fetch(ref):
+    import subprocess
+    repo, num = ref.split("#")
+    def api(path):
+        r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip()
+                               else f"gh api exit {r.returncode}")
+        return json.loads(r.stdout)
+    return api(f"repos/{repo}/issues/{num}"), api(f"repos/{repo}/issues/{num}/comments?per_page=100")
+
+
 def check(spec_dir, ledger_dir, require=False):
     """Problems with the spec, as strings; empty when it is sound."""
     problems = []
@@ -238,6 +362,22 @@ def check(spec_dir, ledger_dir, require=False):
             if oracle and not (root / oracle).exists():
                 problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names oracle {oracle!r}, which "
                                 "doesn't exist: point it at the recorded legacy output the values come from")
+            ruling = case.get("ruling")
+            if ruling is not None:
+                quirks = [str(q) for q in ledger_doc(ledger_dir, cap).get("quirks") or []]
+                if not RULING.match(str(ruling)):
+                    problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names ruling {ruling!r}: a ruling "
+                                    "is the quirk issue that decided it, as `owner/repo#N`")
+                elif str(ruling) not in quirks:
+                    problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) names ruling {ruling}, which "
+                                    f"{cap}'s ledger entry doesn't list under `quirks` "
+                                    f"({', '.join(quirks) or 'none'}): only a quirk raised on this capability can "
+                                    "set its expected values")
+            then_keys = set(case.get("then") or {})
+            if then_keys == {"status"} and case["then"]["status"] not in STATUS_ONLY_OK and not replay:
+                problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) checks only the status: a status alone "
+                                "doesn't prove the behaviour, so also check what comes back (`text`, `json`, "
+                                "`replay`, ...)")
             if require and not oracle and not replay and not case.get("ruling"):     # a replay is its own oracle
                 problems.append(f"{path}: case {i + 1} ({case.get('title')!r}) says neither where its expected "
                                 "values come from (`oracle:` a recorded legacy output) nor which quirk ruling "
@@ -270,6 +410,8 @@ def check(spec_dir, ledger_dir, require=False):
                 and not ledger_field(ledger_dir, cap, "no_replay"):
             problems.append(f"{path}: {cap} was characterized at tier A, so its recorded exchanges can be replayed: add "
                             "a replay case (`when.replay`), or say why none can be in its ledger entry (`no_replay`)")
+        if require and ledger_field(ledger_dir, cap, "characterization_tier") == "A":
+            problems += outcome_problems(path, cap, ledger_doc(ledger_dir, cap), doc, root)
         if require:
             for rule in sorted((known or set()) - proved.get(cap, set()) - unspecced_rules(ledger_dir, cap)):
                 problems.append(f"{path}: rule {rule!r} of {cap} has no case; add one that proves it, or a "
@@ -754,7 +896,7 @@ def describe_then(then):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("check", "run", "render"):
+    for name in ("check", "run", "render", "rulings"):
         p = sub.add_parser(name)
         p.add_argument("--spec", default=".migration/spec")
         p.add_argument("--ledger", default=".migration/ledger")
@@ -771,6 +913,13 @@ def main(argv=None):
             p.add_argument("--results", default=".migration/runs/spec-results.json")
             p.add_argument("--out")
     a = ap.parse_args(argv)
+    if a.cmd == "rulings":
+        rulings = spec_rulings(a.spec)
+        problems = ruling_problems(rulings, github_fetch)
+        for p in problems:
+            print(p)
+        print(f"AFS-RESULT gate=spec-rulings rulings={len(rulings)} problems={len(problems)}")
+        return 1 if problems else 0
     if a.cmd == "check":
         problems = check(a.spec, a.ledger, a.require)
         for p in problems:
