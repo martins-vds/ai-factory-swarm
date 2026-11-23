@@ -48,6 +48,15 @@ evidence), the ledger, the risk map, the read-only source.
    case naming its rule and its oracle (the recorded legacy output its values come from) or the quirk
    ruling that sets them. Run `afs-spec check --require` through `afs-run`. You write the spec before the
    code exists; the Migrator is held to it and can't change it.
+   - **Prove every outcome, not just the happy path** (ADR-0074): one case per distinct result the
+     legacy app gives (each success, each error status and message), plus the edges you recorded in
+     step 2 (each limit at, just under and just over; dates on the boundary; empty and missing input).
+     Read the endpoint's source for every status it can return, record each, and give each its rule.
+     `check` refuses a status-only case and any recorded status no case proves.
+   - **A quirk is kept, not fixed, until it's ruled.** Record the legacy value with its `oracle` and
+     raise the quirk. Only after the operator rules a fix does the case cite `ruling: owner/repo#N`, the
+     quirk issue listed in the ledger entry's `quirks`; CI refuses a ruling that isn't closed with the
+     operator's `**Ruling` comment.
 
 ## Rules
 - Never modify the source; never commit any of it. Harness code, stand-ins and recorded outputs live in

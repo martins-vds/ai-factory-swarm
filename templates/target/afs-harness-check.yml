@@ -35,6 +35,9 @@ jobs:
     name: Migration state and pinned harness files
     needs: stack-base
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read   # afs-spec rulings reads the quirk issues a spec cites (ADR-0074)
     steps:
       - uses: actions/checkout@v5
         with: {{ fetch-depth: 0 }}   # check_graph_fresh compares tree hashes and finds acceptance returns
@@ -43,6 +46,12 @@ jobs:
       - run: pip install -q {pip_packages}
       - name: Migration state is valid
         run: python .migration/harness/tools/validate.py .migration
+      # ADR-0074: a spec case's `ruling:` is a decided quirk, not a claim: its issue is closed with the ruling.
+      - name: Every spec ruling is a decided quirk
+        if: "!cancelled()"   # every check reports, not only the first that fails
+        env:
+          GH_TOKEN: ${{{{ github.token }}}}
+        run: python .migration/harness/tools/afs-spec rulings
       - name: Session records are append-only
         if: "!cancelled() && github.event_name == 'pull_request'"
         run: |

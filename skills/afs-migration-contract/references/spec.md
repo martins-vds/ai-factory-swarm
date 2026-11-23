@@ -23,7 +23,8 @@ Migrator builds the code, and the Migrator can't change it.
    - names its **oracle**: the recorded legacy output its expected values come from (`oracle:`, a path from
      the repo root, such as a golden file or a characterization test). The legacy app is the independent
      check on the values. A value the legacy app doesn't produce, because a quirk ruling changed it, names
-     the ruling instead (`ruling: Q-7`). A spec never silently keeps a legacy bug, and never invents a value;
+     the ruling instead (`ruling: owner/repo#N`, the quirk issue listed in the ledger entry's `quirks`, closed with
+     the operator's `**Ruling` comment; ADR-0074). A spec never silently keeps a legacy bug, and never invents a value;
    - sets up through side channels only: `fixtures`, setup `commands`, the `clock`;
    - acts **once** through a public entry point: an HTTP request or a management command;
    - says what must come back: `status`, a `json` subset, `text` that must appear, `not_text`, `headers`.

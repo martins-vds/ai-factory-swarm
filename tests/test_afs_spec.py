@@ -179,11 +179,12 @@ class SpecTest(unittest.TestCase):
         self.assertIn("case 1 ('A loan returned two days late costs nothing') says neither where", problems)
         self.assertIn("names oracle 'tests/characterization/goldens/nowhere.json', which doesn't exist", problems)
         self.assertNotIn("says neither", "\n".join(self.check()))       # without require, only a bad path counts
-        doc["cases"][0]["ruling"] = "Q-7"
+        doc["cases"][0]["ruling"] = "o/t#7"
         doc["cases"][1]["oracle"] = "tests/characterization/goldens/fees.json"
         self.path.write_text(yaml.safe_dump(doc))
+        (self.root / "ledger/fees.calculation.yaml").write_text(yaml.safe_dump(dict(LEDGER, quirks=["o/t#7"])))
         self.assertEqual(self.check(require=True), [])                   # a ruling sets the values instead
-        self.assertIn("- expected values set by quirk ruling Q-7",
+        self.assertIn("- expected values set by quirk ruling o/t#7",
                       sp.render("fees-payments", self.root / "spec", self.root / "ledger"))
 
     def test_a_capability_not_built_yet_is_pending_not_failed(self):
@@ -483,3 +484,93 @@ class PropertyTest(unittest.TestCase):
             text = sp.render("fees", mig / "spec", mig / "ledger")
             self.assertIn("- for every **today** from 2026-01-16 to 2030-12-31", text)
             self.assertIn("`Fee: \\$([0-9.]+)` is at most 10", text)
+
+
+class SpecStrengthTest(unittest.TestCase):
+    """ADR-0074: a spec proves each observed outcome, asserts more than a status, and cites only decided rulings."""
+    ENTRY = {"id": "hold.place", "kind": "behavioral", "status": "pending", "characterization_tier": "A",
+             "source": {"graph_node": "endpoint:legacy/src/main/java/lib/HoldResource.java:POST /holds"},
+             "evidence": [".migration/characterization/source/goldens/holds.json"],
+             "quirks": ["o/t#7"],
+             "rules": [{"id": "hold-placed", "rule": "A hold on a book out on loan is placed."},
+                       {"id": "hold-limit", "rule": "A member's holds are limited."}]}
+    RECORDING = {
+        "POST /holds": {"request": {"method": "POST", "path": "/holds", "form": {"member": "dee", "isbn": "1"}},
+                        "response": {"status": 201, "body": "H2;dee;1\n"}},
+        "POST /holds missing member": {"request": {"method": "POST", "path": "/holds", "form": {"isbn": "1"}},
+                                       "response": {"status": 400, "body": "member and isbn are required\n"}},
+        "POST /holds fifth hold": {"request": {"method": "POST", "path": "/holds", "form": {"member": "hal", "isbn": "5"}},
+                                   "response": {"status": 409, "body": "hold limit reached\n"}},
+        "GET /holds": {"request": {"method": "GET", "path": "/holds"}, "response": {"status": 200, "body": ""}}}
+    REC = ".migration/characterization/source/goldens/holds.json"
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self._d.name)
+        self.root = self.repo / ".migration"
+        (self.root / "ledger").mkdir(parents=True)
+        (self.root / "spec/holds").mkdir(parents=True)
+        (self.repo / self.REC).parent.mkdir(parents=True)
+        (self.repo / self.REC).write_text(json.dumps(self.RECORDING))
+        (self.root / "ledger/hold.place.yaml").write_text(yaml.safe_dump(self.ENTRY))
+        self.path = self.root / "spec/holds/place.yaml"
+
+    def tearDown(self):
+        self._d.cleanup()
+
+    def write(self, cases):
+        self.path.write_text(yaml.safe_dump({"capability": "hold.place", "title": "Holds", "cases": cases}))
+        return "\n".join(sp.check(self.root / "spec", self.root / "ledger", True))
+
+    def replay(self, exchange, rule="hold-placed"):
+        return {"title": exchange, "rule": rule, "when": {"replay": {"recording": self.REC, "exchange": exchange}},
+                "then": {"replay": {"body": "exact"}}}
+
+    def test_every_recorded_outcome_of_the_endpoint_needs_a_case(self):
+        problems = self.write([self.replay("POST /holds"), self.replay("POST /holds fifth hold", "hold-limit")])
+        self.assertIn("answered POST /holds with 400", problems)
+        self.assertNotIn("with 201", problems)
+        self.assertNotIn("with 409", problems)
+        self.assertNotIn("with 200", problems)          # GET /holds is another endpoint
+        problems = self.write([self.replay("POST /holds"), self.replay("POST /holds fifth hold", "hold-limit"),
+                               self.replay("POST /holds missing member")])
+        self.assertEqual(problems, "")
+
+    def test_a_case_that_checks_only_the_status_is_refused(self):
+        case = {"title": "a hold is placed", "rule": "hold-placed", "oracle": self.REC,
+                "when": {"http": {"method": "POST", "path": "/holds", "form": {"member": "dee", "isbn": "1"}}},
+                "then": {"status": 201}}
+        others = [self.replay("POST /holds fifth hold", "hold-limit"), self.replay("POST /holds missing member")]
+        self.assertIn("checks only the status", self.write([case] + others))
+        case["then"]["text"] = ["H2;dee;1"]
+        self.assertEqual(self.write([case] + others), "")
+
+    def test_a_ruling_must_be_a_quirk_raised_on_the_capability(self):
+        fixed = {"title": "a fourth hold is refused", "rule": "hold-limit", "ruling": "the operator said so",
+                 "when": {"http": {"method": "POST", "path": "/holds", "form": {"member": "hal", "isbn": "4"}}},
+                 "then": {"status": 409, "text": ["hold limit reached"]}}
+        base = [self.replay("POST /holds"), self.replay("POST /holds missing member"), fixed]
+        self.assertIn("a ruling is the quirk issue that decided it", self.write(base))
+        fixed["ruling"] = "o/t#99"
+        self.assertIn("doesn't list under `quirks` (o/t#7)", self.write(base))
+        fixed["ruling"] = "o/t#7"
+        self.assertEqual(self.write(base), "")
+
+    def test_a_cited_ruling_must_be_decided_on_github(self):
+        cites = {"o/t#7": ["place.yaml: case 3"]}
+        open_quirk = lambda ref: ({"state": "open", "state_reason": None}, [])
+        self.assertIn("isn't decided yet", "\n".join(sp.ruling_problems(cites, open_quirk)))
+        no_comment = lambda ref: ({"state": "closed", "state_reason": "completed"}, [{"body": "looks fine"}])
+        self.assertIn("no ruling comment", "\n".join(sp.ruling_problems(cites, no_comment)))
+        dropped = lambda ref: ({"state": "closed", "state_reason": "not_planned"}, [{"body": "**Ruling: fix"}])
+        self.assertIn("isn't decided yet", "\n".join(sp.ruling_problems(cites, dropped)))
+        def missing(ref):
+            raise RuntimeError("HTTP 404: Not Found")
+        self.assertIn("can't be read from GitHub", "\n".join(sp.ruling_problems(cites, missing)))
+        ruled = lambda ref: ({"state": "closed", "state_reason": "completed"},
+                             [{"body": "**Ruling (operator, 2026-11-23): fix** — three holds at most."}])
+        self.assertEqual(sp.ruling_problems(cites, ruled), [])
+
+    def test_spec_rulings_lists_each_cited_ruling(self):
+        self.write([dict(self.replay("POST /holds"), ruling="o/t#7")])
+        self.assertEqual(list(sp.spec_rulings(self.root / "spec")), ["o/t#7"])
