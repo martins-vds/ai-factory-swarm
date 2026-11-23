@@ -1,0 +1,16 @@
+{
+  "pilot-dm-05d": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-dm-r2/pilot-dm-05d",
+    "dispatched_at": "2026-11-23T00:42:15+00:00",
+    "issue": 2421,
+    "work_pr": null
+  },
+  "pilot-dm-05f": {
+    "agent": "afs-migrator",
+    "base_branch": "eval/2026-11-22-dm-r2/pilot-dm-05f",
+    "dispatched_at": "2026-11-23T00:42:18+00:00",
+    "issue": 2422,
+    "work_pr": null
+  }
+}
