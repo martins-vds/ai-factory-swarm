@@ -62,6 +62,10 @@ jobs:
             for f in $changed; do echo "::error file=$f::A session record was changed or deleted; records are append-only (ADR-0021)"; done
             exit 1
           fi
+      # ADR-0077: recorded legacy exchanges are evidence and spec oracles; a change may add them, never rewrite them.
+      - name: Recorded exchanges are append-only
+        if: "!cancelled() && github.event_name == 'pull_request'"
+        run: python .migration/harness/tools/check_recordings.py --base "origin/${{{{ github.event.pull_request.base.ref }}}}"
       - name: No unopened quirk drafts
         if: "!cancelled()"   # every check reports, not only the first that fails
         run: |
