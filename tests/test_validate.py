@@ -37,6 +37,29 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools")
 import validate as validate_mod  # noqa: E402
 
 
+class SourceLockTest(unittest.TestCase):
+    """ADR-0076: source.lock agrees with the profile's source, which bootstrap writes it from."""
+    PROFILE = {"source": {"repo": "o/t", "sha": "a" * 40, "path": "legacy"}}
+
+    def errors(self, lock_text):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            folder = pathlib.Path(d)
+            (folder / "source.lock").write_text(lock_text)
+            errs = []
+            validate_mod.check_source_lock(folder, self.PROFILE, errs)
+            return errs
+
+    def test_a_lock_written_from_the_profile_passes(self):
+        self.assertEqual(self.errors(f"# pinned\nrepo: o/t\nsha: {'a' * 40}\npath: legacy\n"), [])
+
+    def test_a_lock_edited_alone_fails_and_says_how_to_re_pin(self):
+        errs = self.errors(f"repo: o/t\nsha: {'b' * 40}\npath: legacy\n")
+        self.assertEqual(len(errs), 1)
+        self.assertIn("profile's source.sha", errs[0])
+        self.assertIn("re-running bootstrap", errs[0])
+
+
 class ThresholdTest(unittest.TestCase):
     """A gate command's own limit must equal the profile threshold (pilot drill: --max 30 hid a threshold of 0)."""
     CMD = "python .migration/harness/tools/crap.py runs/lizard.csv --lcov runs/crap.lcov --max {}"
