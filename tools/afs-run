@@ -16,7 +16,7 @@ Behavior (ADR-0015):
     record that the run happened and what it showed. Commit it with your work.
   * Exits with the command's exit code, so gates fail when the command fails.
   * Flaky runs are recorded, never hidden (ADR-0070). Each record carries a fingerprint of the code it ran
-    on (a git tree of the working tree, `.migration/` left out). When a command passes on code where the same
+    on (a git tree of the working tree, the session's records under `.migration/` left out). When a command passes on code where the same
     command failed before, the earlier failure was flaky: afs-run prints `AFS-FLAKY` and appends what failed
     (the failing test ids from the failed log) to `.migration/evidence/flaky/<ticket>.md`, which is committed
     with the work. The afs-flaky workflow turns each record into a ticket.
@@ -133,9 +133,16 @@ def journal(folder, ticket, record, sha, parts, result=""):
 FAILED_TEST = re.compile(r"^(?:FAILED|ERROR) (\S+::\S+)")
 
 
+# The session's own records, which every run writes: left out so they don't make each run look like new code.
+# Everything else under .migration/ (the spec, the ledger, the characterization harness and its recordings, the
+# plan) is an input to some gate, so it counts (ADR-0078: an edited spec is a fix, not a flaky pass).
+RECORDS = ("runs", "evidence", "costs", "returns", "handoffs")
+
+
 def tree_fingerprint():
-    """The git tree of the working tree as it is now (tracked and untracked files, `.migration/` left out), or
-    None outside a git checkout. Two runs with the same fingerprint ran on the same code."""
+    """The git tree of the working tree as it is now (tracked and untracked files, the session's records under
+    `.migration/` left out), or None outside a git checkout. Two runs with the same fingerprint ran on the same
+    code."""
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=20)
         if top.returncode:
@@ -143,7 +150,8 @@ def tree_fingerprint():
         with tempfile.TemporaryDirectory() as d:
             env = {**os.environ, "GIT_INDEX_FILE": os.path.join(d, "index")}
             cwd = top.stdout.strip()
-            for args in (["git", "read-tree", "HEAD"], ["git", "add", "-A", "--", ".", ":(exclude).migration"]):
+            add = ["git", "add", "-A", "--", "."] + [f":(exclude).migration/{r}" for r in RECORDS]
+            for args in (["git", "read-tree", "HEAD"], add):
                 if subprocess.run(args, cwd=cwd, env=env, capture_output=True, timeout=120).returncode:
                     return None
             out = subprocess.run(["git", "write-tree"], cwd=cwd, env=env, capture_output=True, text=True, timeout=60)

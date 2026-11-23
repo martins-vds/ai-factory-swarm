@@ -43,6 +43,15 @@ def _override_setting(name, value):
     return override_settings(**{name: value})
 
 
+def send_setup_requests(given, http):
+    """ADR-0078: send a case's `given.requests` in order through the public HTTP interface; each must succeed."""
+    for i, req in enumerate(given.get("requests") or []):
+        answer = http(req)
+        if answer["status"] >= 400:
+            raise RuntimeError(f"setup request {i + 1} ({req['method']} {req['path']}) answered "
+                               f"{answer['status']}: {answer['text'].strip()[:200]!r}")
+
+
 class DjangoAdapter:
     def __init__(self, root=".", gateways=None):
         self.root = pathlib.Path(root).resolve()
@@ -99,6 +108,7 @@ class DjangoAdapter:
                     call_command("loaddata", fixture, verbosity=0)
                 for cmd in given.get("commands") or []:
                     call_command(cmd["name"], *[str(a) for a in cmd.get("args") or []], stdout=io.StringIO())
+                send_setup_requests(given, self._http)
                 yield
             finally:
                 transaction.set_rollback(True)

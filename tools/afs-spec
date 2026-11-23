@@ -33,7 +33,7 @@ of the code, so a refactor that keeps the behaviour can't break one.
   case's id, so every run tries the same inputs; `--samples` sets how many), and on a failure searches toward
   the start of each range for the smallest input that still fails, which is the one it reports. `then.number`
   checks a number taken from the response against bounds, which is how a property states an invariant.
-* `rulings` (CI, needs `gh`): every `ruling:` a case cites is a decided quirk: its issue is closed as completed
+* `rulings` (a CI gate, with `issues: read`; a session without issue access leaves it to CI): every `ruling:` a case cites is a decided quirk: its issue is closed as completed
   and carries the operator's `**Ruling ...` comment (ADR-0074). `check` already refuses a ruling that isn't
   `owner/repo#N` listed in the capability's ledger `quirks`.
 * No case checks only a status (a 204 or 304 aside), and with --require every status the legacy app was
@@ -327,6 +327,32 @@ def github_fetch(ref):
     return api(f"repos/{repo}/issues/{num}"), api(f"repos/{repo}/issues/{num}/comments?per_page=100")
 
 
+def fixture_problems(path, doc, root):
+    """ADR-0078: a fixture is part of the spec: it lives under `.migration/spec/` and exists now. A fixture the
+    target's code would provide hands the Migrator the case's starting state."""
+    fixtures = list(((doc.get("background") or {}).get("given") or {}).get("fixtures") or [])
+    for case in doc.get("cases") or []:
+        fixtures += ((case.get("given") or {}).get("fixtures") or []) if isinstance(case, dict) else []
+        rows = ((case.get("examples") or {}).get("rows") or []) if isinstance(case, dict) else []
+        cols = ((case.get("examples") or {}).get("columns") or []) if isinstance(case, dict) else []
+        for f in list(fixtures):
+            m = re.fullmatch(r"\{([a-z_][a-z0-9_]*)\}", str(f))
+            if m and m.group(1) in cols:
+                fixtures.remove(f)
+                fixtures += [row[cols.index(m.group(1))] for row in rows if len(row) == len(cols)]
+    spec_home = (pathlib.Path(root) / ".migration/spec").resolve()
+    out = []
+    for f in sorted(set(map(str, fixtures))):
+        where = (pathlib.Path(root) / f).resolve()
+        if spec_home not in where.parents:
+            out.append(f"{path}: fixture {f!r} isn't part of the spec: a case's starting state lives under "
+                       ".migration/spec/ (or set it up with `given.requests` through the public API), never in "
+                       "files the build writes (ADR-0078)")
+        elif not where.is_file():
+            out.append(f"{path}: fixture {f!r} doesn't exist")
+    return out
+
+
 def check(spec_dir, ledger_dir, require=False):
     """Problems with the spec, as strings; empty when it is sound."""
     problems = []
@@ -347,6 +373,7 @@ def check(spec_dir, ledger_dir, require=False):
             problems.append(f"{path}: capability {cap} has no ledger entry (.migration/ledger/{cap}.yaml)")
             continue
         root = pathlib.Path(spec_dir).resolve().parent.parent
+        problems += fixture_problems(path, doc, root)
         replays = contracts = 0
         for i, case in enumerate(doc["cases"]):
             if "schema" in case["then"] or "sent" in case["then"]:

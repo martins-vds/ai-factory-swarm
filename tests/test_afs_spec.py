@@ -27,7 +27,7 @@ SPEC = """
 capability: fees.calculation
 title: Late fees
 background:
-  given: {fixtures: [loans.json], clock: "2026-02-01"}
+  given: {fixtures: [.migration/spec/fees-payments/fixtures/loans.json], clock: "2026-02-01"}
 cases:
   - title: A loan returned two days late costs nothing
     rule: fee-waived-two-days
@@ -85,6 +85,8 @@ class SpecTest(unittest.TestCase):
         (self.root / "spec/fees-payments").mkdir(parents=True)
         self.path = self.root / "spec/fees-payments/late-fees.yaml"
         self.path.write_text(textwrap.dedent(SPEC))
+        (self.root / "spec/fees-payments/fixtures").mkdir()
+        (self.root / "spec/fees-payments/fixtures/loans.json").write_text("[]")
 
     def tearDown(self):
         self._d.cleanup()
@@ -127,7 +129,7 @@ class SpecTest(unittest.TestCase):
         adapter = FakeAdapter()
         results = sp.run_cases(cases, adapter)
         self.assertTrue(all(r["passed"] for r in results), results)
-        self.assertEqual(adapter.givens[0], {"fixtures": ["loans.json"], "clock": "2026-02-01"})
+        self.assertEqual(adapter.givens[0], {"fixtures": [".migration/spec/fees-payments/fixtures/loans.json"], "clock": "2026-02-01"})
         self.assertEqual(adapter.events, ["setup", "teardown"])
 
     def test_a_wrong_answer_fails_with_a_readable_diff(self):
@@ -574,3 +576,60 @@ class SpecStrengthTest(unittest.TestCase):
     def test_spec_rulings_lists_each_cited_ruling(self):
         self.write([dict(self.replay("POST /holds"), ruling="o/t#7")])
         self.assertEqual(list(sp.spec_rulings(self.root / "spec")), ["o/t#7"])
+
+
+class SpecOwnedSetupTest(unittest.TestCase):
+    """ADR-0078: a case's starting state is the spec's own: public setup requests, or fixtures under .migration/spec/."""
+
+    def setUp(self):
+        self._d = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self._d.name)
+        self.root = self.repo / ".migration"
+        (self.root / "ledger").mkdir(parents=True)
+        (self.root / "spec/holds").mkdir(parents=True)
+        (self.root / "ledger/hold.place.yaml").write_text(yaml.safe_dump(
+            {"id": "hold.place", "kind": "behavioral", "status": "pending",
+             "rules": [{"id": "limit", "rule": "A member's holds are limited."}]}))
+        self.path = self.root / "spec/holds/place.yaml"
+
+    def tearDown(self):
+        self._d.cleanup()
+
+    def check(self, given, examples=None):
+        case = {"title": "a fourth hold", "rule": "limit", "oracle": ".migration/spec/holds/place.yaml",
+                "given": given, "when": {"http": {"method": "POST", "path": "/holds", "form": {"member": "hal"}}},
+                "then": {"status": 201, "text": ["H5"]}}
+        if examples:
+            case["examples"] = examples
+        self.path.write_text(yaml.safe_dump({"capability": "hold.place", "title": "Holds", "cases": [case]}))
+        return "\n".join(sp.check(self.root / "spec", self.root / "ledger", True))
+
+    def test_setup_requests_are_valid_spec_data(self):
+        self.assertEqual(self.check({"requests": [{"method": "POST", "path": "/loans", "form": {"isbn": "1"}},
+                                                  {"method": "POST", "path": "/holds", "form": {"isbn": "1"}}]}), "")
+
+    def test_a_fixture_the_build_writes_is_refused(self):
+        self.assertIn("isn't part of the spec", self.check({"fixtures": ["tests/holds/fixtures/three.json"]}))
+        self.assertIn("isn't part of the spec", self.check(
+            {"fixtures": ["{fx}"]}, {"columns": ["fx"], "rows": [["tests/holds/fixtures/three.json"]]}))
+
+    def test_a_fixture_under_the_spec_must_exist(self):
+        self.assertIn("doesn't exist", self.check({"fixtures": [".migration/spec/holds/fixtures/three.json"]}))
+        (self.root / "spec/holds/fixtures").mkdir()
+        (self.root / "spec/holds/fixtures/three.json").write_text("[]")
+        self.assertEqual(self.check({"fixtures": [".migration/spec/holds/fixtures/three.json"]}), "")
+
+    def test_setup_requests_run_in_order_and_each_must_succeed(self):
+        import afs_spec_django
+        sent = []
+
+        def http(req):
+            sent.append(req["path"])
+            return {"status": 409 if req["path"] == "/bad" else 201, "text": "hold limit reached\n"}
+
+        afs_spec_django.send_setup_requests({"requests": [{"method": "POST", "path": "/a"},
+                                                          {"method": "POST", "path": "/b"}]}, http)
+        self.assertEqual(sent, ["/a", "/b"])
+        with self.assertRaisesRegex(RuntimeError, r"setup request 2 \(POST /bad\) answered 409"):
+            afs_spec_django.send_setup_requests({"requests": [{"method": "POST", "path": "/a"},
+                                                              {"method": "POST", "path": "/bad"}]}, http)
