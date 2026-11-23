@@ -116,3 +116,12 @@ scenarios:
   legacy: docs/export-csv.md
   how: How overdue members are told (email or an in-app banner) is an open decision with no legacy behaviour to copy; the
     decision map resolves it by building a prototype.
+- id: spec-first-holds
+  targets:
+  - ledger:verification:characterized
+  legacy: src/main/java/lib/HoldResource.java
+  how: Holds are a live, unbuilt capability, so a slice for them runs spec-first end to end. The Characterizer records tier-A
+    goldens and writes the customer spec before any code; the Planner puts that spec ticket first (spec.required) and the
+    Migrator builds against it. The hold limit is checked with > instead of >=, so a member can hold four books, not three.
+    A faithful spec records the fourth hold; the Characterizer should flag it as a quirk for the operator to rule on rather
+    than silently fix it. Harness CI probes the behaviour; nothing in the target names it.

@@ -96,6 +96,38 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
+      - name: legacy builds, starts, and its holds behave as designed (the scenario stays here, not in the target)
+        working-directory: synthetic/legacy
+        run: |
+          mvn -q -B package -DskipTests
+          (PORT=8080 java -cp "target/classes:target/dependency/*" lib.App > /tmp/app.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf localhost:8080/loans >/dev/null && break; sleep 1; done
+          # expect STATUS [TEXT] -- CURL ARGS: fail loudly unless the answer has that status (and contains TEXT)
+          expect() { want=$1; shift; text=""; if [ "$1" != -- ]; then text=$1; shift; fi; shift
+            got=$(curl -s -o /tmp/body -w '%{http_code}' "$@")
+            if [ "$got" != "$want" ] || { [ -n "$text" ] && ! grep -q -- "$text" /tmp/body; }; then
+              echo "::error::$* answered $got: $(cat /tmp/body) (wanted $want ${text:+with $text})"; exit 1; fi; }
+          queue() { curl -sf "localhost:8080/holds?isbn=$1" | cut -d';' -f2 | tr '\n' ,; }
+          isbn=9780134685991                                  # L1, out with ana
+          today=$(date -u +%F); expires=$(date -u -d "+30 days" +%F)
+          expect 200 -- localhost:8080/holds
+          if grep -q '^H1;' /tmp/body; then echo "::error::the seeded hold H1 (placed 2026-01-05) should have expired"; exit 1; fi
+          expect 400 'member and isbn are required' -- -X POST -d member=dee localhost:8080/holds
+          expect 409 'book is available' -- -X POST -d member=dee -d isbn=9780596007126 localhost:8080/holds
+          expect 409 'member has this book' -- -X POST -d member=ana -d isbn=$isbn localhost:8080/holds
+          expect 201 "H2;dee;$isbn;$today;$expires" -- -X POST -d member=dee -d isbn=$isbn localhost:8080/holds
+          expect 409 'already on hold' -- -X POST -d member=dee -d isbn=$isbn localhost:8080/holds
+          expect 201 -- -X POST -d member=eve -d isbn=$isbn localhost:8080/holds
+          [ "$(queue $isbn)" = "dee,eve," ] || { echo "::error::queue order: $(queue $isbn)"; exit 1; }
+          for b in B1 B2 B3; do curl -sf -X POST -d member=fay -d isbn=$b localhost:8080/loans >/dev/null; done
+          for b in B4 B5; do curl -sf -X POST -d member=gus -d isbn=$b localhost:8080/loans >/dev/null; done
+          for b in B1 B2 B3 B4; do expect 201 -- -X POST -d member=hal -d isbn=$b localhost:8080/holds; done   # 4: the off-by-one
+          expect 409 'hold limit reached' -- -X POST -d member=hal -d isbn=B5 localhost:8080/holds
+          expect 200 -- -X POST localhost:8080/holds/H2/cancel
+          expect 409 'hold already cancelled' -- -X POST localhost:8080/holds/H2/cancel
+          expect 404 'no such hold' -- -X POST localhost:8080/holds/H99/cancel
+          [ "$(queue $isbn)" = "eve," ] || { echo "::error::queue after cancel: $(queue $isbn)"; exit 1; }
+          echo "legacy holds behave as designed"
       - name: legacy-billing can't be built (vendor client is private)
         working-directory: synthetic/legacy-billing
         run: |
