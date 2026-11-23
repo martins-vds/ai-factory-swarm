@@ -136,7 +136,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Data fixtures the stack loads first (Django: `loaddata` names or paths)."
+          "description": "Data fixtures the stack loads first (Django: `loaddata` paths). A fixture is part of the spec: it lives under `.migration/spec/` and exists when the spec is checked (ADR-0078). Prefer `requests`, which don't depend on the target's schema."
         },
         "commands": {
           "type": "array",
@@ -144,6 +144,14 @@
             "$ref": "#/$defs/command"
           },
           "description": "Side-channel setup commands, run before the action."
+        },
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/when/properties/http"
+          },
+          "description": "ADR-0078: requests through the public HTTP interface that set up the case's starting state, sent in order after fixtures and commands. Each must succeed (a status below 400), or the case fails. This is how a spec written before the code sets up state without naming the target's schema."
         },
         "clock": {
           "type": "string",

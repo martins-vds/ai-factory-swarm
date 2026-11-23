@@ -154,3 +154,25 @@ class FlakyTest(unittest.TestCase):
         self.assertEqual(second.returncode, 0)
         self.assertNotIn("AFS-FLAKY", second.stdout)
         self.assertFalse((self.root / ".migration/evidence/flaky").exists())
+
+    def test_a_pass_after_a_spec_or_harness_fix_under_migration_is_a_fix(self):
+        """ADR-0078: the spec, ledger and characterization harness live under .migration/ and are gate inputs."""
+        for edited in (".migration/spec/holds/place.yaml", ".migration/characterization/source/characterize.py"):
+            with self.subTest(edited=edited):
+                self.counter.unlink(missing_ok=True)
+                self.assertEqual(self.run_gate().returncode, 1)
+                f = self.root / edited
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(f"fixed {edited}\n")
+                second = self.run_gate()
+                self.assertEqual(second.returncode, 0)
+                self.assertNotIn("AFS-FLAKY", second.stdout)
+
+    def test_the_sessions_own_records_dont_count_as_code(self):
+        self.assertEqual(self.run_gate().returncode, 1)
+        (self.root / ".migration/returns").mkdir(parents=True)
+        (self.root / ".migration/returns/LL-03.afs-migrator.yaml").write_text("draft\n")
+        (self.root / ".migration/handoffs").mkdir()
+        (self.root / ".migration/handoffs/LL-03.md").write_text("draft\n")
+        self.assertIn("AFS-FLAKY", self.run_gate().stdout)
+

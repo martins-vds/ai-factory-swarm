@@ -56,7 +56,12 @@ evidence), the ledger, the risk map, the read-only source.
    - **A quirk is kept, not fixed, until it's ruled.** Record the legacy value with its `oracle` and
      raise the quirk. Only after the operator rules a fix does the case cite `ruling: owner/repo#N`, the
      quirk issue listed in the ledger entry's `quirks`; CI refuses a ruling that isn't closed with the
-     operator's `**Ruling` comment.
+     operator's `**Ruling` comment. `afs-spec rulings` is that CI gate: if your session can't read issues,
+     leave it to CI rather than handing off.
+   - **Set up each case's starting state from the spec** (ADR-0078): the code doesn't exist yet, so use
+     `given.requests` (public calls that build the state the legacy recording started from: lend the books,
+     place the earlier holds), or fixtures under `.migration/spec/<slice>/fixtures/`. Never point at files
+     the build will write; `check` refuses it.
 
 ## Rules
 - Never modify the source; never commit any of it. Harness code, stand-ins and recorded outputs live in
