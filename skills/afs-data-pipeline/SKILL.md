@@ -27,6 +27,12 @@ repo and the profile.
 bootstrap gitignores both folders. What is committed is the manifest's counts and hashes, quoted in the
 evidence report, plus the reconciliation report.
 
+**Tests never read the fetched snapshot.** CI doesn't have it, so a test that loads it passes in your session
+and fails in CI. Give a test a small committed **fixture snapshot**: a folder under `tests/` with a few
+hand-made rows per table and a `manifest.json` in the format below, copied into `tmp_path` by the test. The
+real snapshot is for running the loader and the reconciliation, not for tests. The finish check runs your
+changed tests with the snapshot hidden and sends you back if they need it (ADR-0073).
+
 ## Snapshot format
 - One `<TABLE>.csv` per table, UTF-8, RFC 4180 quoting, **with a header row** of column names.
 - NULL is a marker, `\N` by default (`manifest.json` → `null`), so NULL and the empty string stay

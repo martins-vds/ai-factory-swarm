@@ -120,6 +120,35 @@ class FinishCheckTest(unittest.TestCase):
         self.assertIn("`# afs: allow-browser <why>`", out["reason"])
         self.assertIn("# afs: allow-mock <why>", out["reason"])
 
+    def snapshot_profile(self):
+        (self.repo / ".migration/profile.yaml").write_text(yaml.safe_dump({
+            "self_heal": {"enabled": True, "max_blocks": 2},
+            "gates": {"tests": [f"{sys.executable} -m pytest -q -p no:cacheprovider"]},
+            "data": {"snapshot": ["export"], "snapshot_dir": ".migration/data/snapshot"}}))
+        self.write(".migration/data/snapshot/manifest.json", "{}")
+
+    def test_tests_that_need_the_fetched_snapshot_are_sent_back_and_the_folder_is_restored(self):
+        self.snapshot_profile()
+        self.write("src/wizard.py")
+        self.write("tests/test_invariants.py", "import pathlib\n\ndef test_loaded():\n"
+                   "    assert pathlib.Path('.migration/data/snapshot/manifest.json').exists()\n")
+        out, _ = self.run_hook()
+        self.assertIn("Your changed tests pass only with the data snapshot in `.migration/data/snapshot`", out["reason"])
+        self.assertIn("committed fixture snapshot", out["reason"])
+        self.assertTrue((self.repo / ".migration/data/snapshot/manifest.json").exists())
+        self.assertFalse((self.repo / ".migration/data/snapshot.afs-hidden").exists())
+
+    def test_tests_with_a_committed_fixture_pass_and_a_hidden_folder_left_behind_is_restored(self):
+        self.snapshot_profile()
+        self.write("src/wizard.py")
+        self.write("tests/fixtures/snap/manifest.json", "{}")
+        self.write("tests/test_invariants.py", "import pathlib\n\ndef test_loaded():\n"
+                   "    assert pathlib.Path('tests/fixtures/snap/manifest.json').exists()\n")
+        (self.repo / ".migration/data/snapshot").rename(self.repo / ".migration/data/snapshot.afs-hidden")
+        out, _ = self.run_hook()
+        self.assertNotIn("data snapshot", (out or {}).get("reason", ""))
+        self.assertTrue((self.repo / ".migration/data/snapshot/manifest.json").exists())
+
     def test_an_uncommitted_flaky_record_is_sent_back_to_be_committed(self):
         self.write("src/wizard.py")
         self.write(".migration/evidence/flaky/BK-05D.md", "# Flaky runs: BK-05D\n")
