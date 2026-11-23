@@ -3,7 +3,7 @@
 Each case runs in its own transaction on the test database, rolled back afterwards, as Django's TestCase
 does. Setup goes through public side channels only: fixtures (`loaddata`) and management commands. The one
 thing it may set directly is the clock, a boundary: `given.clock` fixes `django.utils.timezone.now` and
-`localdate` for the case.
+`localdate` for the case, and a setup request's own `clock` for that request (ADR-0079).
 
 Settings come from `DJANGO_SETTINGS_MODULE`, else pytest's `DJANGO_SETTINGS_MODULE` in pyproject.toml; its
 `pythonpath` entries go on sys.path, as pytest-django would put them.
@@ -38,15 +38,31 @@ def parse_clock(value):
     return moment
 
 
+@contextlib.contextmanager
+def frozen_clock(value):
+    """Fix `django.utils.timezone.now` and `localdate` at `value` (a date or datetime) while the block runs."""
+    moment = parse_clock(value)
+    from django.conf import settings
+    from django.utils import timezone
+    aware = timezone.make_aware(moment) if settings.USE_TZ else moment
+    with mock.patch("django.utils.timezone.now", lambda: aware), \
+            mock.patch("django.utils.timezone.localdate", lambda value=None, timezone=None: moment.date()):
+        yield
+
+
 def _override_setting(name, value):
     from django.test import override_settings
     return override_settings(**{name: value})
 
 
-def send_setup_requests(given, http):
-    """ADR-0078: send a case's `given.requests` in order through the public HTTP interface; each must succeed."""
+def send_setup_requests(given, http, clock=None):
+    """ADR-0078: send a case's `given.requests` in order through the public HTTP interface; each must succeed.
+    A request's own `clock` (ADR-0079) holds while it is sent, through `clock(value)`, a context manager."""
     for i, req in enumerate(given.get("requests") or []):
-        answer = http(req)
+        when = req.get("clock")
+        req = {k: v for k, v in req.items() if k != "clock"}
+        with (clock(when) if when and clock else contextlib.nullcontext()):
+            answer = http(req)
         if answer["status"] >= 400:
             raise RuntimeError(f"setup request {i + 1} ({req['method']} {req['path']}) answered "
                                f"{answer['status']}: {answer['text'].strip()[:200]!r}")
@@ -92,13 +108,7 @@ class DjangoAdapter:
         from django.db import transaction
         with contextlib.ExitStack() as stack:
             if given.get("clock"):
-                moment = parse_clock(given["clock"])
-                from django.conf import settings
-                from django.utils import timezone
-                aware = timezone.make_aware(moment) if settings.USE_TZ else moment
-                stack.enter_context(mock.patch("django.utils.timezone.now", lambda: aware))
-                stack.enter_context(mock.patch("django.utils.timezone.localdate",
-                                               lambda value=None, timezone=None: moment.date()))
+                stack.enter_context(frozen_clock(given["clock"]))
             import afs_spec_stub
             self._stubs = stack.enter_context(afs_spec_stub.gateways(given.get("gateways"), self.gateways,
                                                                      point=_override_setting))
@@ -108,7 +118,7 @@ class DjangoAdapter:
                     call_command("loaddata", fixture, verbosity=0)
                 for cmd in given.get("commands") or []:
                     call_command(cmd["name"], *[str(a) for a in cmd.get("args") or []], stdout=io.StringIO())
-                send_setup_requests(given, self._http)
+                send_setup_requests(given, self._http, frozen_clock)
                 yield
             finally:
                 transaction.set_rollback(True)

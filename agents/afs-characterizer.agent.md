@@ -60,8 +60,9 @@ evidence), the ledger, the risk map, the read-only source.
      leave it to CI rather than handing off.
    - **Set up each case's starting state from the spec** (ADR-0078): the code doesn't exist yet, so use
      `given.requests` (public calls that build the state the legacy recording started from: lend the books,
-     place the earlier holds), or fixtures under `.migration/spec/<slice>/fixtures/`. Never point at files
-     the build will write; `check` refuses it.
+     place the earlier holds). A record that must date from an earlier day is placed by a request with its
+     own `clock` (ADR-0079). Never use a fixture for a capability that isn't built yet: it can only guess
+     the schema the build will choose, and `check` refuses it, as it refuses files the build will write.
 
 ## Rules
 - Never modify the source; never commit any of it. Harness code, stand-ins and recorded outputs live in

@@ -613,11 +613,46 @@ class SpecOwnedSetupTest(unittest.TestCase):
         self.assertIn("isn't part of the spec", self.check(
             {"fixtures": ["{fx}"]}, {"columns": ["fx"], "rows": [["tests/holds/fixtures/three.json"]]}))
 
+    def built(self):
+        (self.root / "ledger/hold.place.yaml").write_text(yaml.safe_dump(
+            {"id": "hold.place", "kind": "behavioral", "status": "in-progress",
+             "rules": [{"id": "limit", "rule": "A member's holds are limited."}]}))
+
     def test_a_fixture_under_the_spec_must_exist(self):
+        self.built()
         self.assertIn("doesn't exist", self.check({"fixtures": [".migration/spec/holds/fixtures/three.json"]}))
         (self.root / "spec/holds/fixtures").mkdir()
         (self.root / "spec/holds/fixtures/three.json").write_text("[]")
         self.assertEqual(self.check({"fixtures": [".migration/spec/holds/fixtures/three.json"]}), "")
+
+    def test_a_capability_not_built_yet_sets_up_by_requests_not_fixtures(self):
+        """ADR-0079: before the code exists a fixture can only guess its schema."""
+        (self.root / "spec/holds/fixtures").mkdir()
+        (self.root / "spec/holds/fixtures/expiry.json").write_text('[{"model": "holds.hold"}]')
+        problems = self.check({"fixtures": [".migration/spec/holds/fixtures/expiry.json"]})
+        self.assertIn("isn't built yet", problems)
+        self.assertIn("its own `clock`", problems)
+        self.assertEqual(self.check({"clock": "2026-11-23", "requests": [
+            {"method": "POST", "path": "/holds", "form": {"member": "bo"}, "clock": "2026-10-24"}]}), "")
+
+    def test_a_setup_request_holds_its_own_clock_while_it_is_sent(self):
+        import afs_spec_django
+        log = []
+
+        @contextlib.contextmanager
+        def clock(value):
+            log.append(f"clock {value}")
+            yield
+            log.append("clock restored")
+
+        def http(req):
+            log.append(f"{req['path']} clock-key={'clock' in req}")
+            return {"status": 201, "text": ""}
+
+        afs_spec_django.send_setup_requests({"requests": [
+            {"method": "POST", "path": "/past", "clock": "2026-10-24"},
+            {"method": "POST", "path": "/today"}]}, http, clock)
+        self.assertEqual(log, ["clock 2026-10-24", "/past clock-key=False", "clock restored", "/today clock-key=False"])
 
     def test_setup_requests_run_in_order_and_each_must_succeed(self):
         import afs_spec_django
