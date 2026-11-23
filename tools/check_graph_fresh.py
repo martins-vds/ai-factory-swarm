@@ -24,6 +24,12 @@ Usage:
                                                        own target graph for a commit in this history (ADR-0035);
                                                        the committed target graph is a reference only
 
+A re-pin (ADR-0075): when the change itself moves `.migration/source.lock` away from the base's pin (the base is
+--acceptance-since, the PR's base), a source graph built for exactly the base's pin is the graph the rebuild
+replaces, so it is a warning, not an error. afs-understand rebuilds it when the re-pin merges; until its graph PR
+merges, main's source graph is stale and every other PR fails this check. Any other stale source graph, or one
+an acceptance needs, is still an error.
+
 AFS_GRAPH_TARGET_DIR (set by afs-acceptance) points the target side at the acceptance run's own build.
 """
 import argparse
@@ -220,6 +226,28 @@ def accepting(base):
     return bool(accepting_returns(base))
 
 
+def pin_at(ref):
+    """The source sha `.migration/source.lock` pins at a git ref, or None."""
+    r = subprocess.run(["git", "show", f"{ref}:.migration/source.lock"], capture_output=True, text=True)
+    if r.returncode:
+        return None
+    try:
+        return (yaml.safe_load(r.stdout) or {}).get("sha")
+    except yaml.YAMLError:
+        return None
+
+
+def snapshot_sha(folder):
+    path = pathlib.Path(folder) / "SNAPSHOT.txt"
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "source_sha":
+            return value.strip()
+    return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--require", default="", help="comma-separated sides that must have a fresh graph")
@@ -247,6 +275,8 @@ def main(argv=None):
             print(p, file=sys.stderr)
         print(f"graph {folder}: {'STALE' if problems else 'OK'}")
         return 1 if problems else 0
+    previous = pin_at(a.acceptance_since) if a.acceptance_since else None
+    repin = previous if previous and previous != pinned else None
     for side in ("source", "target"):
         if side == "target":
             folders = target_folders()
@@ -256,6 +286,11 @@ def main(argv=None):
             problems.append(f"{GRAPHS / side}: no graph; build it with afs-understand side={side}")
         for folder in folders:
             found = check_source(folder, pinned) if side == "source" else check_target(folder)
+            if found and side == "source" and repin and "source" not in required and snapshot_sha(folder) == repin:
+                warnings.append(f"{folder}: re-pin from {repin[:12]} to {pinned[:12]}; afs-understand rebuilds this "
+                                "graph when the change merges, and until its graph PR merges every other PR fails "
+                                "this check (ADR-0075)")
+                continue
             # The source never moves without a source.lock change, so a stale source graph is always an error.
             (problems if side == "source" or side in required else warnings).extend(found)
             if not found:
