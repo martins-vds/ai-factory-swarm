@@ -699,3 +699,12 @@ class SpecCaseTest(unittest.TestCase):
         doc = {"id": "s", "kind": "spec", "agent": "afs-characterizer", "ticket": "FS-01", "role": "afs-characterizer",
                "source": {"repo": "o/r", "base": "a" * 40}, "issue": {"title": "t", "body": "b"}, "expect": {"x": 1}}
         self.assertIn("a spec case needs expect.capabilities", "; ".join(ev.case_problems(doc)))
+
+
+class MutationNotApplicableTest(unittest.TestCase):
+    def test_the_hyphenated_reason_afs_mutation_prints_counts_like_the_spaced_one(self):
+        for value in ("n/a: no mutable code changed", "n/a: no-mutable-code-changed"):
+            checks = ev.grade_migrator({"gates": {"mutation_changed": value}}, "success", 0.8)
+            self.assertTrue(all(ok for _, ok, _ in checks), (value, checks))
+        checks = ev.grade_migrator({"gates": {"mutation_changed": "n/a: no-mutable-code-changed"}}, "failure", 0.8)
+        self.assertFalse(checks[1][1])                  # only alongside green gates

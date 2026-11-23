@@ -135,6 +135,7 @@ humans, and approved for cutover.
 | 70 | A flaky test is a ticket, not a retry: `afs-run` fingerprints the code each run saw and records a pass after a failure on the same code (`AFS-FLAKY`, `.migration/evidence/flaky/`); the finish check wants it committed; `afs-flaky` (AFS flaky tests workflow) also reads CI re-runs and keeps one `afs-flaky` issue per test | [0070](adr/0070-a-flaky-test-is-a-ticket-not-a-retry.md) |
 | 71 | Test health is tracked per slice: `afs-dashboard health --target` reads each target's returns, journals (matched by command and tool result), flaky records, test scan and spec, and the dashboard's Test health section shows each slice and its tickets in the order they landed | [0071](adr/0071-test-health-is-tracked-per-slice.md) |
 | 72 | Each slice is refactored periodically: `afs-refactor-ticket` picks the slice longest without a refactor and its module with the most private helpers, and plans the phase 0 ticket (`refactor: true`); a monthly AFS refactor workflow proposes it as a PR; the dashboard shows the existing tests the refactor had to change | [0072](adr/0072-each-slice-is-refactored-periodically.md) |
+| 73 | Tests run without the data snapshot, as in CI: the finish check runs the branch's changed test files with the fetched snapshot hidden, and sends the session back to a committed fixture snapshot if they pass only with it | [0073](adr/0073-tests-run-without-the-data-snapshot.md) |
 
 ---
 

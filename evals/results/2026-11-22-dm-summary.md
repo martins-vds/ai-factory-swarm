@@ -22,3 +22,18 @@ the Copilot setup's data snapshot fetch was rate-limited.
 - **This is a harness gap, not a model one.** The session can't see the difference between its environment
   and CI's. A fix makes the finish check run the branch's changed tests with the snapshot hidden, as CI does,
   and send the session back when they need it.
+
+## After the fix (ADR-0073, harness #250)
+Runs `2026-11-22-dmf-r{1,2,3}`, DM-05F only. The harness is the #250 branch, the model `gpt-6-luna`.
+
+| Case | r1 | r2 | r3 | Passed |
+|---|---|---|---|---|
+| pilot-dm-05f | ✅ | ✅ | ✅ | **3/3** (was 1/3) |
+
+- CI's gates passed in all three runs. No test needed the fetched snapshot.
+- The finish check's new test ran at every stop of every session: the changed tests ran with the snapshot hidden,
+  and all passed. It never had to send a session back. The new rule in `afs-data-pipeline` likely steered the
+  sessions to fixture snapshots from the start, and the check is the backstop.
+- r1 was first graded failed because its return says `mutation_changed: n/a: no-mutable-code-changed`, the
+  hyphenated reason `afs-mutation` itself prints. The grader accepted only the spaced form; the return contract
+  accepts both. The grader now accepts both, alongside green gates as before.

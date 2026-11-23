@@ -14,6 +14,9 @@ by hand. It checks the session's own work, with the same rules CI applies:
   spec        (ADR-0062) only a Characterizer session changes `.migration/spec/`. Any other role's change to
               it is refused even with a handoff: a spec the work disagrees with is a handoff with the
               evidence, and the spec file stays as it was.
+  snapshot    (ADR-0073) on a target with a data snapshot, the test files this branch changed pass without it,
+              as in CI, where the snapshot never is: they run once with the snapshot folder hidden, and if they
+              fail only then, the session is sent back to use a committed fixture snapshot.
   flaky       (ADR-0070) a flaky-run record afs-run wrote for this ticket is committed.
   coupling    (ADR-0064) `afs-test-health --check` on the lines this branch added to its tests: patches of
               the project's own code, private access, interaction assertions. Recorded in the trace; it
@@ -47,6 +50,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import tempfile
 import sys
@@ -373,6 +377,73 @@ def findings(ticket, role, changed, prompt):
     return found
 
 
+SNAPSHOT_TIMEOUT = 600
+BUILDERS = ("afs-migrator", "afs-specialist-migrator")
+
+
+def data_profile():
+    try:
+        prof = yaml.safe_load((MIG / "profile.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}, []
+    data = prof.get("data") or {}
+    return data, ((prof.get("gates") or {}).get("tests") or [])
+
+
+def restore_hidden_snapshot():
+    """Put back a snapshot folder an interrupted check left hidden."""
+    data, _ = data_profile()
+    folder = pathlib.Path(data.get("snapshot_dir") or ".migration/data/snapshot")
+    hidden = folder.with_name(folder.name + ".afs-hidden")
+    if hidden.exists() and not folder.exists():
+        hidden.rename(folder)
+
+
+def run_tests(command, files):
+    try:
+        r = subprocess.run([*shlex.split(command), *files], capture_output=True, text=True, timeout=SNAPSHOT_TIMEOUT)
+        return r.returncode, (r.stdout + r.stderr)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, str(exc)
+
+
+def snapshot_dependent_tests(role, changed):
+    """ADR-0073: the changed test files' output when they fail without the data snapshot but pass with it, else None.
+
+    CI never has the snapshot (production data is never committed; only Copilot setup fetches it), so a test that
+    reads it passes every local gate and fails in CI (eval dm-r2/r3, DM-05F: `no manifest.json`)."""
+    if role not in BUILDERS:
+        return None
+    data, tests = data_profile()
+    folder = pathlib.Path(data.get("snapshot_dir") or ".migration/data/snapshot")
+    command = next((c for c in tests if "pytest" in c.split()[:3]
+                    or any(w.endswith("pytest") for w in c.split()[:3])), None)
+    files = [p for p in changed if p.startswith("tests/") and pathlib.PurePosixPath(p).name.startswith("test_")
+             and p.endswith(".py") and pathlib.Path(p).is_file()]
+    if not data.get("snapshot") or not folder.is_dir() or not command or not files:
+        return None
+    hidden = folder.with_name(folder.name + ".afs-hidden")
+    folder.rename(hidden)
+    try:
+        without, out = run_tests(command, files)
+    finally:
+        hidden.rename(folder)
+    if without in (0, None, 5):                  # passed, couldn't run, or no tests collected
+        return None
+    with_snapshot, _ = run_tests(command, files)
+    return out if with_snapshot == 0 else None
+
+
+def snapshot_finding(folder, out):
+    tail = "\n    ".join(out.strip().splitlines()[-12:])
+    return ("mechanical", "snapshot-tests",
+            f"Your changed tests pass only with the data snapshot in `{folder}`, which CI never has (production data "
+            "is never committed, ADR-0073). Run without it, they fail:\n    " + tail + "\nGive them a small committed "
+            "fixture snapshot instead: a folder under `tests/` with a few rows per table and a `manifest.json` in "
+            "the snapshot format (afs-data-pipeline), copied into `tmp_path` by the test. Never commit the real "
+            "snapshot.")
+
+
 def test_health():
     """(finding lines, block?) from `afs-test-health --check` on this branch; ([], False) if it can't run."""
     tool = HERE / "afs-test-health"
@@ -510,6 +581,7 @@ def decide(args, payload, session, prompt, trace):
         trace.update(decision="allow", why=f"missing package: {IMPORT_ERROR}")
         return None
     enabled, max_blocks = profile_self_heal()
+    restore_hidden_snapshot()
     changed = branch_changes()
     ticket, role = identify(args, changed, prompt)
     trace.update(enabled=enabled, ticket=ticket, role=role, changed=changed[:50])
@@ -517,6 +589,11 @@ def decide(args, payload, session, prompt, trace):
         trace.update(decision="allow", why="no ticket/role for this session")
         return None
     found = findings(ticket, role, changed, prompt)
+    data, _ = data_profile()
+    out = snapshot_dependent_tests(role, changed)
+    trace["snapshot_tests"] = "fail without the snapshot" if out else "ok"
+    if out:
+        found.append(snapshot_finding(data.get("snapshot_dir") or ".migration/data/snapshot", out))
     flaky = MIG / "evidence" / "flaky" / f"{ticket}.md"
     if flaky.exists() and git("status", "--porcelain", "--", flaky.as_posix()).strip():
         found.append(("mechanical", "flaky-uncommitted",
