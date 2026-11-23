@@ -16,7 +16,9 @@ paths appear only when the normal role sessions, gates and operator decisions pr
 - `legacy-smoke.yml`: the synthetic target's CI smoke test for the legacy app (copy it to
   `.github/workflows/`): build, start, and probe each scenario's behaviour.
 - `seed.py`: writes one source (`--source`, default `legacy`) into the target repository and prints the
-  `source.lock` lines to pin it.
+  `source.lock` lines to pin it. When the legacy app gains a feature, `seed.py --update` rewrites the
+  seeded source whole (and its smoke test); merge that as its own PR, then re-pin `source.lock` to the
+  merge commit in a follow-up setup PR.
 
 **One source, one tier.** The characterization tier rates a whole source, so each source gets its own
 Bootstrapper session. `legacy` is the target's pinned source and goes through every phase. `legacy-billing`
