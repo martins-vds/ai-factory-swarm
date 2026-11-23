@@ -707,6 +707,22 @@ def check_layering_declared(path, profile, root, errors):
                       "check_layers.py in gates.idiom")
 
 
+def check_source_lock(folder, profile, errors):
+    """ADR-0076: `.migration/source.lock` is what bootstrap writes from the profile's `source`. A lock edited alone
+    is undone at the next harness install, so the pin lives in the profile and the two always agree."""
+    lock_path = folder / "source.lock"
+    src = (profile or {}).get("source") or {}
+    if not lock_path.exists() or not src:
+        return
+    lock = load_yaml(lock_path) or {}
+    for key in ("repo", "sha", "path"):
+        want, got = str(src.get(key) or ""), str(lock.get(key) or "")
+        if want != got:
+            errors.append(f"{lock_path}: {key} is {got or '(empty)'!r} but the profile's source.{key} is "
+                          f"{want or '(empty)'!r}. Re-pin by changing the profile's `source.{key}` and re-running "
+                          "bootstrap, which writes the lock from it (ADR-0076)")
+
+
 def check_spec(folder, errors):
     """ADR-0061: the customer spec is valid, every case asserts something and names a rule its capability
     lists; with the profile's `spec.required`, every rule of a specced capability is proved by a case."""
@@ -741,6 +757,7 @@ def main():
                 if not a.sample:
                     check_layering_declared(folder / name, load_yaml(folder / name) or {}, folder.resolve().parent, errors)
                 check_mutation_base(folder / name, load_yaml(folder / name) or {}, errors)
+                check_source_lock(folder, load_yaml(folder / name) or {}, errors)
             else:
                 check_tier_attempt(folder / name, load_yaml(folder / name) or {}, errors)
             checked += 1
