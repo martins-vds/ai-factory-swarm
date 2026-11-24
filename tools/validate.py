@@ -286,7 +286,7 @@ def check_verifier_rules(folder, path, doc, errors):
                           f"blocker or major finding with `evidence: {r['test']}`")
     for cap in caps:
         listed = {str(r.get("ledger_rule")) for r in rules if isinstance(r, dict) and r.get("capability") == cap}
-        for lr in ledger_rules(folder, cap):
+        for lr in ledger_rules_as_of(folder, path, cap):
             if lr["id"] not in listed:
                 errors.append(f"{path}: the ledger lists rule '{lr['id']}' for {cap} ({lr['rule']}); add it to `rules` "
                               f"with `ledger_rule: {lr['id']}` and a use-case test, enforced or not")
@@ -294,6 +294,35 @@ def check_verifier_rules(folder, path, doc, errors):
     if missing:
         errors.append(f"{path}: no rule checked for capability {', '.join(missing)}: add its business rules to "
                       "`rules`, each with a use-case test, or say why it has none under `no_rules`")
+
+
+def ledger_rules_as_of(folder, path, capability):
+    """The capability's ledger rules as they stood when this return was last committed: a return records one
+    moment, so a rule added to the ledger later (synthetic HM-04 added `first-refusal-wins` to the built
+    `hold.place`) is a later ticket's to prove, not a retroactive failure of HM-03's return. A return that is new
+    or changed in the working tree is checked against the ledger as it is now."""
+    def git(*args, cwd=folder):
+        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else None
+
+    top = (git("rev-parse", "--show-toplevel") or "").strip()
+    if not top:
+        return ledger_rules(folder, capability)
+    rel_return = os.path.relpath(path.resolve(), top)
+    if (git("status", "--porcelain", "--", rel_return, cwd=top) or "").strip():
+        return ledger_rules(folder, capability)
+    commit = (git("log", "-1", "--format=%H", "--", rel_return, cwd=top) or "").strip()
+    if not commit:
+        return ledger_rules(folder, capability)
+    rel_entry = os.path.relpath((folder / "ledger" / f"{capability}.yaml").resolve(), top)
+    text = git("show", f"{commit}:{rel_entry}", cwd=top)
+    if text is None:
+        return ledger_rules(folder, capability)
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return ledger_rules(folder, capability)
+    return [r for r in data.get("rules") or [] if isinstance(r, dict) and r.get("id")]
 
 
 def ledger_rules(folder, capability):
