@@ -668,3 +668,27 @@ class SpecOwnedSetupTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r"setup request 2 \(POST /bad\) answered 409"):
             afs_spec_django.send_setup_requests({"requests": [{"method": "POST", "path": "/a"},
                                                               {"method": "POST", "path": "/bad"}]}, http)
+
+
+class PlaceholderTest(unittest.TestCase):
+    """A `{name}` with no `examples` column fails `check`, not the gate at run time."""
+
+    def test_an_unfilled_placeholder_is_a_check_problem(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d) / ".migration"
+            (root / "ledger").mkdir(parents=True)
+            (root / "spec/holds").mkdir(parents=True)
+            (root / "ledger/hold.list.yaml").write_text(yaml.safe_dump(
+                {"id": "hold.list", "kind": "behavioral", "status": "pending",
+                 "rules": [{"id": "expiry", "rule": "A hold is listed through its expiry date."}]}))
+            case = {"title": "listed on its last day", "rule": "expiry", "oracle": ".migration/spec/holds/list.yaml",
+                    "given": {"clock": "{today}"}, "when": {"http": {"method": "GET", "path": "/holds"}},
+                    "then": {"status": 200, "text": ["H2"]}}
+            (root / "spec/holds/list.yaml").write_text(yaml.safe_dump(
+                {"capability": "hold.list", "title": "Holds", "cases": [case]}))
+            problems = "\n".join(sp.check(root / "spec", root / "ledger", True))
+            self.assertIn("`{today}` has no `examples` column", problems)
+            case["examples"] = {"columns": ["today"], "rows": [["2026-11-23"]]}
+            (root / "spec/holds/list.yaml").write_text(yaml.safe_dump(
+                {"capability": "hold.list", "title": "Holds", "cases": [case]}))
+            self.assertEqual(sp.check(root / "spec", root / "ledger", True), [])
