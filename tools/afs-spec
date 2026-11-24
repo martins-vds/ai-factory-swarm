@@ -36,6 +36,8 @@ of the code, so a refactor that keeps the behaviour can't break one.
 * `rulings` (a CI gate, with `issues: read`; a session without issue access leaves it to CI): every `ruling:` a case cites is a decided quirk: its issue is closed as completed
   and carries the operator's `**Ruling ...` comment (ADR-0074). `check` already refuses a ruling that isn't
   `owner/repo#N` listed in the capability's ledger `quirks`.
+* A replay compares the recorded media type (`content_type`, charset ignored) as well as the status and body,
+  unless its body is `ignore`.
 * No case checks only a status (a 204 or 304 aside), and with --require every status the legacy app was
   recorded answering on a tier-A capability's endpoint (from the ledger's recordings and the spec's replays)
   is proved by a case (ADR-0074): the error paths observed can't drop out of the spec.
@@ -515,6 +517,10 @@ def resolve_replay(case, root):
     then.setdefault("status", resp.get("status"))
     then["replay"] = dict(then["replay"], expected=resp.get("body", ""),
                           source=f"{replay['recording']}#{replay['exchange']}")
+    recorded_type = resp.get("content_type") or {k.lower(): v for k, v in (resp.get("headers") or {}).items()}.get(
+        "content-type")
+    if recorded_type:
+        then["replay"]["content_type"] = recorded_type
     return dict(case, when={"http": http}, then=then)
 
 
@@ -764,6 +770,23 @@ def replay_verdict(replay, result):
     mode, masks = replay["body"], replay.get("mask")
     if mode == "ignore":
         return []
+    failed = []
+    if replay.get("content_type") and result.get("headers"):   # the media type is part of the recorded answer
+        # (an adapter that reports no headers at all, such as a management command, has none to compare)
+        want_type = media_type(replay["content_type"])
+        got_type = media_type((result.get("headers") or {}).get("content-type"))
+        if want_type != got_type:
+            failed.append(f"replay {replay.get('source')}: content type differs; recorded {want_type!r}, "
+                          f"target {got_type!r}")
+    return failed + replay_body_verdict(replay, result, mode, masks)
+
+
+def media_type(value):
+    """`text/plain; charset=utf-8` -> `text/plain`: parameters such as the charset aren't behaviour."""
+    return str(value or "").split(";")[0].strip().lower() or None
+
+
+def replay_body_verdict(replay, result, mode, masks):
     if mode == "json":
         try:
             want = json.loads(normalize(replay["expected"], "json", masks))

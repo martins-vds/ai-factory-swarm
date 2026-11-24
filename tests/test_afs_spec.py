@@ -692,3 +692,35 @@ class PlaceholderTest(unittest.TestCase):
             (root / "spec/holds/list.yaml").write_text(yaml.safe_dump(
                 {"capability": "hold.list", "title": "Holds", "cases": [case]}))
             self.assertEqual(sp.check(root / "spec", root / "ledger", True), [])
+
+
+class ReplayContentTypeTest(unittest.TestCase):
+    """HM-AUDIT: a replay compared status and body but not the recorded media type."""
+
+    def resolve(self, response):
+        with tempfile.TemporaryDirectory() as d:
+            rec = pathlib.Path(d) / "r.json"
+            rec.write_text(json.dumps({"GET /holds": {"request": {"method": "GET", "path": "/holds"},
+                                                      "response": response}}))
+            case = {"when": {"replay": {"recording": "r.json", "exchange": "GET /holds"}},
+                    "then": {"replay": {"body": "exact"}}}
+            return sp.resolve_replay(case, d)["then"]["replay"]
+
+    def test_the_recorded_media_type_is_compared_charset_aside(self):
+        replay = self.resolve({"status": 200, "body": "H2;dee\n", "content_type": "text/plain"})
+        ok = {"status": 200, "text": "H2;dee\n", "headers": {"content-type": "text/plain; charset=utf-8"}}
+        self.assertEqual(sp.replay_verdict(replay, ok), [])
+        html = dict(ok, headers={"content-type": "text/html; charset=utf-8"})
+        self.assertIn("content type differs; recorded 'text/plain', target 'text/html'",
+                      "\n".join(sp.replay_verdict(replay, html)))
+
+    def test_a_recording_header_works_too_and_no_record_means_no_check(self):
+        replay = self.resolve({"status": 200, "body": "x", "headers": {"Content-Type": "application/json"}})
+        self.assertEqual(replay["content_type"], "application/json")
+        replay = self.resolve({"status": 200, "body": "x"})
+        self.assertNotIn("content_type", replay)
+        self.assertEqual(sp.replay_verdict(replay, {"text": "x", "headers": {"content-type": "text/html"}}), [])
+
+    def test_an_ignored_body_ignores_the_media_type(self):
+        replay = dict(self.resolve({"status": 200, "body": "x", "content_type": "text/plain"}), body="ignore")
+        self.assertEqual(sp.replay_verdict(replay, {"text": "y", "headers": {"content-type": "text/html"}}), [])
