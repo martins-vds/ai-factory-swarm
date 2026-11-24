@@ -482,8 +482,16 @@ class PyModule:
         self.imports = {}          # local name → dotted target (module or module.attr)
 
 
+def _drop_src(dotted, src_layout):
+    """In a src/ layout modules are indexed without `src.`, so an absolute `src.x.y` import names `x.y`."""
+    if src_layout and (dotted == "src" or dotted.startswith("src.")):
+        return dotted[4:]
+    return dotted
+
+
 def py_index(root):
     mods = {}
+    src_layout = (root / "src").is_dir()
     for f in sorted(root.rglob("*.py")):
         parts = list(f.relative_to(root).with_suffix("").parts)
         if parts and parts[0] in ("tests", "test") or "migrations" in parts:
@@ -502,13 +510,19 @@ def py_index(root):
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for a in node.names:
-                    m.imports[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
+                    name = _drop_src(a.name, src_layout)
+                    if a.asname:
+                        m.imports[a.asname] = name
+                    elif a.name.startswith("src.") and src_layout:
+                        m.imports["src"] = "src"           # `import src.x.y` binds `src`; dotted_of drops it below
+                    else:
+                        m.imports[a.name.split(".")[0]] = a.name.split(".")[0]
             elif isinstance(node, ast.ImportFrom):
-                base = node.module or ""
+                base = "" if node.level else _drop_src(node.module or "", src_layout)
                 if node.level:
                     up = pkg.split(".")
                     up = up[: len(up) - (node.level - 1)] if node.level > 1 else up
-                    base = ".".join([*up, base] if base else up)
+                    base = ".".join([*up, node.module] if node.module else up)
                 for a in node.names:
                     m.imports[a.asname or a.name] = f"{base}.{a.name}" if base else a.name
         mods[m.dotted] = m
@@ -539,7 +553,8 @@ def dotted_of(expr, m):
     if not isinstance(expr, ast.Name):
         return None
     head = m.imports.get(expr.id, f"{m.dotted}.{expr.id}")
-    return ".".join([head, *reversed(parts)])
+    dotted = ".".join([head, *reversed(parts)])
+    return dotted[4:] if head == "src" and dotted.startswith("src.") else dotted
 
 
 def class_constants(cls):

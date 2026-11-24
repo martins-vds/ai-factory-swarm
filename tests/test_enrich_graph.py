@@ -354,6 +354,26 @@ class DjangoHttpMethodsTest(unittest.TestCase):
         self.assertIn(("health", "OrderLookup.find"), edges(g, "calls"), "the method itself, not the whole class")
         self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
 
+    def test_an_absolute_src_import_of_an_instance_reaches_its_class(self):
+        """Synthetic HM-ACCEPT: `from src.reports.composition import monthly_report` in a src/ layout, where modules
+        are indexed without `src.`, lost the monthly report command's path to data."""
+        for imp in ("from src.shop.orders.wiring import lookup\n",):
+            with self.subTest(imp=imp):
+                call = "lookup.find(1)" if "from" in imp else "w.lookup.find(1)"
+                views = ("from django.shortcuts import render\n" + imp + "\n"
+                         "def create_order_view(lookup_):\n"
+                         "    def view(request):\n"
+                         "        return None\n"
+                         "    return view\n\n"
+                         "def health(request):\n"
+                         f"    return render(request, 'orders/health.html', {{'o': {call}}})\n")
+                wiring = ("from src.shop.orders.application import OrderLookup\n"
+                          "from src.shop.orders.infrastructure.repository import DjangoOrderRepository\n\n"
+                          "lookup = OrderLookup(DjangoOrderRepository())\n")
+                g = self.graph(views, pages={"src/shop/orders/wiring.py": wiring})
+                self.assertIn(("health", "OrderLookup.find"), edges(g, "calls"))
+                self.assertIn("→reads_from `shop_orders`", path(g, "endpoint=/api/health/"))
+
     def test_an_unknown_module_level_name_adds_no_call(self):
         views = ("from shop.orders.wiring import thing\n"
                  "def create_order_view(lookup):\n"
