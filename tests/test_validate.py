@@ -567,3 +567,34 @@ class LayeringDeclaredTest(unittest.TestCase):
         (self.root / "app/views.py").write_text("x = 1\n")
         self.assertEqual(self.errs({}), [])
         self.assertEqual(len(self.errs({"graph": {"target_paths": ["app", "templates"]}})), 1)
+
+
+class LedgerRulesAsCommittedTest(unittest.TestCase):
+    """A return is checked against the ledger rules as they stood when it was committed (synthetic HM-04)."""
+
+    def test_a_rule_added_later_is_not_a_retroactive_failure(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo = pathlib.Path(d)
+            git = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+            git("init", "-q")
+            git("config", "user.email", "t@t")
+            git("config", "user.name", "t")
+            folder = repo / ".migration"
+            (folder / "ledger").mkdir(parents=True)
+            (folder / "returns").mkdir()
+            entry = folder / "ledger/hold.place.yaml"
+            entry.write_text("id: hold.place\nrules:\n- {id: limit, rule: four holds at most}\n")
+            ret = folder / "returns/HM-03.afs-migrator.yaml"
+            ret.write_text("role: afs-migrator\n")
+            git("add", "-A")
+            git("commit", "-qm", "build")
+            entry.write_text("id: hold.place\nrules:\n- {id: limit, rule: four holds at most}\n"
+                             "- {id: first-refusal-wins, rule: the first refusal wins}\n")
+            git("add", "-A")
+            git("commit", "-qm", "a later rule")
+            ids = lambda: [r["id"] for r in validate_mod.ledger_rules_as_of(folder, ret, "hold.place")]
+            self.assertEqual(ids(), ["limit"])                      # as HM-03's return was committed
+            ret.write_text("role: afs-migrator\nticket: HM-03\n")  # a changed return answers to today's ledger
+            self.assertEqual(ids(), ["limit", "first-refusal-wins"])
