@@ -946,6 +946,9 @@ def enrich_django(g, root):
                 g.edge(pid, g.node("page", sub, sub, "django-template", f"Template {sub}"), "contains",
                        "django-include")
 
+    # Last, once every call out of a view is in the graph: one routed node per `request.method` branch.
+    split_method_branches(g, defs)
+
 
 # --------------------------------------------------------------------------------------------- Graphify
 
@@ -957,6 +960,85 @@ INTERFACE_BASES = {"Protocol", "ABC"}  # an `inherits` into a class built on the
 
 class GraphifyError(Exception):
     pass
+
+
+def _method_test(test):
+    """{'GET', ...} when `test` is `<x>.method == 'GET'` or `<x>.method in ('GET', ...)`, else None."""
+    if not (isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.left, ast.Attribute)
+            and test.left.attr == "method"):
+        return None
+    op, right = test.ops[0], test.comparators[0]
+    if isinstance(op, ast.Eq) and isinstance(right, ast.Constant) and isinstance(right.value, str):
+        return {right.value.upper()}
+    if isinstance(op, ast.In) and isinstance(right, (ast.List, ast.Tuple, ast.Set)) and \
+            all(isinstance(v, ast.Constant) and isinstance(v.value, str) for v in right.elts):
+        return {v.value.upper() for v in right.elts}
+    return None
+
+
+def _ends(stmts):
+    return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise))
+
+
+def _branch(body, method):
+    """The statements a request with `method` runs, through top-level `if request.method ...` branches; None when
+    the body doesn't branch on the method (nothing to split)."""
+    out, split = [], False
+    for i, st in enumerate(body):
+        methods = _method_test(st.test) if isinstance(st, ast.If) else None
+        if methods is None:
+            out.append(st)
+            continue
+        split = True
+        if method in methods:
+            out += st.body
+            if _ends(st.body):
+                return out
+        else:
+            sub = _branch(st.orelse, method) if st.orelse else None
+            out += st.orelse if sub is None else sub
+            if st.orelse and _ends(sub if sub is not None else st.orelse):
+                return out
+    return out if split else None
+
+
+def split_method_branches(g, defs):
+    """A view that branches on `request.method` gets one node per routed method holding only that branch's calls,
+    and each `METHOD url` endpoint routes to its own branch (synthetic HM-AUDIT: `GET /holds` was traced through
+    the POST branch's `HoldApplication.place` and its write). A view that doesn't branch stays as it is."""
+    by_view = {}
+    for (m, node) in defs.values():
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            by_view[f"function:{m.path}:{node.name}"] = node
+    for e in list(g.doc["edges"]):
+        if e["type"] != "routes" or e["target"] not in by_view:
+            continue
+        ep = g.nodes.get(e["source"], {})
+        if ep.get("type") != "endpoint" or " " not in str(ep.get("name")):
+            continue
+        method = ep["name"].split(" ", 1)[0].upper()
+        view = by_view[e["target"]]
+        stmts = _branch(view.body, method)
+        if stmts is None:
+            continue
+        names = set()
+        for st in stmts:
+            for n in ast.walk(st):
+                if isinstance(n, ast.Attribute):
+                    names.add(n.attr)
+                elif isinstance(n, ast.Name):
+                    names.add(n.id)
+        vnode = g.nodes[e["target"]]
+        bid = g.node("function", vnode.get("filePath"), f"{view.name}[{method}]", "django-method-branch",
+                     f"the {method} branch of {view.name}", view.lineno)
+        for out in [x for x in g.doc["edges"] if x["source"] == e["target"] and x["type"] != "contains"]:
+            leaf = out["target"].rsplit(":", 1)[-1].rsplit(".", 1)[-1]
+            if leaf in names:
+                g.edge(bid, out["target"], out["type"], "django-method-branch", out.get("weight", 0.8))
+        g.edge(e["target"], bid, "contains", "django-method-branch")
+        g.doc["edges"].remove(e)
+        g.edge_keys.discard((e["source"], e["target"], "routes"))
+        g.edge(e["source"], bid, "routes", "django-method-branch", description=ep["name"])
 
 
 def merge_graphify(g, doc):

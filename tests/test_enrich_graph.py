@@ -1,6 +1,7 @@
 """tools/enrich_graph.py and the graph gate (ADR-0020): deterministic links Understand Anything can't infer."""
 import contextlib
 import io
+import ast
 import json
 import os
 import pathlib
@@ -913,3 +914,70 @@ class InjectedProtocolTest(unittest.TestCase):
         g = self.graph()
         self.assertIn(("LoanApplication.list_loans", "DjangoLoanRepository.all"), edges(g, "calls"))
         self.assertIn(("DjangoLoanRepository.all", "loans_loan"), edges(g, "reads_from"))
+
+
+class MethodBranchTest(unittest.TestCase):
+    """HM-AUDIT: `GET /holds` routed to the whole view and was traced through the POST branch's write."""
+
+    VIEW = ("from django.views.decorators.http import require_http_methods\n\n"
+            "@require_http_methods(['GET', 'POST'])\n"
+            "def holds(request):\n"
+            "    if request.method == 'GET':\n"
+            "        return listing(request.GET.get('isbn'))\n"
+            "    result = place(request.POST.get('member'))\n"
+            "    return created(result)\n\n"
+            "def plain(request):\n"
+            "    return listing(None)\n")
+
+    def graph(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            (root / "app").mkdir()
+            (root / "app/views.py").write_text(self.VIEW)
+            mods = enrich_graph.py_index(root)
+            defs = enrich_graph.defined(mods)
+            g = enrich_graph.Graph({"project": {}, "nodes": [], "edges": []})
+            view = g.node("function", "app/views.py", "holds", "t")
+            plain = g.node("function", "app/views.py", "plain", "t")
+            for target in ("listing", "place", "created"):
+                g.edge(view, g.node("function", "app/services.py", target, "t"), "calls", "t")
+            g.edge(plain, "function:app/services.py:listing", "calls", "t")
+            for verb in ("GET", "POST"):
+                g.edge(g.node("endpoint", "app/urls.py", f"{verb} /holds", "t"), view, "routes", "t")
+            g.edge(g.node("endpoint", "app/urls.py", "GET /plain", "t"), plain, "routes", "t")
+            enrich_graph.split_method_branches(g, defs)
+            before = json.dumps(g.doc, sort_keys=True)
+            enrich_graph.split_method_branches(g, defs)
+            self.assertEqual(json.dumps(g.doc, sort_keys=True), before, "splitting stays idempotent")
+            return g
+
+    def out(self, g, source):
+        return {e["target"].rsplit(":", 1)[-1] for e in g.doc["edges"] if e["source"] == source and e["type"] == "calls"}
+
+    def test_each_method_routes_to_only_its_branch(self):
+        g = self.graph()
+        routes = {(e["source"].rsplit(":", 1)[-1], e["target"].rsplit(":", 1)[-1])
+                  for e in g.doc["edges"] if e["type"] == "routes"}
+        self.assertIn(("GET /holds", "holds[GET]"), routes)
+        self.assertIn(("POST /holds", "holds[POST]"), routes)
+        self.assertNotIn(("GET /holds", "holds"), routes)
+        self.assertEqual(self.out(g, "function:app/views.py:holds[GET]"), {"listing"})
+        self.assertEqual(self.out(g, "function:app/views.py:holds[POST]"), {"place", "created"})
+
+    def test_a_view_that_does_not_branch_is_left_alone(self):
+        g = self.graph()
+        routes = {(e["source"].rsplit(":", 1)[-1], e["target"].rsplit(":", 1)[-1])
+                  for e in g.doc["edges"] if e["type"] == "routes"}
+        self.assertIn(("GET /plain", "plain"), routes)
+        self.assertNotIn("function:app/views.py:plain[GET]", g.nodes)
+
+    def test_branches_follow_else_and_membership_tests(self):
+        body = ast.parse("def v(request):\n"
+                         "    if request.method in ('PUT', 'PATCH'):\n        update()\n        return ok()\n"
+                         "    elif request.method == 'DELETE':\n        remove()\n        return ok()\n"
+                         "    else:\n        show()\n        return ok()\n").body[0].body
+        names = lambda m: {n.func.id for st in enrich_graph._branch(body, m) for n in ast.walk(st)
+                           if isinstance(n, ast.Call)}
+        self.assertEqual(names("PATCH"), {"update", "ok"})
+        self.assertEqual(names("DELETE"), {"remove", "ok"})
+        self.assertEqual(names("GET"), {"show", "ok"})
