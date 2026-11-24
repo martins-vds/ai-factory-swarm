@@ -380,6 +380,14 @@ def check(spec_dir, ledger_dir, require=False):
             continue
         root = pathlib.Path(spec_dir).resolve().parent.parent
         problems += fixture_problems(path, doc, root)
+        try:                                   # every case must expand: a `{name}` needs its `examples` column
+            expand(doc, path, root)
+        except SpecError as e:
+            msg = f"{path}: {e}" if str(path) not in str(e) else str(e)
+            if not any(str(e) in p for p in problems):
+                problems.append(msg)
+        except (ValueError, KeyError, TypeError):
+            pass                               # a malformed `forall` and the like: the checks above report it
         if require and ledger_field(ledger_dir, cap, "status") == "pending" and spec_fixtures(doc):
             problems.append(f"{path}: {cap} isn't built yet (ledger `status: pending`), so a fixture can only guess "
                             "the schema the build will choose: set the state up with `given.requests` through the "
@@ -458,12 +466,19 @@ def check(spec_dir, ledger_dir, require=False):
 
 # ---------------------------------------------------------------- expanding and comparing
 
+def _cell(row, name):
+    if name not in row:
+        raise SpecError(f"`{{{name}}}` has no `examples` column to fill it"
+                        + (f" (columns: {', '.join(row)})" if row else " (the case has no `examples`)"))
+    return row[name]
+
+
 def substitute(value, row):
     if isinstance(value, str):
         whole = PLACEHOLDER.fullmatch(value)
         if whole:                                          # "{fee}" alone keeps the row value's own type
-            return row[whole.group(1)]
-        return PLACEHOLDER.sub(lambda m: str(row[m.group(1)]), value)
+            return _cell(row, whole.group(1))
+        return PLACEHOLDER.sub(lambda m: str(_cell(row, m.group(1))), value)
     if isinstance(value, list):
         return [substitute(v, row) for v in value]
     if isinstance(value, dict):
