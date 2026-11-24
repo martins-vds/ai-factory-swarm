@@ -28,7 +28,8 @@ Migrator builds the code, and the Migrator can't change it.
    - sets up its starting state from the spec itself (ADR-0078): `given.requests`, setup calls through the
      public HTTP interface (each must succeed), or `fixtures` kept under `.migration/spec/<slice>/fixtures/`,
      never in files the build writes; plus setup `commands` and the `clock`. Written before the code exists,
-     a spec can't know the target's schema, so prefer `requests`;
+     a spec can't know the target's schema, so a capability not built yet sets up by `requests` only; a
+     request's own `clock` places a record on a past day (ADR-0079);
    - acts **once** through a public entry point: an HTTP request or a management command;
    - says what must come back: `status`, a `json` subset, `text` that must appear, `not_text`, `headers`.
 4. **Replay what was recorded** (ADR-0067). For a tier-A capability, turn its recorded exchanges into replay

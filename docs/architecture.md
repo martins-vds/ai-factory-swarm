@@ -141,6 +141,7 @@ humans, and approved for cutover.
 | 76 | The source pin lives in the profile: `validate.py` refuses a `source.lock` that differs from the profile's `source`; re-pin by changing the profile and re-running bootstrap | [0076](adr/0076-the-source-pin-lives-in-the-profile.md) |
 | 77 | Recorded exchanges are append-only: `check_recordings.py` refuses a PR that changes, removes or renames an existing recorded exchange (new behaviour goes under a new key), unless the change moves the source pin | [0077](adr/0077-recorded-exchanges-are-append-only.md) |
 | 78 | A spec sets up its own starting state: `given.requests` through the public API, or fixtures under `.migration/spec/`; never files the build writes. `afs-run`'s fingerprint counts the spec and characterization harness as code | [0078](adr/0078-a-spec-sets-up-its-own-starting-state.md) |
+| 79 | A setup request carries its own clock: a spec places a record on a past day through the public API; a capability not built yet can't use fixtures, which would guess the build's schema | [0079](adr/0079-a-setup-request-carries-its-own-clock.md) |
 
 ---
 

@@ -327,6 +327,12 @@ def github_fetch(ref):
     return api(f"repos/{repo}/issues/{num}"), api(f"repos/{repo}/issues/{num}/comments?per_page=100")
 
 
+def spec_fixtures(doc):
+    given = [(doc.get("background") or {}).get("given") or {}]
+    given += [(c.get("given") or {}) for c in doc.get("cases") or [] if isinstance(c, dict)]
+    return [f for g in given for f in (g.get("fixtures") or [])]
+
+
 def fixture_problems(path, doc, root):
     """ADR-0078: a fixture is part of the spec: it lives under `.migration/spec/` and exists now. A fixture the
     target's code would provide hands the Migrator the case's starting state."""
@@ -374,6 +380,10 @@ def check(spec_dir, ledger_dir, require=False):
             continue
         root = pathlib.Path(spec_dir).resolve().parent.parent
         problems += fixture_problems(path, doc, root)
+        if require and ledger_field(ledger_dir, cap, "status") == "pending" and spec_fixtures(doc):
+            problems.append(f"{path}: {cap} isn't built yet (ledger `status: pending`), so a fixture can only guess "
+                            "the schema the build will choose: set the state up with `given.requests` through the "
+                            "public API, giving a request its own `clock` to place a record on a past day (ADR-0079)")
         replays = contracts = 0
         for i, case in enumerate(doc["cases"]):
             if "schema" in case["then"] or "sent" in case["then"]:
