@@ -1350,3 +1350,28 @@ class StackedLandingTest(unittest.TestCase):
     def test_a_pr_into_main_is_never_rescued(self):
         with self.assertRaisesRegex(ValueError, "no verified landing"):
             self.landed({85: self.verifier(base="main")}, {})
+
+
+class MergedFailedAuditTest(unittest.TestCase):
+    """A `gaps-remain` audit may land as evidence and still be superseded by a complete re-audit (synthetic #189)."""
+
+    def run_check(self, role, verdict, merged=True, extra=None):
+        import base64
+        from unittest import mock
+        text = (f"role: {role}\nticket: HM-AUDIT\nissue: o/r#189\nscope: hold-management\n"
+                "report: .migration/evidence/hold-management/report.md\ncapabilities_checked: 6\n"
+                "gaps:\n  - {class: untested, ledger_id: hold.place, ticket: null}\ngraph_inconsistencies: []\n"
+                + (f"verdict: {verdict}\n" if verdict else "")
+                + "acceptance_run: .migration/evidence/acceptance-runs/1-1.json\n" + (extra or ""))
+        content = {"encoding": "base64", "content": base64.b64encode(text.encode()).decode()}
+        pull = {"merged_at": "2026-11-24T00:00:00Z" if merged else None, "head": {"sha": "a" * 40}}
+        failure = {"pull_request": 190, "return": ".migration/returns/HM-AUDIT.afs-auditor.yaml"}
+        with mock.patch.object(ticket_guard, "_pull", return_value=pull), mock.patch.object(ticket_guard, "gh", return_value=content):
+            return ticket_guard._merged_failed_audit("o/r", failure)
+
+    def test_only_a_merged_gaps_remain_audit_qualifies(self):
+        self.assertTrue(self.run_check("afs-auditor", "gaps-remain"))
+        self.assertFalse(self.run_check("afs-auditor", "complete"))
+        self.assertFalse(self.run_check("afs-auditor", "gaps-remain", merged=False))
+        self.assertFalse(self.run_check("afs-verifier", "changes-required"))
+        self.assertFalse(self.run_check("afs-migrator", None, extra="handoff: blocked\n"))

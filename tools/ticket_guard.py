@@ -590,6 +590,25 @@ def _killed_session(repo, run_id, failed_pull):
         raise ValueError("the failure PR has a return file: cite it as failure.return instead of session_run")
 
 
+def _merged_failed_audit(repo, failure):
+    """True when `failure` names a merged PR whose return is an Auditor's `gaps-remain`: the one failed outcome
+    that lands as evidence. Anything else must still be closed unmerged."""
+    if not isinstance(failure, dict) or not isinstance(failure.get("pull_request"), int) \
+            or failure.get("session_run") is not None or failure.get("handoff") is not None:
+        return False
+    try:
+        pull = _pull(repo, failure["pull_request"])
+        if not pull.get("merged_at"):
+            return False
+        head = (pull.get("head") or {}).get("sha")
+        path = _return_path(failure.get("return"))
+        content = gh(f"repos/{repo}/contents/{quote(path, safe='/')}?ref={head}")
+        doc = _valid_return(base64.b64decode(content["content"]).decode("utf-8"), path)
+    except (KeyError, ValueError, TypeError, OSError, subprocess.SubprocessError, SystemExit, UnicodeError):
+        return False
+    return bool(doc) and doc.get("role") == "afs-auditor" and doc.get("verdict") == "gaps-remain"
+
+
 def _failed_role_return(repo, issue_number, pull_number, path, pull):
     path = _return_path(path)
     head = (pull.get("head") or {}).get("sha")
@@ -729,7 +748,11 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                     continue
                 problems.extend(f"#{number}: {problem}" for problem in completed_evidence_problems(repo, number, item))
             elif disposition == "superseded":
-                if issue.get("state") != "closed" or issue.get("state_reason") != "not_planned":
+                # A `gaps-remain` audit is evidence: it may land (merged), its issue closed by that merge, and a
+                # later complete re-audit replaces it (synthetic HM-AUDIT #189, PR #190 -> HM-REAUDIT #201).
+                merged_audit = _merged_failed_audit(repo, item.get("failure"))
+                if issue.get("state") != "closed" or issue.get("state_reason") not in (
+                        ("not_planned", "completed") if merged_audit else ("not_planned",)):
                     problems.append(f"#{number}: superseded disposition requires closure as not planned")
                 replacement = item.get("replacement")
                 if not isinstance(replacement, int) or replacement <= 0 or replacement == number:
@@ -755,8 +778,9 @@ def reconciliation_problems(repo, epic_number, epic, report_path=None):
                     continue
                 try:
                     failed_pull = _pull(repo, failure["pull_request"])
-                    if failed_pull.get("state") != "closed" or failed_pull.get("merged_at"):
-                        raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged")
+                    if failed_pull.get("state") != "closed" or (failed_pull.get("merged_at") and not merged_audit):
+                        raise ValueError(f"failure PR #{failure['pull_request']} must be closed unmerged "
+                                         "(only an Auditor's `gaps-remain` return may land as evidence)")
                     if failure.get("session_run") is not None:
                         _killed_session(repo, failure["session_run"], failed_pull)
                     elif failure.get("handoff") is not None:
